@@ -5,6 +5,19 @@ All notable changes to Tux Assistant will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.5.9] - 2025-11-29
+
+### Fixed
+- Fixed application icons not showing in taskbar/dock (Wayland/GTK4 compatibility)
+- Fixed StartupWMClass matching for both Tux Assistant and Tux Tunes
+
+### Added
+- Audio analysis dependencies for smart recording (numpy, scipy, librosa, pydub)
+- Automatic dependency installation via Tux Assistant UI
+- Auto-refresh after dependency installation
+- Grace period for initial track metadata settling
+- 15-second save prompt for completed recordings
+
 ## [5.3.2] - 2025-11-29
 
 ### Fixed - Tux Tunes Now Visible! 📻

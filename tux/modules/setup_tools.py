@@ -2394,6 +2394,32 @@ class SetupToolsPage(Adw.NavigationPage):
             )
             content_box.append(group)
         
+        # Developer Tools section
+        dev_group = Adw.PreferencesGroup()
+        dev_group.set_title("Developer Tools")
+        dev_group.set_description("Tools for developers and power users")
+        content_box.append(dev_group)
+        
+        # Clone Git Repository
+        clone_row = Adw.ActionRow()
+        clone_row.set_title("Clone Git Repository")
+        clone_row.set_subtitle("Download a project from GitHub, GitLab, etc.")
+        clone_row.add_prefix(Gtk.Image.new_from_icon_name("folder-download-symbolic"))
+        clone_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        clone_row.set_activatable(True)
+        clone_row.connect("activated", self._on_clone_repo_clicked)
+        dev_group.add(clone_row)
+        
+        # Restore SSH Keys
+        ssh_row = Adw.ActionRow()
+        ssh_row.set_title("Restore SSH Keys")
+        ssh_row.set_subtitle("Drag & drop your backed up SSH keys to restore Git access")
+        ssh_row.add_prefix(Gtk.Image.new_from_icon_name("channel-secure-symbolic"))
+        ssh_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        ssh_row.set_activatable(True)
+        ssh_row.connect("activated", self._on_restore_ssh_clicked)
+        dev_group.add(ssh_row)
+        
         # Bottom action bar
         action_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         action_bar.set_halign(Gtk.Align.CENTER)
@@ -2646,6 +2672,518 @@ class SetupToolsPage(Adw.NavigationPage):
             # Open installation dialog
             install_dialog = InstallationDialog(self.window, tasks_to_install, self.distro.family)
             install_dialog.present()
+    
+    def _on_clone_repo_clicked(self, row):
+        """Show git clone dialog."""
+        dialog = GitCloneDialog(self.window, self.distro)
+        dialog.present(self.window)
+    
+    def _on_restore_ssh_clicked(self, row):
+        """Show SSH key restore dialog."""
+        dialog = SSHKeyRestoreDialog(self.window, self.distro)
+        dialog.present(self.window)
+
+
+class SSHKeyRestoreDialog(Adw.Dialog):
+    """Dialog for restoring SSH keys via drag and drop."""
+    
+    def __init__(self, parent, distro):
+        super().__init__()
+        
+        self.parent_window = parent
+        self.distro = distro
+        self.private_key_data = None
+        self.public_key_data = None
+        self.private_key_name = None
+        self.public_key_name = None
+        
+        self.set_title("Restore SSH Keys")
+        self.set_content_width(550)
+        self.set_content_height(550)
+        
+        self._build_ui()
+    
+    def _build_ui(self):
+        """Build the dialog UI."""
+        toolbar_view = Adw.ToolbarView()
+        self.set_child(toolbar_view)
+        
+        # Header
+        header = Adw.HeaderBar()
+        header.set_show_end_title_buttons(False)
+        header.set_show_start_title_buttons(False)
+        
+        cancel_btn = Gtk.Button(label="Cancel")
+        cancel_btn.connect("clicked", lambda b: self.close())
+        header.pack_start(cancel_btn)
+        
+        toolbar_view.add_top_bar(header)
+        
+        # Content
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
+        content.set_margin_top(20)
+        content.set_margin_bottom(20)
+        content.set_margin_start(20)
+        content.set_margin_end(20)
+        toolbar_view.set_content(content)
+        
+        # Instructions
+        info_label = Gtk.Label()
+        info_label.set_markup(
+            "<b>Drag and drop your SSH key files here</b>\n"
+            "<small>Drop both <tt>id_ed25519</tt> (private) and <tt>id_ed25519.pub</tt> (public)</small>"
+        )
+        info_label.set_halign(Gtk.Align.CENTER)
+        info_label.set_justify(Gtk.Justification.CENTER)
+        content.append(info_label)
+        
+        # Drop zone
+        self.drop_zone = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        self.drop_zone.set_size_request(-1, 150)
+        self.drop_zone.set_valign(Gtk.Align.CENTER)
+        self.drop_zone.set_halign(Gtk.Align.CENTER)
+        self.drop_zone.add_css_class("card")
+        self.drop_zone.set_margin_top(10)
+        self.drop_zone.set_margin_bottom(10)
+        
+        # Make it expand to fill space
+        drop_frame = Gtk.Frame()
+        drop_frame.set_child(self.drop_zone)
+        drop_frame.set_vexpand(True)
+        content.append(drop_frame)
+        
+        # Drop zone content
+        drop_icon = Gtk.Image.new_from_icon_name("document-send-symbolic")
+        drop_icon.set_pixel_size(48)
+        drop_icon.add_css_class("dim-label")
+        self.drop_zone.append(drop_icon)
+        
+        self.drop_label = Gtk.Label(label="Drop SSH key files here")
+        self.drop_label.add_css_class("dim-label")
+        self.drop_zone.append(self.drop_label)
+        
+        # Status labels for each file
+        self.status_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        self.status_box.set_halign(Gtk.Align.CENTER)
+        self.drop_zone.append(self.status_box)
+        
+        self.private_status = Gtk.Label()
+        self.private_status.set_markup("<small>Private key: ❌ Not loaded</small>")
+        self.status_box.append(self.private_status)
+        
+        self.public_status = Gtk.Label()
+        self.public_status.set_markup("<small>Public key: ❌ Not loaded</small>")
+        self.status_box.append(self.public_status)
+        
+        # Setup drag and drop
+        drop_target = Gtk.DropTarget.new(Gio.File, Gdk.DragAction.COPY)
+        drop_target.connect("drop", self._on_file_dropped)
+        drop_target.connect("enter", self._on_drag_enter)
+        drop_target.connect("leave", self._on_drag_leave)
+        drop_frame.add_controller(drop_target)
+        
+        # Git identity section
+        identity_group = Adw.PreferencesGroup()
+        identity_group.set_title("Git Identity")
+        identity_group.set_description("Set your name and email for commits")
+        content.append(identity_group)
+        
+        self.name_entry = Adw.EntryRow()
+        self.name_entry.set_title("Name")
+        self.name_entry.set_text("Christopher Dorrell")
+        identity_group.add(self.name_entry)
+        
+        self.email_entry = Adw.EntryRow()
+        self.email_entry.set_title("Email")
+        self.email_entry.set_text("dorrellkc@gmail.com")
+        identity_group.add(self.email_entry)
+        
+        # Restore button
+        self.restore_btn = Gtk.Button(label="Restore Keys & Setup Git")
+        self.restore_btn.add_css_class("suggested-action")
+        self.restore_btn.add_css_class("pill")
+        self.restore_btn.set_sensitive(False)
+        self.restore_btn.set_halign(Gtk.Align.CENTER)
+        self.restore_btn.set_margin_top(10)
+        self.restore_btn.connect("clicked", self._on_restore_clicked)
+        content.append(self.restore_btn)
+        
+        # Result area (hidden initially)
+        self.result_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        self.result_box.set_visible(False)
+        self.result_box.set_margin_top(10)
+        content.append(self.result_box)
+        
+        self.result_label = Gtk.Label()
+        self.result_label.set_wrap(True)
+        self.result_label.set_halign(Gtk.Align.CENTER)
+        self.result_box.append(self.result_label)
+    
+    def _on_drag_enter(self, drop_target, x, y):
+        """Handle drag enter."""
+        self.drop_label.set_text("Release to drop files")
+        return Gdk.DragAction.COPY
+    
+    def _on_drag_leave(self, drop_target):
+        """Handle drag leave."""
+        self.drop_label.set_text("Drop SSH key files here")
+    
+    def _on_file_dropped(self, drop_target, value, x, y):
+        """Handle file drop."""
+        if not isinstance(value, Gio.File):
+            return False
+        
+        filepath = value.get_path()
+        filename = value.get_basename()
+        
+        try:
+            with open(filepath, 'r') as f:
+                file_content = f.read()
+            
+            # Determine if it's private or public key
+            if filename.endswith('.pub') or 'ssh-' in file_content[:20]:
+                # Public key
+                self.public_key_data = file_content
+                self.public_key_name = filename
+                self.public_status.set_markup(f"<small>Public key: ✅ {filename}</small>")
+            elif 'PRIVATE KEY' in file_content or not filename.endswith('.pub'):
+                # Private key
+                self.private_key_data = file_content
+                self.private_key_name = filename
+                self.private_status.set_markup(f"<small>Private key: ✅ {filename}</small>")
+            
+            # Check if both keys are loaded
+            if self.private_key_data and self.public_key_data:
+                self.drop_label.set_text("Both keys loaded!")
+                self.restore_btn.set_sensitive(True)
+            else:
+                self.drop_label.set_text("Drop the other key file")
+            
+            return True
+            
+        except Exception as e:
+            self.drop_label.set_text(f"Error: {e}")
+            return False
+    
+    def _on_restore_clicked(self, button):
+        """Restore SSH keys and configure git."""
+        import os
+        import subprocess
+        import stat
+        
+        button.set_sensitive(False)
+        button.set_label("Restoring...")
+        
+        ssh_dir = os.path.expanduser("~/.ssh")
+        results = []
+        
+        try:
+            # Create .ssh directory if needed
+            os.makedirs(ssh_dir, exist_ok=True)
+            os.chmod(ssh_dir, stat.S_IRWXU)  # 700
+            results.append("✅ Created ~/.ssh directory")
+            
+            # Write private key
+            private_path = os.path.join(ssh_dir, self.private_key_name or "id_ed25519")
+            with open(private_path, 'w') as f:
+                f.write(self.private_key_data)
+            os.chmod(private_path, stat.S_IRUSR | stat.S_IWUSR)  # 600
+            results.append(f"✅ Saved private key")
+            
+            # Write public key
+            public_path = os.path.join(ssh_dir, self.public_key_name or "id_ed25519.pub")
+            with open(public_path, 'w') as f:
+                f.write(self.public_key_data)
+            os.chmod(public_path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)  # 644
+            results.append(f"✅ Saved public key")
+            
+            # Set git identity
+            name = self.name_entry.get_text().strip()
+            email = self.email_entry.get_text().strip()
+            
+            if name:
+                subprocess.run(['git', 'config', '--global', 'user.name', name], check=True)
+                results.append(f"✅ Set git name: {name}")
+            
+            if email:
+                subprocess.run(['git', 'config', '--global', 'user.email', email], check=True)
+                results.append(f"✅ Set git email: {email}")
+            
+            # Start ssh-agent and add key
+            try:
+                # Test GitHub connection
+                result = subprocess.run(
+                    ['ssh', '-T', '-o', 'StrictHostKeyChecking=no', 'git@github.com'],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                # GitHub returns exit code 1 but with success message
+                if 'successfully authenticated' in result.stderr.lower():
+                    results.append("✅ GitHub connection verified!")
+                elif 'permission denied' in result.stderr.lower():
+                    results.append("⚠️ Key saved but GitHub test failed - check key is added to GitHub")
+                else:
+                    results.append("⚠️ Could not verify GitHub - try: ssh -T git@github.com")
+            except subprocess.TimeoutExpired:
+                results.append("⚠️ GitHub test timed out")
+            except Exception as e:
+                results.append(f"⚠️ GitHub test skipped: {e}")
+            
+            # Show success
+            self.result_label.set_markup(
+                "<b>SSH Keys Restored!</b>\n\n" + 
+                "\n".join(results)
+            )
+            self.result_box.set_visible(True)
+            button.set_label("Done!")
+            button.remove_css_class("suggested-action")
+            
+        except Exception as e:
+            self.result_label.set_markup(f"<b>Error</b>\n\n{e}")
+            self.result_box.set_visible(True)
+            button.set_label("Restore Keys & Setup Git")
+            button.set_sensitive(True)
+
+
+class GitCloneDialog(Adw.Dialog):
+    """Dialog for cloning a git repository."""
+    
+    def __init__(self, parent, distro):
+        super().__init__()
+        
+        self.parent_window = parent
+        self.distro = distro
+        
+        self.set_title("Clone Git Repository")
+        self.set_content_width(500)
+        self.set_content_height(400)
+        
+        self._build_ui()
+    
+    def _build_ui(self):
+        """Build the dialog UI."""
+        toolbar_view = Adw.ToolbarView()
+        self.set_child(toolbar_view)
+        
+        # Header
+        header = Adw.HeaderBar()
+        header.set_show_end_title_buttons(False)
+        header.set_show_start_title_buttons(False)
+        
+        cancel_btn = Gtk.Button(label="Cancel")
+        cancel_btn.connect("clicked", lambda b: self.close())
+        header.pack_start(cancel_btn)
+        
+        self.clone_btn = Gtk.Button(label="Clone")
+        self.clone_btn.add_css_class("suggested-action")
+        self.clone_btn.set_sensitive(False)
+        self.clone_btn.connect("clicked", self._on_clone_clicked)
+        header.pack_end(self.clone_btn)
+        
+        toolbar_view.add_top_bar(header)
+        
+        # Content
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
+        content.set_margin_top(20)
+        content.set_margin_bottom(20)
+        content.set_margin_start(20)
+        content.set_margin_end(20)
+        toolbar_view.set_content(content)
+        
+        # Instructions
+        info_label = Gtk.Label()
+        info_label.set_markup(
+            "<b>Enter the repository URL</b>\n"
+            "<small>Example: https://github.com/username/repo-name.git</small>"
+        )
+        info_label.set_halign(Gtk.Align.START)
+        content.append(info_label)
+        
+        # URL Entry
+        url_group = Adw.PreferencesGroup()
+        content.append(url_group)
+        
+        self.url_entry = Adw.EntryRow()
+        self.url_entry.set_title("Repository URL")
+        self.url_entry.connect("changed", self._on_url_changed)
+        url_group.add(self.url_entry)
+        
+        # Destination folder
+        dest_group = Adw.PreferencesGroup()
+        dest_group.set_title("Destination")
+        content.append(dest_group)
+        
+        self.dest_entry = Adw.EntryRow()
+        self.dest_entry.set_title("Clone to folder")
+        self.dest_entry.set_text("~/Development")
+        dest_group.add(self.dest_entry)
+        
+        # Git check / install
+        self.git_status = Adw.ActionRow()
+        self.git_status.set_title("Git")
+        self._check_git_installed()
+        dest_group.add(self.git_status)
+        
+        # Output area (hidden initially)
+        self.output_group = Adw.PreferencesGroup()
+        self.output_group.set_title("Output")
+        self.output_group.set_visible(False)
+        content.append(self.output_group)
+        
+        self.output_label = Gtk.Label()
+        self.output_label.set_halign(Gtk.Align.START)
+        self.output_label.set_wrap(True)
+        self.output_label.set_selectable(True)
+        self.output_group.add(self.output_label)
+    
+    def _check_git_installed(self):
+        """Check if git is installed."""
+        import subprocess
+        try:
+            result = subprocess.run(['which', 'git'], capture_output=True, text=True)
+            if result.returncode == 0:
+                self.git_installed = True
+                self.git_status.set_subtitle("Installed ✓")
+                self.git_status.add_suffix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
+            else:
+                self._show_git_not_installed()
+        except Exception:
+            self._show_git_not_installed()
+    
+    def _show_git_not_installed(self):
+        """Show git not installed state with install button."""
+        self.git_installed = False
+        self.git_status.set_subtitle("Not installed")
+        
+        install_btn = Gtk.Button(label="Install")
+        install_btn.add_css_class("suggested-action")
+        install_btn.connect("clicked", self._on_install_git)
+        self.git_status.add_suffix(install_btn)
+    
+    def _on_install_git(self, button):
+        """Install git."""
+        import subprocess
+        
+        button.set_sensitive(False)
+        button.set_label("Installing...")
+        
+        # Get install command for distro
+        if self.distro.family == DistroFamily.ARCH:
+            cmd = ["pkexec", "pacman", "-S", "--noconfirm", "git"]
+        elif self.distro.family == DistroFamily.DEBIAN:
+            cmd = ["pkexec", "apt-get", "install", "-y", "git"]
+        elif self.distro.family == DistroFamily.FEDORA:
+            cmd = ["pkexec", "dnf", "install", "-y", "git"]
+        elif self.distro.family == DistroFamily.SUSE:
+            cmd = ["pkexec", "zypper", "install", "-y", "git"]
+        else:
+            self.git_status.set_subtitle("Please install git manually")
+            return
+        
+        def install_thread():
+            try:
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                GLib.idle_add(self._on_git_install_complete, result.returncode == 0)
+            except Exception as e:
+                GLib.idle_add(self._on_git_install_complete, False)
+        
+        import threading
+        threading.Thread(target=install_thread, daemon=True).start()
+    
+    def _on_git_install_complete(self, success):
+        """Handle git installation complete."""
+        # Remove the install button
+        while self.git_status.get_last_child():
+            child = self.git_status.get_last_child()
+            if isinstance(child, Gtk.Button) or isinstance(child, Gtk.Image):
+                self.git_status.remove(child)
+            else:
+                break
+        
+        if success:
+            self.git_installed = True
+            self.git_status.set_subtitle("Installed ✓")
+            self.git_status.add_suffix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
+            self._on_url_changed(self.url_entry)  # Re-check if clone button should enable
+        else:
+            self.git_status.set_subtitle("Installation failed")
+            install_btn = Gtk.Button(label="Retry")
+            install_btn.connect("clicked", self._on_install_git)
+            self.git_status.add_suffix(install_btn)
+    
+    def _on_url_changed(self, entry):
+        """Validate URL and enable/disable clone button."""
+        url = entry.get_text().strip()
+        valid = (
+            url.startswith("https://") or url.startswith("git@")
+        ) and len(url) > 10 and hasattr(self, 'git_installed') and self.git_installed
+        
+        self.clone_btn.set_sensitive(valid)
+    
+    def _on_clone_clicked(self, button):
+        """Clone the repository."""
+        import subprocess
+        import os
+        
+        url = self.url_entry.get_text().strip()
+        dest = os.path.expanduser(self.dest_entry.get_text().strip())
+        
+        # Extract repo name from URL
+        repo_name = url.rstrip('/').split('/')[-1]
+        if repo_name.endswith('.git'):
+            repo_name = repo_name[:-4]
+        
+        full_dest = os.path.join(dest, repo_name)
+        
+        # Show output area
+        self.output_group.set_visible(True)
+        self.output_label.set_text(f"Cloning {url}...")
+        self.clone_btn.set_sensitive(False)
+        self.clone_btn.set_label("Cloning...")
+        
+        def clone_thread():
+            try:
+                # Create destination directory
+                os.makedirs(dest, exist_ok=True)
+                
+                # Clone
+                result = subprocess.run(
+                    ['git', 'clone', url, full_dest],
+                    capture_output=True,
+                    text=True,
+                    cwd=dest
+                )
+                
+                if result.returncode == 0:
+                    GLib.idle_add(self._on_clone_complete, True, full_dest, None)
+                else:
+                    error = result.stderr or result.stdout or "Unknown error"
+                    GLib.idle_add(self._on_clone_complete, False, full_dest, error)
+                    
+            except Exception as e:
+                GLib.idle_add(self._on_clone_complete, False, full_dest, str(e))
+        
+        import threading
+        threading.Thread(target=clone_thread, daemon=True).start()
+    
+    def _on_clone_complete(self, success, path, error):
+        """Handle clone completion."""
+        if success:
+            self.output_label.set_markup(
+                f"<b>✓ Successfully cloned!</b>\n\n"
+                f"Location: <tt>{path}</tt>\n\n"
+                f"<small>You can close this dialog now.</small>"
+            )
+            self.clone_btn.set_label("Done")
+            self.clone_btn.remove_css_class("suggested-action")
+        else:
+            self.output_label.set_markup(
+                f"<b>✗ Clone failed</b>\n\n"
+                f"<small>{error}</small>"
+            )
+            self.clone_btn.set_label("Clone")
+            self.clone_btn.set_sensitive(True)
 
 
 class InstallationDialog(Adw.Dialog):

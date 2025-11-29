@@ -10,4 +10,4 @@ Terminal=false
 Categories=System;Settings;Utility;
 Keywords=setup;install;configure;linux;
 StartupNotify=true
-StartupWMClass=tux-assistant
+StartupWMClass=com.tuxassistant.app
