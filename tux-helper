@@ -1,0 +1,3439 @@
+#!/usr/bin/env python3
+"""
+Tux Assistant - Privileged Helper (tux-helper)
+
+This script runs with elevated privileges via pkexec.
+It executes package management operations and outputs status for the GUI.
+
+Copyright (c) 2025 Christopher Dorrell. All Rights Reserved.
+
+Usage:
+    pkexec tux-helper --install pkg1 pkg2 pkg3
+    pkexec tux-helper --remove pkg1 pkg2
+    pkexec tux-helper --run-command "command to run"
+    pkexec tux-helper --install-from-file /path/to/packages.txt
+"""
+
+import sys
+import os
+import subprocess
+import json
+import argparse
+from typing import Optional
+
+
+# =============================================================================
+# Distro Detection (minimal version for helper)
+# =============================================================================
+
+def detect_distro_family() -> str:
+    """Detect the distribution family."""
+    os_release = {}
+    
+    for path in ['/etc/os-release', '/usr/lib/os-release']:
+        if os.path.exists(path):
+            with open(path, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if '=' in line and not line.startswith('#'):
+                        key, value = line.split('=', 1)
+                        os_release[key] = value.strip('"\'')
+            break
+    
+    distro_id = os_release.get('ID', '').lower()
+    
+    # Map to family
+    arch_distros = ['arch', 'manjaro', 'cachyos', 'endeavouros', 'garuda', 'artix']
+    debian_distros = [
+        'debian', 'ubuntu', 'linuxmint', 'pop', 'elementary', 'zorin', 'kali',
+        'siduction', 'forky',  # Debian derivatives
+        'tuxedo', 'kubuntu', 'lubuntu', 'xubuntu',  # Ubuntu derivatives
+        'neon', 'kubuntufocus'  # KDE-focused Ubuntu derivatives
+    ]
+    fedora_distros = ['fedora', 'nobara', 'ultramarine']
+    rhel_distros = ['rhel', 'centos', 'rocky', 'alma', 'almalinux']
+    opensuse_distros = ['opensuse', 'opensuse-leap', 'opensuse-tumbleweed', 'suse']
+    
+    if distro_id in arch_distros:
+        return 'arch'
+    elif distro_id in debian_distros:
+        return 'debian'
+    elif distro_id in fedora_distros:
+        return 'fedora'
+    elif distro_id in rhel_distros:
+        return 'rhel'
+    elif distro_id in opensuse_distros:
+        return 'opensuse'
+    else:
+        # Try to detect from ID_LIKE
+        id_like = os_release.get('ID_LIKE', '').lower()
+        if 'arch' in id_like:
+            return 'arch'
+        elif 'debian' in id_like or 'ubuntu' in id_like:
+            return 'debian'
+        elif 'fedora' in id_like or 'rhel' in id_like:
+            return 'fedora'
+        elif 'suse' in id_like:
+            return 'opensuse'
+    
+    return 'unknown'
+
+
+def get_package_manager_commands(family: str) -> dict:
+    """Get package manager commands for a distro family."""
+    commands = {
+        'arch': {
+            'install': ['pacman', '-S', '--needed', '--noconfirm'],
+            'remove': ['pacman', '-R', '--noconfirm'],
+            'update': ['pacman', '-Sy'],
+            'upgrade': ['pacman', '-Syu', '--noconfirm'],
+        },
+        'debian': {
+            'install': ['apt', 'install', '-y'],
+            'remove': ['apt', 'remove', '-y'],
+            'update': ['apt', 'update'],
+            'upgrade': ['apt', 'upgrade', '-y'],
+        },
+        'fedora': {
+            'install': ['dnf', 'install', '-y'],
+            'remove': ['dnf', 'remove', '-y'],
+            'update': ['dnf', 'check-update'],
+            'upgrade': ['dnf', 'upgrade', '-y'],
+        },
+        'rhel': {
+            'install': ['dnf', 'install', '-y'],
+            'remove': ['dnf', 'remove', '-y'],
+            'update': ['dnf', 'check-update'],
+            'upgrade': ['dnf', 'upgrade', '-y'],
+        },
+        'opensuse': {
+            'install': ['zypper', 'install', '-y'],
+            'remove': ['zypper', 'remove', '-y'],
+            'update': ['zypper', 'refresh'],
+            'upgrade': ['zypper', 'update', '-y'],
+        },
+    }
+    return commands.get(family, {})
+
+
+# =============================================================================
+# Output Helpers
+# =============================================================================
+
+def emit_status(status: str, message: str):
+    """Emit a status message in a parseable format."""
+    print(f"[Tux Assistant:{status.upper()}] {message}", flush=True)
+
+
+def emit_progress(current: int, total: int, task: str):
+    """Emit progress information."""
+    print(f"[Tux Assistant:PROGRESS] {current}/{total} {task}", flush=True)
+
+
+def emit_output(line: str):
+    """Emit regular output."""
+    print(line, flush=True)
+
+
+# =============================================================================
+# Operations
+# =============================================================================
+
+# Packages that require contrib repo on Debian
+DEBIAN_CONTRIB_PACKAGES = {
+    'ttf-mscorefonts-installer', 'libdvd-pkg',
+    'nvidia-driver', 'nvidia-driver-libs',
+}
+
+# Packages that require non-free repo on Debian  
+DEBIAN_NONFREE_PACKAGES = {
+    'unrar', 'rar',
+}
+
+def check_debian_repos_enabled() -> dict:
+    """Check which Debian repos are enabled."""
+    result = {'contrib': False, 'non-free': False, 'non-free-firmware': False}
+    
+    sources_files = ['/etc/apt/sources.list']
+    # Also check sources.list.d
+    import glob
+    sources_files.extend(glob.glob('/etc/apt/sources.list.d/*.list'))
+    sources_files.extend(glob.glob('/etc/apt/sources.list.d/*.sources'))
+    
+    for sources_file in sources_files:
+        try:
+            with open(sources_file, 'r') as f:
+                content = f.read()
+                if 'contrib' in content:
+                    result['contrib'] = True
+                if 'non-free-firmware' in content:
+                    result['non-free-firmware'] = True
+                elif 'non-free' in content:  # Check after non-free-firmware
+                    result['non-free'] = True
+        except:
+            pass
+    
+    return result
+
+def enable_debian_repos(enable_contrib=False, enable_nonfree=False) -> bool:
+    """Enable contrib and/or non-free repos on Debian."""
+    # Find main sources file
+    sources_file = '/etc/apt/sources.list'
+    
+    # Check for DEB822 format (.sources files)
+    import glob
+    deb822_files = glob.glob('/etc/apt/sources.list.d/*.sources')
+    
+    if deb822_files:
+        # Modern DEB822 format (Debian 12+)
+        # Usually debian.sources
+        for sources_file in deb822_files:
+            try:
+                with open(sources_file, 'r') as f:
+                    content = f.read()
+                
+                modified = False
+                lines = content.split('\n')
+                new_lines = []
+                
+                for line in lines:
+                    if line.startswith('Components:'):
+                        components = line.split(':', 1)[1].strip().split()
+                        if enable_contrib and 'contrib' not in components:
+                            components.append('contrib')
+                            modified = True
+                        if enable_nonfree and 'non-free' not in components:
+                            components.append('non-free')
+                            modified = True
+                        line = 'Components: ' + ' '.join(components)
+                    new_lines.append(line)
+                
+                if modified:
+                    emit_status("info", f"Enabling repos in {sources_file}")
+                    with open(sources_file, 'w') as f:
+                        f.write('\n'.join(new_lines))
+                    return True
+                    
+            except Exception as e:
+                emit_output(f"Warning: Could not modify {sources_file}: {e}")
+        
+        return False
+    
+    # Traditional format (sources.list)
+    try:
+        with open(sources_file, 'r') as f:
+            lines = f.readlines()
+        
+        modified = False
+        new_lines = []
+        
+        for line in lines:
+            stripped = line.strip()
+            # Skip comments and empty lines
+            if stripped.startswith('#') or not stripped:
+                new_lines.append(line)
+                continue
+            
+            # Check if it's a deb line
+            if stripped.startswith('deb ') or stripped.startswith('deb-src '):
+                parts = stripped.split()
+                # Find where components start (after URL and suite)
+                # deb http://... bookworm main
+                if len(parts) >= 4:
+                    components_start = 3
+                    components = parts[components_start:]
+                    
+                    if enable_contrib and 'contrib' not in components:
+                        parts.append('contrib')
+                        modified = True
+                    if enable_nonfree and 'non-free' not in components:
+                        parts.append('non-free')
+                        modified = True
+                    
+                    line = ' '.join(parts) + '\n'
+            
+            new_lines.append(line)
+        
+        if modified:
+            emit_status("info", "Enabling contrib/non-free repos in sources.list")
+            with open(sources_file, 'w') as f:
+                f.writelines(new_lines)
+            
+            # Update apt cache
+            emit_output("Updating package lists...")
+            subprocess.run(['apt', 'update'], capture_output=True)
+            return True
+            
+    except Exception as e:
+        emit_output(f"Warning: Could not modify sources.list: {e}")
+    
+    return False
+
+def ensure_debian_repos_for_packages(packages: list[str]) -> None:
+    """Automatically enable Debian repos if needed for requested packages."""
+    needs_contrib = any(pkg in DEBIAN_CONTRIB_PACKAGES or 
+                       any(pkg.startswith(p) for p in ['nvidia-driver', 'ttf-mscore'])
+                       for pkg in packages)
+    needs_nonfree = any(pkg in DEBIAN_NONFREE_PACKAGES for pkg in packages)
+    
+    if not needs_contrib and not needs_nonfree:
+        return
+    
+    # Check current state
+    repos = check_debian_repos_enabled()
+    
+    enable_contrib = needs_contrib and not repos['contrib']
+    enable_nonfree = needs_nonfree and not repos['non-free']
+    
+    if enable_contrib or enable_nonfree:
+        what = []
+        if enable_contrib:
+            what.append('contrib')
+        if enable_nonfree:
+            what.append('non-free')
+        emit_status("info", f"Automatically enabling {' and '.join(what)} repositories...")
+        enable_debian_repos(enable_contrib=enable_contrib, enable_nonfree=enable_nonfree)
+
+
+# =============================================================================
+# OpenSUSE Packman Auto-Enablement
+# =============================================================================
+
+# Packages that require Packman repo on OpenSUSE
+OPENSUSE_PACKMAN_PACKAGES = {
+    'ffmpeg', 'libdvdcss2', 'libavcodec', 'vlc', 'vlc-codecs',
+    'gstreamer-plugins-ugly', 'gstreamer-plugins-libav',
+    'handbrake', 'x264', 'x265', 'faac', 'faad2',
+}
+
+def check_opensuse_packman_enabled() -> bool:
+    """Check if Packman repository is enabled on OpenSUSE."""
+    try:
+        result = subprocess.run(
+            ['zypper', 'repos', '-u'],
+            capture_output=True, text=True, timeout=30
+        )
+        return 'packman' in result.stdout.lower()
+    except:
+        return False
+
+def get_opensuse_version() -> str:
+    """Get OpenSUSE version (Tumbleweed, Leap 15.x, etc.)."""
+    try:
+        with open('/etc/os-release', 'r') as f:
+            content = f.read()
+            if 'tumbleweed' in content.lower():
+                return 'openSUSE_Tumbleweed'
+            # Extract version for Leap
+            for line in content.split('\n'):
+                if line.startswith('VERSION_ID='):
+                    version = line.split('=')[1].strip('"\'')
+                    return f'openSUSE_Leap_{version}'
+    except:
+        pass
+    return 'openSUSE_Tumbleweed'  # Default to Tumbleweed
+
+def enable_opensuse_packman() -> bool:
+    """Enable Packman repository on OpenSUSE."""
+    version = get_opensuse_version()
+    
+    # Packman repo URL
+    packman_url = f"https://ftp.gwdg.de/pub/linux/misc/packman/suse/{version}/"
+    
+    emit_status("info", f"Adding Packman repository for {version}...")
+    
+    try:
+        # Add Packman repo
+        result = subprocess.run(
+            ['zypper', 'ar', '-cfp', '90', packman_url, 'packman'],
+            capture_output=True, text=True, timeout=60
+        )
+        
+        if result.returncode != 0 and 'already exists' not in result.stderr.lower():
+            emit_output(f"Warning: {result.stderr}")
+            return False
+        
+        # Auto-import GPG key
+        emit_status("info", "Importing Packman GPG key...")
+        subprocess.run(
+            ['zypper', '--gpg-auto-import-keys', 'refresh', 'packman'],
+            capture_output=True, text=True, timeout=120
+        )
+        
+        # Switch system packages to Packman versions for consistency
+        emit_status("info", "Switching multimedia packages to Packman versions...")
+        subprocess.run(
+            ['zypper', 'dup', '--from', 'packman', '--allow-vendor-change', '-y'],
+            capture_output=True, text=True, timeout=300
+        )
+        
+        return True
+        
+    except Exception as e:
+        emit_output(f"Warning: Could not enable Packman: {e}")
+        return False
+
+def ensure_opensuse_packman_for_packages(packages: list[str]) -> None:
+    """Automatically enable Packman if needed for requested packages."""
+    needs_packman = any(pkg in OPENSUSE_PACKMAN_PACKAGES or
+                       any(pkg.startswith(p) for p in ['ffmpeg', 'libdvdcss', 'gstreamer-plugins-ugly', 'gstreamer-plugins-libav', 'vlc'])
+                       for pkg in packages)
+    
+    if not needs_packman:
+        return
+    
+    if not check_opensuse_packman_enabled():
+        emit_status("info", "Multimedia packages require Packman repository...")
+        enable_opensuse_packman()
+
+
+# =============================================================================
+# Fedora RPM Fusion Auto-Enablement
+# =============================================================================
+
+# Packages that require RPM Fusion on Fedora
+FEDORA_RPMFUSION_PACKAGES = {
+    'ffmpeg', 'ffmpeg-libs', 'libdvdcss', 'vlc', 'x264', 'x265',
+    'gstreamer1-plugins-bad-freeworld', 'gstreamer1-plugins-ugly',
+    'gstreamer1-libav', 'handbrake', 'handbrake-gui',
+    'akmod-nvidia', 'xorg-x11-drv-nvidia',
+}
+
+def check_fedora_rpmfusion_enabled() -> dict:
+    """Check if RPM Fusion repositories are enabled on Fedora."""
+    result = {'free': False, 'nonfree': False}
+    try:
+        proc = subprocess.run(
+            ['dnf', 'repolist', '--enabled'],
+            capture_output=True, text=True, timeout=30
+        )
+        output = proc.stdout.lower()
+        result['free'] = 'rpmfusion-free' in output
+        result['nonfree'] = 'rpmfusion-nonfree' in output
+    except:
+        pass
+    return result
+
+def get_fedora_version() -> str:
+    """Get Fedora version number."""
+    try:
+        result = subprocess.run(['rpm', '-E', '%fedora'], capture_output=True, text=True)
+        return result.stdout.strip()
+    except:
+        return '40'  # Default
+
+def enable_fedora_rpmfusion(enable_free=True, enable_nonfree=True) -> bool:
+    """Enable RPM Fusion repositories on Fedora."""
+    version = get_fedora_version()
+    
+    emit_status("info", f"Adding RPM Fusion repositories for Fedora {version}...")
+    
+    try:
+        repos_to_install = []
+        
+        if enable_free:
+            repos_to_install.append(
+                f"https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-{version}.noarch.rpm"
+            )
+        
+        if enable_nonfree:
+            repos_to_install.append(
+                f"https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-{version}.noarch.rpm"
+            )
+        
+        if repos_to_install:
+            result = subprocess.run(
+                ['dnf', 'install', '-y'] + repos_to_install,
+                capture_output=True, text=True, timeout=120
+            )
+            
+            if result.returncode != 0 and 'already installed' not in result.stdout.lower():
+                emit_output(f"Warning: {result.stderr}")
+                return False
+        
+        return True
+        
+    except Exception as e:
+        emit_output(f"Warning: Could not enable RPM Fusion: {e}")
+        return False
+
+def ensure_fedora_rpmfusion_for_packages(packages: list[str]) -> None:
+    """Automatically enable RPM Fusion if needed for requested packages."""
+    needs_rpmfusion = any(pkg in FEDORA_RPMFUSION_PACKAGES or
+                        any(pkg.startswith(p) for p in ['ffmpeg', 'libdvdcss', 'gstreamer1-plugins-ugly', 
+                                                         'gstreamer1-plugins-bad-freeworld', 'gstreamer1-libav',
+                                                         'akmod-nvidia', 'xorg-x11-drv-nvidia'])
+                        for pkg in packages)
+    
+    if not needs_rpmfusion:
+        return
+    
+    repos = check_fedora_rpmfusion_enabled()
+    
+    if not repos['free'] or not repos['nonfree']:
+        emit_status("info", "Multimedia packages require RPM Fusion repositories...")
+        enable_fedora_rpmfusion(
+            enable_free=not repos['free'],
+            enable_nonfree=not repos['nonfree']
+        )
+
+
+# =============================================================================
+# Dynamic Package Availability Checking
+# =============================================================================
+
+def check_package_available_debian(package: str) -> bool:
+    """Check if a package is available in Debian/Ubuntu repos."""
+    try:
+        result = subprocess.run(
+            ['apt-cache', 'show', package],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        return result.returncode == 0 and 'Package:' in result.stdout
+    except:
+        return False
+
+
+def check_package_available_arch(package: str) -> bool:
+    """Check if a package is available in Arch repos (not AUR)."""
+    try:
+        result = subprocess.run(
+            ['pacman', '-Si', package],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        return result.returncode == 0
+    except:
+        return False
+
+
+def check_package_available_fedora(package: str) -> bool:
+    """Check if a package is available in Fedora repos."""
+    try:
+        result = subprocess.run(
+            ['dnf', 'info', package],
+            capture_output=True,
+            text=True,
+            timeout=15
+        )
+        return result.returncode == 0 and ('Name' in result.stdout or 'name' in result.stdout.lower())
+    except:
+        return False
+
+
+def check_package_available_opensuse(package: str) -> bool:
+    """Check if a package is available in OpenSUSE repos."""
+    try:
+        result = subprocess.run(
+            ['zypper', 'info', package],
+            capture_output=True,
+            text=True,
+            timeout=15
+        )
+        return result.returncode == 0 and 'Name' in result.stdout
+    except:
+        return False
+
+
+def check_packages_available(packages: list[str], family: str) -> dict[str, bool]:
+    """
+    Check which packages from a list are available in the system's repos.
+    
+    Returns dict: {package_name: is_available}
+    """
+    checkers = {
+        'debian': check_package_available_debian,
+        'arch': check_package_available_arch,
+        'fedora': check_package_available_fedora,
+        'opensuse': check_package_available_opensuse,
+    }
+    
+    checker = checkers.get(family)
+    if not checker:
+        # Unknown family - assume all available
+        return {pkg: True for pkg in packages}
+    
+    results = {}
+    for pkg in packages:
+        results[pkg] = checker(pkg)
+    
+    return results
+
+
+def filter_available_packages(packages: list[str], family: str) -> list[str]:
+    """
+    Filter a package list to only include packages that are actually available.
+    
+    Returns: list of available packages
+    """
+    availability = check_packages_available(packages, family)
+    return [pkg for pkg, available in availability.items() if available]
+
+
+def get_available_packages_report(packages: list[str], family: str) -> tuple[list[str], list[str]]:
+    """
+    Check package availability and return both available and unavailable lists.
+    
+    Returns: (available_packages, unavailable_packages)
+    """
+    availability = check_packages_available(packages, family)
+    available = [pkg for pkg, avail in availability.items() if avail]
+    unavailable = [pkg for pkg, avail in availability.items() if not avail]
+    return available, unavailable
+
+
+def install_packages(packages: list[str], family: str) -> int:
+    """Install packages and return exit code."""
+    if not packages:
+        emit_status("error", "No packages specified")
+        return 1
+    
+    # Automatically enable repos if needed for the requested packages
+    if family == 'debian':
+        ensure_debian_repos_for_packages(packages)
+    elif family == 'opensuse':
+        ensure_opensuse_packman_for_packages(packages)
+    elif family == 'fedora':
+        ensure_fedora_rpmfusion_for_packages(packages)
+    
+    commands = get_package_manager_commands(family)
+    if 'install' not in commands:
+        emit_status("error", f"Unknown distribution family: {family}")
+        return 1
+    
+    cmd = commands['install'] + packages
+    
+    emit_status("start", f"Installing {len(packages)} package(s)")
+    emit_output(f"Command: {' '.join(cmd)}")
+    emit_output("")
+    
+    try:
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1
+        )
+        
+        for line in process.stdout:
+            emit_output(line.rstrip())
+        
+        process.wait()
+        
+        if process.returncode == 0:
+            emit_status("success", f"Successfully installed {len(packages)} package(s)")
+        else:
+            emit_status("error", f"Installation failed with code {process.returncode}")
+        
+        return process.returncode
+    
+    except Exception as e:
+        emit_status("error", f"Exception: {str(e)}")
+        return 1
+
+
+def remove_packages(packages: list[str], family: str) -> int:
+    """Remove packages and return exit code."""
+    if not packages:
+        emit_status("error", "No packages specified")
+        return 1
+    
+    commands = get_package_manager_commands(family)
+    if 'remove' not in commands:
+        emit_status("error", f"Unknown distribution family: {family}")
+        return 1
+    
+    cmd = commands['remove'] + packages
+    
+    emit_status("start", f"Removing {len(packages)} package(s)")
+    emit_output(f"Command: {' '.join(cmd)}")
+    emit_output("")
+    
+    try:
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1
+        )
+        
+        for line in process.stdout:
+            emit_output(line.rstrip())
+        
+        process.wait()
+        
+        if process.returncode == 0:
+            emit_status("success", f"Successfully removed {len(packages)} package(s)")
+        else:
+            emit_status("error", f"Removal failed with code {process.returncode}")
+        
+        return process.returncode
+    
+    except Exception as e:
+        emit_status("error", f"Exception: {str(e)}")
+        return 1
+
+
+def run_command(command: str, family: str) -> int:
+    """Run an arbitrary command and return exit code."""
+    emit_status("start", f"Running command")
+    emit_output(f"Command: {command}")
+    emit_output("")
+    
+    try:
+        process = subprocess.Popen(
+            command,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1
+        )
+        
+        for line in process.stdout:
+            emit_output(line.rstrip())
+        
+        process.wait()
+        
+        if process.returncode == 0:
+            emit_status("success", "Command completed successfully")
+        else:
+            emit_status("error", f"Command failed with code {process.returncode}")
+        
+        return process.returncode
+    
+    except Exception as e:
+        emit_status("error", f"Exception: {str(e)}")
+        return 1
+
+
+def execute_plan(plan_file: str, family: str) -> int:
+    """Execute a plan from a JSON file."""
+    try:
+        with open(plan_file, 'r') as f:
+            plan = json.load(f)
+    except Exception as e:
+        emit_status("error", f"Failed to read plan file: {e}")
+        return 1
+    
+    tasks = plan.get('tasks', [])
+    total_tasks = len(tasks)
+    failed_tasks = 0
+    
+    emit_status("start", f"Executing plan with {total_tasks} task(s)")
+    
+    for i, task in enumerate(tasks):
+        task_type = task.get('type', '')
+        task_name = task.get('name', f'Task {i+1}')
+        
+        emit_progress(i + 1, total_tasks, task_name)
+        emit_output("")
+        emit_output(f"{'='*50}")
+        emit_output(f"Task {i+1}/{total_tasks}: {task_name}")
+        emit_output(f"{'='*50}")
+        emit_output("")
+        
+        result = 0
+        
+        if task_type == 'install':
+            packages = task.get('packages', [])
+            if packages:
+                result = install_packages(packages, family)
+        
+        elif task_type == 'remove':
+            packages = task.get('packages', [])
+            if packages:
+                result = remove_packages(packages, family)
+        
+        elif task_type == 'command':
+            command = task.get('command', '')
+            if command:
+                result = run_command(command, family)
+        
+        elif task_type == 'special':
+            # Special complex installations
+            app_id = task.get('app_id', '')
+            result = install_special_app(app_id, family)
+        
+        else:
+            emit_status("warning", f"Unknown task type: {task_type}")
+        
+        if result != 0:
+            failed_tasks += 1
+        
+        emit_output("")
+    
+    # Summary
+    emit_output("")
+    emit_output(f"{'='*50}")
+    emit_output("Summary")
+    emit_output(f"{'='*50}")
+    emit_output(f"Total tasks: {total_tasks}")
+    emit_output(f"Successful: {total_tasks - failed_tasks}")
+    emit_output(f"Failed: {failed_tasks}")
+    
+    if failed_tasks == 0:
+        emit_status("complete", "All tasks completed successfully")
+        return 0
+    else:
+        emit_status("complete", f"{failed_tasks} task(s) had errors")
+        return 1
+
+
+# =============================================================================
+# Special App Installations (Complex multi-step installs)
+# =============================================================================
+
+def install_special_app(app_id: str, family: str) -> int:
+    """Handle special app installations that require complex steps."""
+    
+    handlers = {
+        'surfshark': install_surfshark,
+        'duckietv': install_duckietv,
+        'emoji_keyboard': setup_emoji_keyboard,
+        'xfce_enhancements': setup_xfce_enhancements,
+        'kde_enhancements': setup_kde_enhancements,
+        'gnome_enhancements': setup_gnome_enhancements,
+        'virtualbox_setup': setup_virtualbox,
+        'virtmanager_setup': setup_virtmanager,
+        'snap_removal': remove_snap_completely,
+    }
+    
+    handler = handlers.get(app_id)
+    if handler:
+        return handler(family)
+    else:
+        emit_status("error", f"Unknown special app: {app_id}")
+        return 1
+
+
+def install_surfshark(family: str) -> int:
+    """
+    Install Surfshark VPN with full setup.
+    
+    Fedora: Download .deb -> alien convert -> rpm install -> fix permissions -> setup systemd
+    Arch: Use AUR helper
+    Debian: Native install
+    """
+    emit_status("start", "Installing Surfshark VPN")
+    
+    if family == 'arch':
+        # Try AUR
+        for helper in ['paru', 'yay', 'pikaur']:
+            if shutil.which(helper):
+                emit_output(f"Using {helper} to install from AUR...")
+                result = subprocess.run(
+                    [helper, '-S', '--needed', '--noconfirm', 'surfshark-client'],
+                    capture_output=False
+                )
+                if result.returncode == 0:
+                    emit_status("success", "Surfshark installed from AUR")
+                    return 0
+        emit_status("error", "No AUR helper found (need yay or paru)")
+        return 1
+    
+    elif family == 'debian':
+        # Add Surfshark repo and install
+        emit_output("Adding Surfshark repository...")
+        subprocess.run(['curl', '-fsSL', 'https://downloads.surfshark.com/linux/debian/pubkey.gpg', 
+                       '-o', '/usr/share/keyrings/surfshark.gpg'], capture_output=True)
+        
+        with open('/etc/apt/sources.list.d/surfshark.list', 'w') as f:
+            f.write('deb [signed-by=/usr/share/keyrings/surfshark.gpg] https://downloads.surfshark.com/linux/debian stable main\n')
+        
+        subprocess.run(['apt', 'update'], capture_output=True)
+        result = subprocess.run(['apt', 'install', '-y', 'surfshark'], capture_output=False)
+        
+        if result.returncode == 0:
+            emit_status("success", "Surfshark installed")
+            return 0
+        return 1
+    
+    elif family in ('fedora', 'rhel', 'opensuse'):
+        # Complex: Download .deb, convert with alien, install, fix permissions, setup systemd
+        import tempfile
+        import glob
+        
+        work_dir = tempfile.mkdtemp(prefix='surfshark-')
+        emit_output(f"Working directory: {work_dir}")
+        
+        # Determine package manager
+        pkg_mgr = 'zypper' if family == 'opensuse' else 'dnf'
+        pkg_install = ['zypper', 'install', '-y'] if family == 'opensuse' else ['dnf', 'install', '-y']
+        
+        try:
+            # Step 1: Ensure alien is installed
+            emit_output("Checking for alien (package converter)...")
+            if not shutil.which('alien'):
+                emit_output("Installing alien and dependencies...")
+                result = subprocess.run(
+                    pkg_install + ['alien', 'dpkg', 'rpm-build'],
+                    capture_output=False
+                )
+                if result.returncode != 0:
+                    emit_status("error", "Failed to install alien")
+                    return 1
+            
+            # Step 2: Download Surfshark .deb
+            versions = ['3.6.0', '3.5.4', '3.5.3', '3.5.0', '3.4.0']
+            base_url = 'https://ocean.surfshark.com/debian/pool/main/s'
+            deb_file = None
+            
+            emit_output("Downloading Surfshark .deb package...")
+            for version in versions:
+                url = f"{base_url}/surfshark_{version}_amd64.deb"
+                dest = f"{work_dir}/surfshark_{version}_amd64.deb"
+                emit_output(f"  Trying version {version}...")
+                
+                result = subprocess.run(
+                    ['curl', '-fsSL', url, '-o', dest],
+                    capture_output=True
+                )
+                
+                if result.returncode == 0 and os.path.exists(dest) and os.path.getsize(dest) > 1000:
+                    deb_file = dest
+                    emit_output(f"  Downloaded Surfshark {version}")
+                    break
+            
+            if not deb_file:
+                emit_status("error", "Could not download Surfshark .deb")
+                return 1
+            
+            # Step 3: Convert to RPM
+            emit_output("Converting .deb to .rpm (this takes a minute)...")
+            os.chdir(work_dir)
+            result = subprocess.run(
+                ['alien', '-r', '-k', deb_file],
+                capture_output=False
+            )
+            
+            if result.returncode != 0:
+                emit_status("error", "alien conversion failed")
+                return 1
+            
+            # Find the generated RPM
+            rpm_files = glob.glob(f"{work_dir}/surfshark*.rpm")
+            if not rpm_files:
+                emit_status("error", "No RPM file generated")
+                return 1
+            
+            rpm_file = rpm_files[0]
+            emit_output(f"Generated: {os.path.basename(rpm_file)}")
+            
+            # Step 4: Install RPM
+            emit_output("Installing RPM package...")
+            result = subprocess.run(
+                ['rpm', '-ivh', '--replacefiles', '--nodeps', rpm_file],
+                capture_output=False
+            )
+            
+            if result.returncode != 0:
+                emit_output("First attempt failed, trying with --force...")
+                result = subprocess.run(
+                    ['rpm', '-ivh', '--force', '--nodeps', rpm_file],
+                    capture_output=False
+                )
+            
+            # Step 5: Post-install fixes
+            emit_output("")
+            emit_output("Applying post-install fixes...")
+            
+            # Fix permissions on daemon scripts
+            emit_output("  Fixing daemon script permissions...")
+            for script in [
+                '/opt/Surfshark/resources/dist/resources/surfsharkd.js',
+                '/opt/Surfshark/resources/dist/resources/surfsharkd2.js',
+                '/opt/Surfshark/surfshark'
+            ]:
+                if os.path.exists(script):
+                    os.chmod(script, 0o755)
+                    emit_output(f"    chmod +x {script}")
+            
+            # Enable and start system daemon
+            emit_output("  Enabling system daemon (surfsharkd2)...")
+            if os.path.exists('/usr/lib/systemd/system/surfsharkd2.service'):
+                subprocess.run(['systemctl', 'daemon-reload'], capture_output=True)
+                subprocess.run(['systemctl', 'enable', 'surfsharkd2.service'], capture_output=True)
+                subprocess.run(['systemctl', 'start', 'surfsharkd2.service'], capture_output=True)
+                emit_output("    surfsharkd2.service enabled and started")
+            
+            # Create command symlink
+            if not os.path.exists('/usr/bin/surfshark') and os.path.exists('/opt/Surfshark/surfshark'):
+                emit_output("  Creating /usr/bin/surfshark symlink...")
+                os.symlink('/opt/Surfshark/surfshark', '/usr/bin/surfshark')
+            
+            emit_output("")
+            emit_status("success", "Surfshark VPN installed!")
+            emit_output("")
+            emit_output("IMPORTANT: To complete setup, run as your regular user:")
+            emit_output("  systemctl --user enable --now surfsharkd.service")
+            emit_output("")
+            emit_output("Or simply log out and log back in.")
+            
+            return 0
+            
+        except Exception as e:
+            emit_status("error", f"Installation failed: {e}")
+            return 1
+        finally:
+            # Cleanup
+            os.chdir('/')
+            subprocess.run(['rm', '-rf', work_dir], capture_output=True)
+    
+    else:
+        emit_status("error", f"Surfshark installation not supported for {family}")
+        return 1
+
+
+def install_duckietv(family: str) -> int:
+    """
+    Install DuckieTV.
+    
+    Arch: AUR
+    Debian: Download .deb from GitHub
+    Fedora: Download .deb -> alien convert -> rpm install
+    """
+    emit_status("start", "Installing DuckieTV")
+    
+    if family == 'arch':
+        for helper in ['paru', 'yay', 'pikaur']:
+            if shutil.which(helper):
+                emit_output(f"Using {helper} to install from AUR...")
+                result = subprocess.run(
+                    [helper, '-S', '--needed', '--noconfirm', 'duckietv-bin'],
+                    capture_output=False
+                )
+                if result.returncode == 0:
+                    emit_status("success", "DuckieTV installed from AUR")
+                    return 0
+        emit_status("error", "No AUR helper found")
+        return 1
+    
+    # For Debian and Fedora, we need to download the .deb from GitHub
+    import tempfile
+    import glob
+    
+    work_dir = tempfile.mkdtemp(prefix='duckietv-')
+    emit_output(f"Working directory: {work_dir}")
+    
+    try:
+        # Get latest release URL from GitHub
+        emit_output("Finding latest DuckieTV release...")
+        
+        # Try known working URL pattern
+        # DuckieTV releases are at: https://github.com/AnotherHermit/AnotherDuckieTV/releases
+        # or https://github.com/AnotherHermit/AnotherDuckieTV/releases/latest
+        
+        deb_urls = [
+            "https://github.com/AnotherHermit/AnotherDuckieTV/releases/download/1.2.0/DuckieTV-nightly-1.2.0-linux-amd64.deb",
+            "https://github.com/AnotherHermit/AnotherDuckieTV/releases/download/1.1.9/DuckieTV-nightly-1.1.9-linux-amd64.deb",
+        ]
+        
+        deb_file = None
+        for url in deb_urls:
+            dest = f"{work_dir}/duckietv.deb"
+            emit_output(f"  Trying: {url.split('/')[-1]}")
+            
+            result = subprocess.run(
+                ['curl', '-fsSL', url, '-o', dest],
+                capture_output=True
+            )
+            
+            if result.returncode == 0 and os.path.exists(dest) and os.path.getsize(dest) > 10000:
+                deb_file = dest
+                emit_output(f"  Downloaded successfully")
+                break
+        
+        if not deb_file:
+            emit_status("error", "Could not download DuckieTV .deb")
+            emit_output("Visit: https://github.com/AnotherHermit/AnotherDuckieTV/releases")
+            return 1
+        
+        if family == 'debian':
+            # Direct install on Debian
+            emit_output("Installing .deb package...")
+            result = subprocess.run(['dpkg', '-i', deb_file], capture_output=False)
+            
+            if result.returncode != 0:
+                emit_output("Fixing dependencies...")
+                subprocess.run(['apt', 'install', '-f', '-y'], capture_output=False)
+            
+            emit_status("success", "DuckieTV installed")
+            return 0
+        
+        elif family in ('fedora', 'rhel', 'opensuse'):
+            # Convert with alien
+            # Determine package manager
+            pkg_install = ['zypper', 'install', '-y'] if family == 'opensuse' else ['dnf', 'install', '-y']
+            
+            emit_output("Checking for alien...")
+            if not shutil.which('alien'):
+                emit_output("Installing alien and dependencies...")
+                result = subprocess.run(
+                    pkg_install + ['alien', 'dpkg', 'rpm-build'],
+                    capture_output=False
+                )
+                if result.returncode != 0:
+                    emit_status("error", "Failed to install alien")
+                    return 1
+            
+            emit_output("Converting .deb to .rpm (this takes a minute)...")
+            os.chdir(work_dir)
+            result = subprocess.run(
+                ['alien', '-r', '-k', deb_file],
+                capture_output=False
+            )
+            
+            if result.returncode != 0:
+                emit_status("error", "alien conversion failed")
+                return 1
+            
+            rpm_files = glob.glob(f"{work_dir}/*.rpm")
+            if not rpm_files:
+                emit_status("error", "No RPM file generated")
+                return 1
+            
+            rpm_file = rpm_files[0]
+            emit_output(f"Generated: {os.path.basename(rpm_file)}")
+            
+            emit_output("Installing RPM...")
+            result = subprocess.run(
+                ['rpm', '-ivh', '--replacefiles', '--nodeps', rpm_file],
+                capture_output=False
+            )
+            
+            if result.returncode == 0:
+                emit_status("success", "DuckieTV installed")
+                return 0
+            else:
+                emit_status("error", "RPM installation failed")
+                return 1
+        
+        else:
+            emit_status("error", f"DuckieTV installation not supported for {family}")
+            return 1
+            
+    except Exception as e:
+        emit_status("error", f"Installation failed: {e}")
+        return 1
+    finally:
+        os.chdir('/')
+        subprocess.run(['rm', '-rf', work_dir], capture_output=True)
+
+
+def setup_emoji_keyboard(family: str) -> int:
+    """
+    Set up emoji picker with keyboard shortcut.
+    
+    GNOME: gnome-characters with Super+. shortcut
+    KDE: Already has built-in emoji picker
+    """
+    emit_status("start", "Setting up emoji keyboard shortcut")
+    
+    # Detect desktop environment
+    desktop = os.environ.get('XDG_CURRENT_DESKTOP', '').lower()
+    session = os.environ.get('XDG_SESSION_DESKTOP', '').lower()
+    
+    is_gnome = 'gnome' in desktop or 'gnome' in session or 'unity' in desktop
+    is_kde = 'kde' in desktop or 'plasma' in desktop
+    
+    if is_kde:
+        emit_output("KDE Plasma detected - emoji picker is built-in!")
+        emit_output("Use Meta+. (Super+Period) to open emoji picker")
+        emit_status("success", "KDE emoji picker ready")
+        return 0
+    
+    if is_gnome:
+        emit_output("GNOME detected - configuring keyboard shortcut...")
+        
+        # Get current custom keybindings
+        try:
+            result = subprocess.run(
+                ['gsettings', 'get', 'org.gnome.settings-daemon.plugins.media-keys', 'custom-keybindings'],
+                capture_output=True, text=True
+            )
+            current = result.stdout.strip()
+            
+            # Parse current list
+            if current == '@as []' or current == '[]':
+                current_list = []
+            else:
+                # Parse the array string
+                current = current.strip('[]')
+                if current:
+                    current_list = [s.strip().strip("'") for s in current.split(',')]
+                else:
+                    current_list = []
+            
+            # Check if emoji shortcut already exists
+            emoji_path = '/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/emoji0/'
+            
+            if emoji_path in current_list:
+                emit_output("Emoji keyboard shortcut already configured")
+                emit_status("success", "Emoji picker ready (Super+.)")
+                return 0
+            
+            # Add our new shortcut to the list
+            current_list.append(emoji_path)
+            new_list = "[" + ", ".join(f"'{p}'" for p in current_list) + "]"
+            
+            # Set the custom keybindings list
+            subprocess.run([
+                'gsettings', 'set', 
+                'org.gnome.settings-daemon.plugins.media-keys', 
+                'custom-keybindings', 
+                new_list
+            ], capture_output=True)
+            
+            # Configure the new shortcut
+            base_path = 'org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/emoji0/'
+            
+            subprocess.run([
+                'gsettings', 'set', base_path, 'name', 'Emoji Picker'
+            ], capture_output=True)
+            
+            subprocess.run([
+                'gsettings', 'set', base_path, 'command', 'gnome-characters'
+            ], capture_output=True)
+            
+            subprocess.run([
+                'gsettings', 'set', base_path, 'binding', '<Super>period'
+            ], capture_output=True)
+            
+            emit_output("Keyboard shortcut configured: Super+. (Super+Period)")
+            emit_output("")
+            emit_output("To use: Press Super+. to open emoji picker")
+            emit_output("        Search or browse, click to copy, then paste!")
+            emit_status("success", "Emoji picker ready!")
+            return 0
+            
+        except Exception as e:
+            emit_output(f"Could not configure keyboard shortcut: {e}")
+            emit_output("You can manually set it in Settings > Keyboard > Custom Shortcuts")
+            emit_status("warning", "Packages installed, shortcut needs manual setup")
+            return 0  # Don't fail - packages are still installed
+    
+    # For XFCE, MATE, etc. - just note that manual setup is needed
+    emit_output(f"Desktop: {desktop or 'unknown'}")
+    emit_output("Emoji packages installed. Set up a keyboard shortcut manually:")
+    emit_output("  Command: gnome-characters")
+    emit_output("  Suggested shortcut: Super+. or Ctrl+.")
+    emit_status("success", "Emoji packages installed")
+    return 0
+
+
+def setup_xfce_enhancements(family: str) -> int:
+    """
+    Set up XFCE desktop enhancements:
+    1. Super key -> Whisker Menu (using xcape)
+    2. Thunar custom actions: Open as Root, Edit as Root, Share/Unshare
+    """
+    emit_status("start", "Setting up XFCE enhancements")
+    
+    # Get the actual user (not root)
+    user = os.environ.get('SUDO_USER') or os.environ.get('USER') or 'root'
+    user_home = f"/home/{user}" if user != 'root' else '/root'
+    
+    success_count = 0
+    
+    # ==========================================================================
+    # 1. Whisker Menu Super Key binding with xcape
+    # ==========================================================================
+    emit_output("")
+    emit_output("=== Whisker Menu Super Key Binding ===")
+    
+    # Create xcape autostart entry
+    autostart_dir = f"{user_home}/.config/autostart"
+    os.makedirs(autostart_dir, exist_ok=True)
+    
+    xcape_desktop = f"""\
+[Desktop Entry]
+Type=Application
+Name=XFCE Super Key Binding
+Comment=Map Super key to Whisker Menu (Alt+F1)
+Exec=xcape -e 'Super_L=Alt_L|F1;Super_R=Alt_L|F1'
+OnlyShowIn=XFCE;
+StartupNotify=false
+Terminal=false
+Hidden=false
+"""
+    
+    xcape_file = f"{autostart_dir}/xcape-super-whisker.desktop"
+    try:
+        with open(xcape_file, 'w') as f:
+            f.write(xcape_desktop)
+        # Fix ownership
+        import pwd
+        try:
+            pw = pwd.getpwnam(user)
+            os.chown(xcape_file, pw.pw_uid, pw.pw_gid)
+            os.chown(autostart_dir, pw.pw_uid, pw.pw_gid)
+        except:
+            pass
+        emit_output(f"Created: {xcape_file}")
+        emit_output("Super key will open Whisker Menu after logout/login")
+        emit_output("(xcape maps Super -> Alt+F1)")
+        success_count += 1
+    except Exception as e:
+        emit_output(f"Warning: Could not create xcape autostart: {e}")
+    
+    # Also set Alt+F1 -> xfce4-popup-whiskermenu via xfconf if possible
+    try:
+        # This runs as root, but the user's session owns xfconf
+        # We'll create the binding that xcape will trigger
+        emit_output("")
+        emit_output("Note: Make sure Alt+F1 is bound to xfce4-popup-whiskermenu")
+        emit_output("Check: Settings > Keyboard > Application Shortcuts")
+    except:
+        pass
+    
+    # ==========================================================================
+    # 2. Thunar Custom Actions
+    # ==========================================================================
+    emit_output("")
+    emit_output("=== Thunar Custom Actions ===")
+    
+    thunar_dir = f"{user_home}/.config/Thunar"
+    os.makedirs(thunar_dir, exist_ok=True)
+    
+    uca_file = f"{thunar_dir}/uca.xml"
+    
+    # Check if uca.xml exists and has content
+    existing_actions = []
+    if os.path.exists(uca_file):
+        try:
+            with open(uca_file, 'r') as f:
+                content = f.read()
+                # Simple check for existing actions we'd add
+                if 'Open as Root' in content:
+                    emit_output("'Open as Root' action already exists")
+                if 'Edit as Root' in content:
+                    emit_output("'Edit as Root' action already exists")
+                if 'Share Folder' in content:
+                    emit_output("'Share Folder' action already exists")
+        except:
+            pass
+    
+    # Create comprehensive uca.xml with all useful actions
+    uca_content = f"""\
+<?xml version="1.0" encoding="UTF-8"?>
+<actions>
+<action>
+	<icon>system-file-manager</icon>
+	<name>Open as Root</name>
+	<unique-id>ltk-open-root-1</unique-id>
+	<command>pkexec thunar %f</command>
+	<description>Open folder with administrator privileges</description>
+	<patterns>*</patterns>
+	<directories/>
+</action>
+<action>
+	<icon>accessories-text-editor</icon>
+	<name>Edit as Root</name>
+	<unique-id>ltk-edit-root-1</unique-id>
+	<command>pkexec mousepad %f</command>
+	<description>Edit file with administrator privileges</description>
+	<patterns>*</patterns>
+	<text-files/>
+</action>
+<action>
+	<icon>folder-publicshare</icon>
+	<n>Samba: Share Public (Read Only)</n>
+	<unique-id>ltk-samba-public-ro-1</unique-id>
+	<command>net usershare add %n %f "" Everyone:R guest_ok=y</command>
+	<description>Share folder - no password required, read only</description>
+	<patterns>*</patterns>
+	<directories/>
+</action>
+<action>
+	<icon>folder-publicshare</icon>
+	<n>Samba: Share Public (Writeable)</n>
+	<unique-id>ltk-samba-public-rw-1</unique-id>
+	<command>net usershare add %n %f "" Everyone:F guest_ok=y &amp;&amp; chmod 777 %f</command>
+	<description>Share folder - no password required, full read/write access</description>
+	<patterns>*</patterns>
+	<directories/>
+</action>
+<action>
+	<icon>folder-remote</icon>
+	<n>Samba: Share Private (Read Only)</n>
+	<unique-id>ltk-samba-private-ro-1</unique-id>
+	<command>net usershare add %n %f "" Everyone:R guest_ok=n</command>
+	<description>Share folder - password required, read only</description>
+	<patterns>*</patterns>
+	<directories/>
+</action>
+<action>
+	<icon>folder-remote</icon>
+	<n>Samba: Share Private (Writeable)</n>
+	<unique-id>ltk-samba-private-rw-1</unique-id>
+	<command>net usershare add %n %f "" Everyone:F guest_ok=n &amp;&amp; chmod 777 %f</command>
+	<description>Share folder - password required, full read/write access</description>
+	<patterns>*</patterns>
+	<directories/>
+</action>
+<action>
+	<icon>edit-delete</icon>
+	<n>Samba: Unshare Folder</n>
+	<unique-id>ltk-samba-unshare-1</unique-id>
+	<command>net usershare delete %n &amp;&amp; chmod 755 %f</command>
+	<description>Remove Samba share and restore folder permissions</description>
+	<patterns>*</patterns>
+	<directories/>
+</action>
+<action>
+	<icon>utilities-terminal</icon>
+	<name>Open Terminal Here</name>
+	<unique-id>ltk-terminal-1</unique-id>
+	<command>exo-open --working-directory %f --launch TerminalEmulator</command>
+	<description>Open terminal in this folder</description>
+	<patterns>*</patterns>
+	<directories/>
+</action>
+</actions>
+"""
+    
+    try:
+        # Backup existing if present
+        if os.path.exists(uca_file):
+            backup = f"{uca_file}.backup"
+            import shutil as sh
+            sh.copy2(uca_file, backup)
+            emit_output(f"Backed up existing: {backup}")
+        
+        with open(uca_file, 'w') as f:
+            f.write(uca_content)
+        
+        # Fix ownership
+        import pwd
+        try:
+            pw = pwd.getpwnam(user)
+            os.chown(uca_file, pw.pw_uid, pw.pw_gid)
+            os.chown(thunar_dir, pw.pw_uid, pw.pw_gid)
+        except:
+            pass
+        
+        emit_output(f"Created: {uca_file}")
+        emit_output("Added Thunar custom actions:")
+        emit_output("  • Open as Root (pkexec thunar)")
+        emit_output("  • Edit as Root (pkexec mousepad)")
+        emit_output("  • Samba: Share Public (Read Only)")
+        emit_output("  • Samba: Share Public (Writeable)")
+        emit_output("  • Samba: Share Private (Read Only)")
+        emit_output("  • Samba: Share Private (Writeable)")
+        emit_output("  • Samba: Unshare Folder")
+        emit_output("  • Open Terminal Here")
+        success_count += 1
+    except Exception as e:
+        emit_output(f"Warning: Could not create Thunar actions: {e}")
+    
+    # ==========================================================================
+    # 3. Ensure usershare directory exists for Samba sharing
+    # ==========================================================================
+    emit_output("")
+    emit_output("=== Samba Usershare Setup ===")
+    
+    usershare_dir = "/var/lib/samba/usershares"
+    try:
+        if not os.path.exists(usershare_dir):
+            os.makedirs(usershare_dir, mode=0o1770)
+            emit_output(f"Created: {usershare_dir}")
+        
+        # Ensure sambashare group exists and user is in it
+        try:
+            import grp
+            grp.getgrnam('sambashare')
+        except KeyError:
+            subprocess.run(['groupadd', 'sambashare'], capture_output=True)
+            emit_output("Created group: sambashare")
+        
+        # Add user to sambashare group
+        subprocess.run(['usermod', '-aG', 'sambashare', user], capture_output=True)
+        emit_output(f"Added {user} to sambashare group")
+        
+        # Set proper ownership/permissions
+        subprocess.run(['chown', 'root:sambashare', usershare_dir], capture_output=True)
+        subprocess.run(['chmod', '1770', usershare_dir], capture_output=True)
+        
+        emit_output("Samba usershare directory configured")
+        emit_output("Note: Logout/login required for group membership to take effect")
+        success_count += 1
+    except Exception as e:
+        emit_output(f"Warning: Could not configure usershare: {e}")
+    
+    emit_output("")
+    if success_count >= 2:
+        emit_status("success", "XFCE enhancements configured!")
+        emit_output("")
+        emit_output("Please logout and login for all changes to take effect:")
+        emit_output("  • Super key will open Whisker Menu")
+        emit_output("  • Right-click folders/files for new options")
+    else:
+        emit_status("warning", "Some XFCE enhancements may need manual setup")
+    
+    return 0
+
+
+def setup_kde_enhancements(family: str) -> int:
+    """
+    Set up KDE enhancements including Google account integration fix.
+    
+    - Fixes Google/online accounts integration (known KDE bug)
+    - Creates proper google.provider OAuth2 configuration
+    - Restarts KDE account services
+    """
+    emit_status("start", "Configuring KDE Enhancements")
+    
+    # Get the actual user (not root)
+    user = os.environ.get('SUDO_USER') or os.environ.get('USER') or 'root'
+    user_home = f"/home/{user}"
+    
+    emit_output("")
+    emit_output("=== KDE Google Account Integration Fix ===")
+    
+    # The google.provider file location
+    provider_dir = f"{user_home}/.local/share/accounts/providers"
+    provider_file = f"{provider_dir}/google.provider"
+    
+    # Create directory if it doesn't exist
+    try:
+        os.makedirs(provider_dir, exist_ok=True)
+        emit_output(f"Ensured directory exists: {provider_dir}")
+    except Exception as e:
+        emit_output(f"Warning: Could not create directory: {e}")
+    
+    # Backup existing file if present
+    if os.path.exists(provider_file):
+        backup_file = f"{provider_file}.backup"
+        try:
+            import shutil as sh
+            sh.copy2(provider_file, backup_file)
+            emit_output(f"Backed up existing file to: {backup_file}")
+        except Exception as e:
+            emit_output(f"Warning: Could not backup: {e}")
+    
+    # The fixed google.provider content with proper OAuth2 configuration
+    google_provider_content = '''<?xml version="1.0" encoding="UTF-8"?>
+<provider id="google">
+  <n>Google</n>
+  <description>GNOME-ID, Google Drive and YouTube</description>
+  <icon>im-google</icon>
+  <translations>kaccounts-providers</translations>
+  <domains>.*google\\.com</domains>
+  <template>
+    <group name="auth">
+      <setting name="method">oauth2</setting>
+      <setting name="mechanism">web_server</setting>
+      <group name="oauth2">
+        <group name="web_server">
+          <setting name="Host">accounts.google.com</setting>
+          <setting name="AuthPath">o/oauth2/auth?access_type=offline</setting>
+          <setting name="TokenPath">o/oauth2/token</setting>
+          <setting name="RedirectUri">http://localhost/oauth2callback</setting>
+          <setting name="ResponseType">code</setting>
+          <setting type="as" name="Scope">[
+            'https://www.googleapis.com/auth/userinfo.email',
+            'https://www.googleapis.com/auth/userinfo.profile',
+            'https://www.googleapis.com/auth/calendar',
+            'https://www.googleapis.com/auth/tasks',
+            'https://www.googleapis.com/auth/drive'
+          ]</setting>
+          <setting type="as" name="AllowedSchemes">['https']</setting>
+          <setting name="ClientId">44438659992-7kgjeitenc16ssihbtdjbgguch7ju55s.apps.googleusercontent.com</setting>
+          <setting name="ClientSecret">-gMLuQyDiI0XrQS_vx_mhuYF</setting>
+          <setting type="b" name="ForceClientAuthViaRequestBody">true</setting>
+        </group>
+      </group>
+    </group>
+  </template>
+</provider>
+'''
+    
+    # Write the provider file
+    try:
+        with open(provider_file, 'w') as f:
+            f.write(google_provider_content)
+        
+        # Fix ownership (we're running as root via pkexec)
+        import pwd
+        try:
+            pw = pwd.getpwnam(user)
+            os.chown(provider_file, pw.pw_uid, pw.pw_gid)
+            os.chown(provider_dir, pw.pw_uid, pw.pw_gid)
+            # Also fix parent .local/share/accounts if needed
+            accounts_dir = f"{user_home}/.local/share/accounts"
+            if os.path.exists(accounts_dir):
+                os.chown(accounts_dir, pw.pw_uid, pw.pw_gid)
+        except Exception as e:
+            emit_output(f"Warning: Could not fix ownership: {e}")
+        
+        emit_output(f"Created: {provider_file}")
+        emit_output("Google account integration fix applied!")
+    except Exception as e:
+        emit_output(f"Error: Could not create provider file: {e}")
+        emit_status("error", "Failed to apply Google account fix")
+        return 1
+    
+    emit_output("")
+    emit_output("=== Restarting KDE Account Services ===")
+    
+    # These need to run as the actual user, not root
+    # We'll use su to run them as the user
+    
+    # Restart kded6
+    result = subprocess.run(
+        ['su', '-', user, '-c', 'kquitapp6 kded6'],
+        capture_output=True,
+        text=True
+    )
+    if result.returncode == 0:
+        emit_output("Restarted kded6")
+    else:
+        emit_output("Note: kded6 will restart on next login")
+    
+    # Restart plasma-kglobalaccel
+    result = subprocess.run(
+        ['su', '-', user, '-c', 'systemctl --user restart plasma-kglobalaccel'],
+        capture_output=True,
+        text=True
+    )
+    if result.returncode == 0:
+        emit_output("Restarted plasma-kglobalaccel")
+    else:
+        emit_output("Note: plasma-kglobalaccel will restart on next login")
+    
+    emit_output("")
+    emit_status("success", "KDE enhancements configured!")
+    emit_output("")
+    emit_output("Google account integration is now fixed!")
+    emit_output("To add your Google account:")
+    emit_output("  1. Open System Settings")
+    emit_output("  2. Go to Online Accounts")
+    emit_output("  3. Click 'Add Account' > Google")
+    emit_output("")
+    emit_output("Installed apps: VLC, MPV, Foliate (ebooks), KTorrent, Shortwave (radio)")
+    
+    return 0
+
+
+def setup_gnome_enhancements(family: str) -> int:
+    """
+    Set up GNOME Enhancements with the GTK GUI manager.
+    
+    - Installs required GTK/libadwaita dependencies
+    - Copies the GNOME Manager GUI to user's local bin
+    - Creates desktop entry for easy launching
+    - Optionally launches the GUI
+    """
+    emit_status("start", "Configuring GNOME Enhancements")
+    
+    # Get the actual user (not root)
+    user = os.environ.get('SUDO_USER') or os.environ.get('USER') or 'root'
+    user_home = f"/home/{user}"
+    
+    emit_output("")
+    emit_output("=== GNOME Enhancements Manager ===")
+    emit_output("A GUI tool for managing GNOME extensions and tweaks")
+    
+    # Find the gnome_manager.py file
+    # It should be in the same package as this helper
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    gnome_manager_src = os.path.join(script_dir, 'ltk', 'ui', 'gnome_manager.py')
+    
+    # Alternative locations to check
+    alt_locations = [
+        os.path.join(script_dir, 'ltk', 'ui', 'gnome_manager.py'),
+        '/usr/local/lib/tux-assistant/ltk/ui/gnome_manager.py',
+        os.path.join(user_home, '.local', 'share', 'tux-assistant', 'ltk', 'ui', 'gnome_manager.py'),
+    ]
+    
+    gnome_manager_found = None
+    for loc in alt_locations:
+        if os.path.exists(loc):
+            gnome_manager_found = loc
+            break
+    
+    emit_output("")
+    emit_output("=== Installing GNOME Manager ===")
+    
+    # Create local bin directory
+    local_bin = f"{user_home}/.local/bin"
+    os.makedirs(local_bin, exist_ok=True)
+    
+    # Create the launcher script
+    launcher_path = f"{local_bin}/ltk-gnome-manager"
+    
+    launcher_content = '''#!/usr/bin/env python3
+"""
+GNOME Enhancements Manager - Tux Assistant
+Launch script for the GTK GUI
+"""
+
+import gi
+import json
+import subprocess
+import threading
+import urllib.request
+import urllib.parse
+from typing import Optional, Callable
+
+gi.require_version('Gtk', '4.0')
+gi.require_version('Adw', '1')
+
+from gi.repository import Gtk, Adw, GLib, Gio, Pango
+
+
+# =============================================================================
+# Constants
+# =============================================================================
+
+EXTENSIONS_API_URL = "https://extensions.gnome.org/extension-query/"
+EXTENSION_INFO_URL = "https://extensions.gnome.org/extension-info/"
+
+POPULAR_EXTENSIONS = [
+    {"uuid": "dash-to-dock@micxgx.gmail.com", "name": "Dash to Dock", "description": "A dock for GNOME Shell (like macOS)", "pk": 307},
+    {"uuid": "blur-my-shell@aunetx", "name": "Blur My Shell", "description": "Add blur effect to different parts of the Shell", "pk": 3193},
+    {"uuid": "appindicatorsupport@rgcjonas.gmail.com", "name": "AppIndicator Support", "description": "Adds AppIndicator/tray icon support", "pk": 615},
+    {"uuid": "caffeine@pataber.gmail.com", "name": "Caffeine", "description": "Disable screensaver and suspend", "pk": 517},
+    {"uuid": "just-perfection-desktop@just-perfection", "name": "Just Perfection", "description": "Customize GNOME Shell behavior", "pk": 3843},
+    {"uuid": "gsconnect@andyholmes.github.io", "name": "GSConnect", "description": "KDE Connect for GNOME (phone integration)", "pk": 1319},
+    {"uuid": "Vitals@CoreCoding.com", "name": "Vitals", "description": "System monitor (CPU, RAM, temp, etc.)", "pk": 1460},
+    {"uuid": "arcmenu@arcmenu.com", "name": "ArcMenu", "description": "Application menu for GNOME Shell", "pk": 3628},
+    {"uuid": "clipboard-indicator@tudmotu.com", "name": "Clipboard Indicator", "description": "Clipboard manager for GNOME Shell", "pk": 779},
+    {"uuid": "user-theme@gnome-shell-extensions.gcampax.github.com", "name": "User Themes", "description": "Load shell themes from user directory", "pk": 19},
+]
+
+TWEAKS_SETTINGS = {
+    "window_buttons": {"schema": "org.gnome.desktop.wm.preferences", "key": "button-layout", "type": "string",
+        "options": {"Right (default)": "appmenu:minimize,maximize,close", "Left (macOS style)": "close,minimize,maximize:appmenu", "Minimal (close only)": "appmenu:close"}},
+    "show_weekday": {"schema": "org.gnome.desktop.interface", "key": "clock-show-weekday", "type": "bool", "label": "Show weekday in clock"},
+    "show_seconds": {"schema": "org.gnome.desktop.interface", "key": "clock-show-seconds", "type": "bool", "label": "Show seconds in clock"},
+    "show_battery_percentage": {"schema": "org.gnome.desktop.interface", "key": "show-battery-percentage", "type": "bool", "label": "Show battery percentage"},
+    "hot_corners": {"schema": "org.gnome.desktop.interface", "key": "enable-hot-corners", "type": "bool", "label": "Enable hot corners"},
+    "animations": {"schema": "org.gnome.desktop.interface", "key": "enable-animations", "type": "bool", "label": "Enable animations"},
+    "night_light": {"schema": "org.gnome.settings-daemon.plugins.color", "key": "night-light-enabled", "type": "bool", "label": "Enable Night Light"},
+    "mouse_natural_scroll": {"schema": "org.gnome.desktop.peripherals.mouse", "key": "natural-scroll", "type": "bool", "label": "Mouse natural scrolling"},
+    "touchpad_tap_to_click": {"schema": "org.gnome.desktop.peripherals.touchpad", "key": "tap-to-click", "type": "bool", "label": "Tap to click"},
+    "touchpad_natural_scroll": {"schema": "org.gnome.desktop.peripherals.touchpad", "key": "natural-scroll", "type": "bool", "label": "Touchpad natural scrolling"},
+}
+
+
+# =============================================================================
+# Helper Functions
+# =============================================================================
+
+def get_gnome_shell_version():
+    try:
+        result = subprocess.run(['gnome-shell', '--version'], capture_output=True, text=True)
+        if result.returncode == 0:
+            return result.stdout.strip().split()[-1].split('.')[0]
+    except: pass
+    return None
+
+def get_installed_extensions():
+    extensions = {}
+    try:
+        result = subprocess.run(['gnome-extensions', 'list'], capture_output=True, text=True)
+        if result.returncode == 0:
+            for uuid in result.stdout.strip().split('\\n'):
+                if uuid: extensions[uuid] = {"installed": True, "enabled": False}
+        result = subprocess.run(['gnome-extensions', 'list', '--enabled'], capture_output=True, text=True)
+        if result.returncode == 0:
+            for uuid in result.stdout.strip().split('\\n'):
+                if uuid and uuid in extensions: extensions[uuid]["enabled"] = True
+    except: pass
+    return extensions
+
+def enable_extension(uuid): 
+    try: return subprocess.run(['gnome-extensions', 'enable', uuid], capture_output=True).returncode == 0
+    except: return False
+
+def disable_extension(uuid):
+    try: return subprocess.run(['gnome-extensions', 'disable', uuid], capture_output=True).returncode == 0
+    except: return False
+
+def uninstall_extension(uuid):
+    try: return subprocess.run(['gnome-extensions', 'uninstall', uuid], capture_output=True).returncode == 0
+    except: return False
+
+def get_gsetting(schema, key):
+    try:
+        result = subprocess.run(['gsettings', 'get', schema, key], capture_output=True, text=True)
+        if result.returncode == 0: return result.stdout.strip()
+    except: pass
+    return None
+
+def set_gsetting(schema, key, value):
+    try: return subprocess.run(['gsettings', 'set', schema, key, value], capture_output=True).returncode == 0
+    except: return False
+
+def search_extensions(query, shell_version=None):
+    try:
+        params = {'search': query, 'n_per_page': 20}
+        if shell_version: params['shell_version'] = shell_version
+        url = EXTENSIONS_API_URL + "?" + urllib.parse.urlencode(params)
+        req = urllib.request.Request(url)
+        req.add_header('User-Agent', 'LinuxToolkit/4.5')
+        with urllib.request.urlopen(req, timeout=10) as response:
+            return json.loads(response.read().decode()).get('extensions', [])
+    except: return []
+
+
+# =============================================================================
+# GTK Widgets
+# =============================================================================
+
+class ExtensionRow(Gtk.Box):
+    def __init__(self, ext_data, installed=False, enabled=False, on_install=None, on_toggle=None, on_uninstall=None):
+        super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        self.set_margin_start(12); self.set_margin_end(12); self.set_margin_top(8); self.set_margin_bottom(8)
+        self.uuid = ext_data.get('uuid', ''); self.ext_data = ext_data; self.on_install = on_install; self.on_toggle = on_toggle; self.on_uninstall = on_uninstall
+        
+        info_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4); info_box.set_hexpand(True)
+        name_label = Gtk.Label(); name_label.set_halign(Gtk.Align.START); name_label.set_markup(f"<b>{ext_data.get('name', self.uuid)}</b>"); info_box.append(name_label)
+        desc = ext_data.get('description', '')[:100] + ('...' if len(ext_data.get('description', '')) > 100 else '')
+        desc_label = Gtk.Label(label=desc); desc_label.set_halign(Gtk.Align.START); desc_label.add_css_class('dim-label'); desc_label.set_wrap(True); desc_label.set_max_width_chars(60); info_box.append(desc_label)
+        self.append(info_box)
+        
+        button_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8); button_box.set_valign(Gtk.Align.CENTER)
+        if installed:
+            self.toggle_btn = Gtk.Switch(); self.toggle_btn.set_active(enabled); self.toggle_btn.set_valign(Gtk.Align.CENTER); self.toggle_btn.connect('state-set', self._on_toggle); button_box.append(self.toggle_btn)
+            uninstall_btn = Gtk.Button(label="Remove"); uninstall_btn.add_css_class('destructive-action'); uninstall_btn.connect('clicked', self._on_uninstall); button_box.append(uninstall_btn)
+        else:
+            self.install_btn = Gtk.Button(label="Install"); self.install_btn.add_css_class('suggested-action'); self.install_btn.connect('clicked', self._on_install); button_box.append(self.install_btn)
+        self.append(button_box)
+    
+    def _on_install(self, button): button.set_sensitive(False); button.set_label("Installing..."); self.on_install(self.uuid, self.ext_data) if self.on_install else None
+    def _on_toggle(self, switch, state): self.on_toggle(self.uuid, state) if self.on_toggle else None; return False
+    def _on_uninstall(self, button): self.on_uninstall(self.uuid) if self.on_uninstall else None
+
+
+class TweakRow(Gtk.Box):
+    def __init__(self, key, config, on_change=None):
+        super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        self.set_margin_start(12); self.set_margin_end(12); self.set_margin_top(8); self.set_margin_bottom(8)
+        self.key = key; self.config = config; self.on_change = on_change
+        
+        label = Gtk.Label(label=config.get('label', key)); label.set_halign(Gtk.Align.START); label.set_hexpand(True); self.append(label)
+        current = get_gsetting(config['schema'], config['key'])
+        
+        if config['type'] == 'bool':
+            self.widget = Gtk.Switch(); self.widget.set_valign(Gtk.Align.CENTER)
+            if current: self.widget.set_active(current.lower() == 'true')
+            self.widget.connect('state-set', self._on_bool_change)
+        elif config['type'] == 'string' and 'options' in config:
+            self.widget = Gtk.DropDown(); options = list(config['options'].keys())
+            string_list = Gtk.StringList()
+            for opt in options: string_list.append(opt)
+            self.widget.set_model(string_list)
+            if current:
+                current_clean = current.strip("'")
+                for i, (name, val) in enumerate(config['options'].items()):
+                    if val == current_clean: self.widget.set_selected(i); break
+            self.widget.connect('notify::selected', self._on_dropdown_change)
+        self.append(self.widget)
+    
+    def _on_bool_change(self, switch, state): set_gsetting(self.config['schema'], self.config['key'], 'true' if state else 'false'); return False
+    def _on_dropdown_change(self, dropdown, param):
+        selected = dropdown.get_selected(); options = list(self.config['options'].values())
+        if selected < len(options): set_gsetting(self.config['schema'], self.config['key'], f"'{options[selected]}'")
+
+
+# =============================================================================
+# Main Window
+# =============================================================================
+
+class GnomeManagerWindow(Adw.ApplicationWindow):
+    def __init__(self, app):
+        super().__init__(application=app)
+        self.set_title("GNOME Enhancements - Tux Assistant"); self.set_default_size(850, 650)
+        self.shell_version = get_gnome_shell_version(); self.installed_extensions = get_installed_extensions()
+        
+        main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        header = Adw.HeaderBar(); header.set_title_widget(Gtk.Label(label="GNOME Enhancements")); main_box.append(header)
+        
+        self.stack = Gtk.Stack(); self.stack.set_transition_type(Gtk.StackTransitionType.SLIDE_LEFT_RIGHT)
+        switcher = Gtk.StackSwitcher(); switcher.set_stack(self.stack); switcher.set_halign(Gtk.Align.CENTER); switcher.set_margin_top(12); switcher.set_margin_bottom(12); main_box.append(switcher)
+        
+        self.stack.add_titled(self._create_extensions_page(), "extensions", "Extensions")
+        self.stack.add_titled(self._create_tweaks_page(), "tweaks", "Tweaks")
+        self.stack.add_titled(self._create_installed_page(), "installed", "Installed")
+        main_box.append(self.stack)
+        
+        self.status_label = Gtk.Label(); self.status_label.set_margin_start(12); self.status_label.set_margin_end(12); self.status_label.set_margin_bottom(8); self.status_label.add_css_class('dim-label')
+        if self.shell_version: self.status_label.set_text(f"GNOME Shell {self.shell_version} • {len(self.installed_extensions)} extensions installed")
+        main_box.append(self.status_label)
+        self.set_content(main_box)
+    
+    def _create_extensions_page(self):
+        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12); page.set_margin_start(24); page.set_margin_end(24); page.set_margin_top(12); page.set_margin_bottom(12)
+        search_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.search_entry = Gtk.SearchEntry(); self.search_entry.set_placeholder_text("Search extensions..."); self.search_entry.set_hexpand(True); self.search_entry.connect('activate', self._on_search); search_box.append(self.search_entry)
+        search_btn = Gtk.Button(label="Search"); search_btn.add_css_class('suggested-action'); search_btn.connect('clicked', self._on_search); search_box.append(search_btn)
+        page.append(search_box)
+        popular_label = Gtk.Label(); popular_label.set_markup("<b>Popular Extensions</b>"); popular_label.set_halign(Gtk.Align.START); popular_label.set_margin_top(12); page.append(popular_label)
+        scroll = Gtk.ScrolledWindow(); scroll.set_vexpand(True); scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        self.extensions_list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        for ext in POPULAR_EXTENSIONS:
+            installed = ext['uuid'] in self.installed_extensions; enabled = self.installed_extensions.get(ext['uuid'], {}).get('enabled', False)
+            self.extensions_list.append(ExtensionRow(ext, installed=installed, enabled=enabled, on_install=self._on_extension_install, on_toggle=self._on_extension_toggle, on_uninstall=self._on_extension_uninstall))
+        scroll.set_child(self.extensions_list); page.append(scroll)
+        return page
+    
+    def _create_tweaks_page(self):
+        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8); page.set_margin_start(24); page.set_margin_end(24); page.set_margin_top(12); page.set_margin_bottom(12)
+        for section, keys in [("Window Controls", ["window_buttons"]), ("Top Bar", ["show_weekday", "show_seconds", "show_battery_percentage"]), 
+                              ("Behavior", ["hot_corners", "animations", "night_light"]), ("Mouse & Touchpad", ["touchpad_tap_to_click", "touchpad_natural_scroll", "mouse_natural_scroll"])]:
+            label = Gtk.Label(); label.set_markup(f"<b>{section}</b>"); label.set_halign(Gtk.Align.START); label.set_margin_top(12); page.append(label)
+            frame = Gtk.Frame(); box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            for k in keys: box.append(TweakRow(k, TWEAKS_SETTINGS[k]))
+            frame.set_child(box); page.append(frame)
+        spacer = Gtk.Box(); spacer.set_vexpand(True); page.append(spacer)
+        return page
+    
+    def _create_installed_page(self):
+        page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12); page.set_margin_start(24); page.set_margin_end(24); page.set_margin_top(12); page.set_margin_bottom(12)
+        header_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        installed_label = Gtk.Label(); installed_label.set_markup(f"<b>Installed Extensions ({len(self.installed_extensions)})</b>"); installed_label.set_halign(Gtk.Align.START); installed_label.set_hexpand(True); header_box.append(installed_label)
+        refresh_btn = Gtk.Button(label="Refresh"); refresh_btn.connect('clicked', self._on_refresh_installed); header_box.append(refresh_btn)
+        page.append(header_box)
+        scroll = Gtk.ScrolledWindow(); scroll.set_vexpand(True); scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        self.installed_list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4); self._populate_installed_list()
+        scroll.set_child(self.installed_list); page.append(scroll)
+        return page
+    
+    def _populate_installed_list(self):
+        while child := self.installed_list.get_first_child(): self.installed_list.remove(child)
+        if not self.installed_extensions:
+            empty_label = Gtk.Label(label="No extensions installed"); empty_label.add_css_class('dim-label'); self.installed_list.append(empty_label); return
+        for uuid, status in self.installed_extensions.items():
+            ext_data = {'uuid': uuid, 'name': uuid.split('@')[0], 'description': uuid}
+            for pop in POPULAR_EXTENSIONS:
+                if pop['uuid'] == uuid: ext_data = pop; break
+            self.installed_list.append(ExtensionRow(ext_data, installed=True, enabled=status.get('enabled', False), on_toggle=self._on_extension_toggle, on_uninstall=self._on_extension_uninstall))
+    
+    def _on_search(self, widget):
+        query = self.search_entry.get_text().strip()
+        if not query: return
+        self.status_label.set_text(f"Searching for '{query}'...")
+        def do_search():
+            results = search_extensions(query, self.shell_version)
+            GLib.idle_add(self._update_search_results, results)
+        threading.Thread(target=do_search, daemon=True).start()
+    
+    def _update_search_results(self, results):
+        while child := self.extensions_list.get_first_child(): self.extensions_list.remove(child)
+        if not results:
+            empty_label = Gtk.Label(label="No extensions found"); empty_label.add_css_class('dim-label'); self.extensions_list.append(empty_label); self.status_label.set_text("No results found"); return
+        for ext in results:
+            uuid = ext.get('uuid', ''); installed = uuid in self.installed_extensions; enabled = self.installed_extensions.get(uuid, {}).get('enabled', False)
+            self.extensions_list.append(ExtensionRow(ext, installed=installed, enabled=enabled, on_install=self._on_extension_install, on_toggle=self._on_extension_toggle, on_uninstall=self._on_extension_uninstall))
+        self.status_label.set_text(f"Found {len(results)} extensions")
+    
+    def _on_extension_install(self, uuid, ext_data):
+        self.status_label.set_text(f"Installing {ext_data.get('name', uuid)}...")
+        def do_install():
+            success = False
+            try:
+                pk = ext_data.get('pk')
+                if pk:
+                    shell_ver = self.shell_version or "45"
+                    url = f"https://extensions.gnome.org/extension-info/?pk={pk}&shell_version={shell_ver}"
+                    req = urllib.request.Request(url); req.add_header('User-Agent', 'LinuxToolkit/4.5')
+                    with urllib.request.urlopen(req, timeout=10) as response:
+                        info = json.loads(response.read().decode())
+                        download_url = info.get('download_url')
+                        if download_url:
+                            import tempfile, os
+                            full_url = f"https://extensions.gnome.org{download_url}"
+                            with tempfile.NamedTemporaryFile(suffix='.zip', delete=False) as tmp: tmp_path = tmp.name; urllib.request.urlretrieve(full_url, tmp_path)
+                            result = subprocess.run(['gnome-extensions', 'install', '--force', tmp_path], capture_output=True, text=True)
+                            os.unlink(tmp_path)
+                            if result.returncode == 0: success = True; subprocess.run(['gnome-extensions', 'enable', uuid], capture_output=True)
+            except Exception as e: print(f"Install error: {e}")
+            GLib.idle_add(self._on_install_complete, uuid, success)
+        threading.Thread(target=do_install, daemon=True).start()
+    
+    def _on_install_complete(self, uuid, success):
+        if success: self.status_label.set_text(f"Installed {uuid}! Log out for changes to take effect."); self.installed_extensions[uuid] = {"installed": True, "enabled": True}; self._populate_installed_list()
+        else: self.status_label.set_text(f"Failed to install {uuid}")
+    
+    def _on_extension_toggle(self, uuid, enabled):
+        success = enable_extension(uuid) if enabled else disable_extension(uuid)
+        action = "Enabled" if enabled else "Disabled"
+        if success: self.status_label.set_text(f"{action} {uuid}"); self.installed_extensions.get(uuid, {})['enabled'] = enabled
+        else: self.status_label.set_text(f"Failed to {action.lower()} {uuid}")
+    
+    def _on_extension_uninstall(self, uuid):
+        if uninstall_extension(uuid): self.status_label.set_text(f"Uninstalled {uuid}"); self.installed_extensions.pop(uuid, None); self._populate_installed_list()
+        else: self.status_label.set_text(f"Failed to uninstall {uuid}")
+    
+    def _on_refresh_installed(self, button):
+        self.installed_extensions = get_installed_extensions(); self._populate_installed_list(); self.status_label.set_text(f"Refreshed - {len(self.installed_extensions)} extensions installed")
+
+
+class GnomeManagerApp(Adw.Application):
+    def __init__(self):
+        super().__init__(application_id='com.tuxassistant.gnome-manager', flags=Gio.ApplicationFlags.FLAGS_NONE)
+    def do_activate(self):
+        win = GnomeManagerWindow(self); win.present()
+
+if __name__ == '__main__':
+    GnomeManagerApp().run(None)
+'''
+    
+    try:
+        with open(launcher_path, 'w') as f:
+            f.write(launcher_content)
+        os.chmod(launcher_path, 0o755)
+        
+        # Fix ownership
+        import pwd
+        try:
+            pw = pwd.getpwnam(user)
+            os.chown(launcher_path, pw.pw_uid, pw.pw_gid)
+            os.chown(local_bin, pw.pw_uid, pw.pw_gid)
+        except:
+            pass
+        
+        emit_output(f"Created: {launcher_path}")
+    except Exception as e:
+        emit_output(f"Error creating launcher: {e}")
+        return 1
+    
+    # Create desktop entry
+    emit_output("")
+    emit_output("=== Creating Desktop Entry ===")
+    
+    applications_dir = f"{user_home}/.local/share/applications"
+    os.makedirs(applications_dir, exist_ok=True)
+    
+    desktop_entry = f"""\
+[Desktop Entry]
+Name=GNOME Enhancements
+Comment=Manage GNOME extensions and tweaks - Tux Assistant
+Exec={launcher_path}
+Icon=org.gnome.tweaks
+Terminal=false
+Type=Application
+Categories=Settings;DesktopSettings;GTK;
+Keywords=gnome;extensions;tweaks;settings;customize;
+"""
+    
+    desktop_path = f"{applications_dir}/ltk-gnome-manager.desktop"
+    try:
+        with open(desktop_path, 'w') as f:
+            f.write(desktop_entry)
+        
+        # Fix ownership
+        try:
+            pw = pwd.getpwnam(user)
+            os.chown(desktop_path, pw.pw_uid, pw.pw_gid)
+            os.chown(applications_dir, pw.pw_uid, pw.pw_gid)
+        except:
+            pass
+        
+        emit_output(f"Created: {desktop_path}")
+    except Exception as e:
+        emit_output(f"Warning: Could not create desktop entry: {e}")
+    
+    emit_output("")
+    emit_status("success", "GNOME Enhancements Manager installed!")
+    emit_output("")
+    emit_output("You can now:")
+    emit_output("  1. Search for 'GNOME Enhancements' in your app menu")
+    emit_output("  2. Or run: ltk-gnome-manager")
+    emit_output("")
+    emit_output("The GUI lets you:")
+    emit_output("  • Browse and install extensions from extensions.gnome.org")
+    emit_output("  • Enable/disable extensions with one click")
+    emit_output("  • Tweak common settings (window buttons, clock, animations)")
+    emit_output("  • Manage all your installed extensions")
+    
+    return 0
+
+
+def setup_virtualbox(family: str) -> int:
+    """
+    Set up VirtualBox with proper user group membership.
+    
+    - Adds user to vboxusers group
+    - Loads vboxdrv kernel module
+    - Rebuilds kernel modules if needed (Fedora/openSUSE)
+    """
+    emit_status("start", "Configuring VirtualBox")
+    
+    # Get the actual user (not root)
+    user = os.environ.get('SUDO_USER') or os.environ.get('USER') or 'root'
+    
+    emit_output("")
+    emit_output("=== VirtualBox User Setup ===")
+    
+    # Ensure vboxusers group exists
+    try:
+        import grp
+        grp.getgrnam('vboxusers')
+        emit_output("Group 'vboxusers' exists")
+    except KeyError:
+        emit_output("Creating group 'vboxusers'...")
+        subprocess.run(['groupadd', 'vboxusers'], capture_output=True)
+    
+    # Add user to vboxusers group
+    result = subprocess.run(['usermod', '-aG', 'vboxusers', user], capture_output=True)
+    if result.returncode == 0:
+        emit_output(f"Added '{user}' to vboxusers group")
+    else:
+        emit_output(f"Warning: Could not add user to vboxusers: {result.stderr.decode()}")
+    
+    emit_output("")
+    emit_output("=== Kernel Module Setup ===")
+    
+    # Try to load vboxdrv module
+    result = subprocess.run(['modprobe', 'vboxdrv'], capture_output=True)
+    if result.returncode == 0:
+        emit_output("Loaded vboxdrv kernel module")
+    else:
+        emit_output("vboxdrv module not loaded (may need reboot after kernel module build)")
+    
+    # Fedora/openSUSE: Rebuild kernel modules with akmods/dkms
+    if family == 'fedora':
+        emit_output("")
+        emit_output("Building kernel modules (akmods)...")
+        subprocess.run(['akmods', '--force'], capture_output=False)
+        subprocess.run(['systemctl', 'restart', 'vboxdrv'], capture_output=True)
+    elif family == 'opensuse':
+        emit_output("")
+        emit_output("Rebuilding kernel modules...")
+        subprocess.run(['/usr/lib/virtualbox/vboxdrv.sh', 'setup'], capture_output=False)
+    elif family == 'arch':
+        # Arch with virtualbox-host-modules-arch should work out of box
+        emit_output("Arch: Using pre-built kernel modules")
+    
+    # Check if VirtualBox Extension Pack prompt is needed
+    emit_output("")
+    emit_output("=== Extension Pack ===")
+    if family == 'debian':
+        emit_output("Extension pack included via virtualbox-ext-pack")
+        emit_output("You may be prompted to accept the license on first use")
+    else:
+        emit_output("For USB 2.0/3.0, RDP, and disk encryption support,")
+        emit_output("download Extension Pack from: https://www.virtualbox.org/wiki/Downloads")
+    
+    emit_output("")
+    emit_status("success", "VirtualBox configured!")
+    emit_output("")
+    emit_output("IMPORTANT: Logout and login (or reboot) for group membership to take effect")
+    emit_output(f"After that, '{user}' can run VirtualBox without sudo")
+    
+    return 0
+
+
+def setup_virtmanager(family: str) -> int:
+    """
+    Set up virt-manager/QEMU/KVM with proper configuration.
+    
+    - Adds user to libvirt and kvm groups
+    - Enables and starts libvirtd service
+    - Sets up default network
+    - Checks KVM support
+    """
+    emit_status("start", "Configuring Virt-Manager / QEMU / KVM")
+    
+    # Get the actual user (not root)
+    user = os.environ.get('SUDO_USER') or os.environ.get('USER') or 'root'
+    
+    emit_output("")
+    emit_output("=== KVM Hardware Check ===")
+    
+    # Check if KVM is supported
+    kvm_supported = os.path.exists('/dev/kvm')
+    if kvm_supported:
+        emit_output("✓ KVM hardware acceleration available (/dev/kvm exists)")
+    else:
+        # Check CPU flags
+        try:
+            with open('/proc/cpuinfo', 'r') as f:
+                cpuinfo = f.read()
+                if 'vmx' in cpuinfo or 'svm' in cpuinfo:
+                    emit_output("⚠ CPU supports virtualization but /dev/kvm not found")
+                    emit_output("  Enable VT-x/AMD-V in BIOS settings")
+                else:
+                    emit_output("⚠ CPU may not support hardware virtualization")
+                    emit_output("  QEMU will work but will be slower (software emulation)")
+        except:
+            emit_output("Could not check CPU virtualization support")
+    
+    emit_output("")
+    emit_output("=== User Group Setup ===")
+    
+    # Groups to add user to
+    groups_to_add = ['libvirt', 'kvm']
+    
+    # Debian uses libvirt-qemu for some things
+    if family == 'debian':
+        groups_to_add.append('libvirt-qemu')
+    
+    for group in groups_to_add:
+        # Check if group exists
+        try:
+            import grp
+            grp.getgrnam(group)
+            result = subprocess.run(['usermod', '-aG', group, user], capture_output=True)
+            if result.returncode == 0:
+                emit_output(f"Added '{user}' to {group} group")
+            else:
+                emit_output(f"Note: Could not add to {group} (may not exist yet)")
+        except KeyError:
+            emit_output(f"Note: Group '{group}' doesn't exist (will be created by service)")
+    
+    emit_output("")
+    emit_output("=== Libvirt Service Setup ===")
+    
+    # Enable and start libvirtd
+    service_name = 'libvirtd'
+    
+    subprocess.run(['systemctl', 'enable', service_name], capture_output=True)
+    emit_output(f"Enabled {service_name} service")
+    
+    result = subprocess.run(['systemctl', 'start', service_name], capture_output=True)
+    if result.returncode == 0:
+        emit_output(f"Started {service_name} service")
+    else:
+        emit_output(f"Note: {service_name} will start on next boot")
+    
+    # Also enable virtlogd for logging
+    subprocess.run(['systemctl', 'enable', 'virtlogd.socket'], capture_output=True)
+    subprocess.run(['systemctl', 'start', 'virtlogd.socket'], capture_output=True)
+    
+    emit_output("")
+    emit_output("=== Default Network Setup ===")
+    
+    # Try to set up default network
+    result = subprocess.run(['virsh', 'net-list', '--all'], capture_output=True, text=True)
+    if 'default' in result.stdout:
+        emit_output("Default network already exists")
+        # Make sure it's set to autostart
+        subprocess.run(['virsh', 'net-autostart', 'default'], capture_output=True)
+        subprocess.run(['virsh', 'net-start', 'default'], capture_output=True)
+        emit_output("Default network set to autostart")
+    else:
+        emit_output("Setting up default network...")
+        # Define the default network from libvirt's template
+        default_net = '/usr/share/libvirt/networks/default.xml'
+        if os.path.exists(default_net):
+            subprocess.run(['virsh', 'net-define', default_net], capture_output=True)
+            subprocess.run(['virsh', 'net-autostart', 'default'], capture_output=True)
+            subprocess.run(['virsh', 'net-start', 'default'], capture_output=True)
+            emit_output("Created and started default network")
+        else:
+            emit_output("Note: Default network template not found")
+            emit_output("You may need to create a network manually in virt-manager")
+    
+    emit_output("")
+    emit_status("success", "Virt-Manager / QEMU / KVM configured!")
+    emit_output("")
+    emit_output("IMPORTANT: Logout and login (or reboot) for group membership to take effect")
+    emit_output("")
+    emit_output("Quick start:")
+    emit_output("  1. Run 'virt-manager' to launch the GUI")
+    emit_output("  2. File > New Virtual Machine")
+    emit_output("  3. Select ISO and follow wizard")
+    if not kvm_supported:
+        emit_output("")
+        emit_output("Note: Enable VT-x/AMD-V in BIOS for hardware acceleration")
+    
+    return 0
+
+
+def remove_snap_completely(family: str) -> int:
+    """
+    Completely remove Snap from Ubuntu-based systems.
+    
+    This performs the full exorcism:
+    1. Dynamically detect all installed snaps
+    2. Remove them in correct dependency order (apps first, core last)
+    3. Stop and disable snapd service
+    4. Purge snapd package
+    5. Remove all snap directories
+    6. Create apt pin to prevent reinstallation
+    """
+    emit_status("start", "Removing Snap completely")
+    
+    # Only works on Debian family (Ubuntu)
+    if family != 'debian':
+        emit_output("Snap removal is only applicable to Ubuntu-based systems")
+        emit_status("warning", "Skipped - not an Ubuntu system")
+        return 0
+    
+    # Check if snapd is even installed
+    result = subprocess.run(['which', 'snap'], capture_output=True)
+    if result.returncode != 0:
+        emit_output("Snap is not installed on this system")
+        emit_status("success", "System is already snap-free!")
+        return 0
+    
+    emit_output("")
+    emit_output("=== Detecting Installed Snaps ===")
+    
+    # Get list of installed snaps
+    result = subprocess.run(['snap', 'list'], capture_output=True, text=True)
+    if result.returncode != 0:
+        emit_output("Could not get snap list (snapd may not be running)")
+        # Continue anyway to purge snapd
+        installed_snaps = []
+    else:
+        # Parse snap list output (skip header line)
+        lines = result.stdout.strip().split('\n')[1:]  # Skip "Name  Version  Rev..." header
+        installed_snaps = []
+        for line in lines:
+            if line.strip():
+                snap_name = line.split()[0]
+                installed_snaps.append(snap_name)
+        
+        emit_output(f"Found {len(installed_snaps)} snaps installed:")
+        for snap in installed_snaps:
+            emit_output(f"  • {snap}")
+    
+    if installed_snaps:
+        emit_output("")
+        emit_output("=== Removing Snaps (Dependency Order) ===")
+        
+        # Define removal priority - lower number = remove first
+        # Apps and user-facing snaps first, base/core snaps last
+        snap_priority = {
+            # User applications - remove first
+            'firefox': 10,
+            'thunderbird': 10,
+            'chromium': 10,
+            'snap-store': 15,
+            'firmware-updater': 15,
+            'canonical-livepatch': 15,
+            
+            # Desktop integration - remove after apps
+            'snapd-desktop-integration': 20,
+            'gtk-common-themes': 25,
+            
+            # GNOME platform snaps
+            'gnome-46-2404': 30,
+            'gnome-42-2204': 30,
+            'gnome-3-38-2004': 30,
+            'gnome-3-34-1804': 30,
+            'gnome-3-28-1804': 30,
+            
+            # Base snaps - remove near end
+            'core24': 80,
+            'core22': 80,
+            'core20': 80,
+            'core18': 80,
+            'core': 85,
+            'bare': 90,
+            
+            # snapd itself - remove absolute last
+            'snapd': 100,
+        }
+        
+        # Sort snaps by priority (unknown snaps get priority 50)
+        def get_priority(snap_name):
+            return snap_priority.get(snap_name, 50)
+        
+        sorted_snaps = sorted(installed_snaps, key=get_priority)
+        
+        emit_output("Removal order:")
+        for snap in sorted_snaps:
+            emit_output(f"  {get_priority(snap):3d}: {snap}")
+        
+        emit_output("")
+        
+        # Remove each snap
+        failed_snaps = []
+        for snap in sorted_snaps:
+            emit_output(f"Removing: {snap}")
+            
+            # Try normal removal first
+            result = subprocess.run(
+                ['snap', 'remove', snap],
+                capture_output=True,
+                text=True
+            )
+            
+            if result.returncode != 0:
+                # Try with --purge flag
+                result = subprocess.run(
+                    ['snap', 'remove', '--purge', snap],
+                    capture_output=True,
+                    text=True
+                )
+            
+            if result.returncode == 0:
+                emit_output(f"  ✓ Removed {snap}")
+            else:
+                emit_output(f"  ✗ Failed to remove {snap}: {result.stderr.strip()}")
+                failed_snaps.append(snap)
+        
+        if failed_snaps:
+            emit_output("")
+            emit_output(f"Warning: {len(failed_snaps)} snaps could not be removed:")
+            for snap in failed_snaps:
+                emit_output(f"  • {snap}")
+    
+    emit_output("")
+    emit_output("=== Stopping Snapd Service ===")
+    
+    # Stop snapd
+    subprocess.run(['systemctl', 'stop', 'snapd.socket'], capture_output=True)
+    subprocess.run(['systemctl', 'stop', 'snapd.service'], capture_output=True)
+    emit_output("Stopped snapd service")
+    
+    # Disable snapd
+    subprocess.run(['systemctl', 'disable', 'snapd.socket'], capture_output=True)
+    subprocess.run(['systemctl', 'disable', 'snapd.service'], capture_output=True)
+    emit_output("Disabled snapd service")
+    
+    # Mask snapd to prevent it from starting
+    subprocess.run(['systemctl', 'mask', 'snapd.service'], capture_output=True)
+    emit_output("Masked snapd service")
+    
+    emit_output("")
+    emit_output("=== Purging Snapd Package ===")
+    
+    result = subprocess.run(
+        ['apt', 'purge', '-y', 'snapd'],
+        capture_output=True,
+        text=True
+    )
+    if result.returncode == 0:
+        emit_output("Purged snapd package")
+    else:
+        emit_output(f"Warning: apt purge snapd failed: {result.stderr.strip()}")
+    
+    emit_output("")
+    emit_output("=== Removing Snap Directories ===")
+    
+    # Get actual user home for ~/snap
+    user = os.environ.get('SUDO_USER') or os.environ.get('USER') or 'root'
+    user_home = f"/home/{user}"
+    
+    dirs_to_remove = [
+        f"{user_home}/snap",
+        "/snap",
+        "/var/snap",
+        "/var/lib/snapd",
+        "/var/cache/snapd",
+    ]
+    
+    for dir_path in dirs_to_remove:
+        if os.path.exists(dir_path):
+            try:
+                shutil.rmtree(dir_path)
+                emit_output(f"Removed: {dir_path}")
+            except Exception as e:
+                emit_output(f"Warning: Could not remove {dir_path}: {e}")
+        else:
+            emit_output(f"Already gone: {dir_path}")
+    
+    emit_output("")
+    emit_output("=== Creating Apt Pin (Prevent Reinstall) ===")
+    
+    # Create apt preferences to block snap
+    nosnap_pref = """\
+# Prevent snapd from being installed
+Package: snapd
+Pin: release a=*
+Pin-Priority: -10
+"""
+    
+    pref_file = "/etc/apt/preferences.d/nosnap.pref"
+    try:
+        with open(pref_file, 'w') as f:
+            f.write(nosnap_pref)
+        emit_output(f"Created: {pref_file}")
+        emit_output("Snap will be blocked from future installation")
+    except Exception as e:
+        emit_output(f"Warning: Could not create {pref_file}: {e}")
+    
+    emit_output("")
+    emit_status("success", "Snap has been completely removed!")
+    emit_output("")
+    emit_output("IMPORTANT:")
+    emit_output("  • Firefox and other apps may need reinstalling from apt/flatpak")
+    emit_output("  • Run 'sudo apt update' to refresh package lists")
+    emit_output("  • A reboot is recommended")
+    
+    return 0
+
+
+import shutil
+
+
+# =============================================================================
+# Main
+# =============================================================================
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Tux Assistant Privileged Helper',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    
+    parser.add_argument('--install', nargs='+', metavar='PKG',
+                        help='Install packages')
+    parser.add_argument('--remove', nargs='+', metavar='PKG',
+                        help='Remove packages')
+    parser.add_argument('--run-command', metavar='CMD',
+                        help='Run a shell command')
+    parser.add_argument('--execute-plan', metavar='FILE',
+                        help='Execute a plan from JSON file')
+    parser.add_argument('--check-packages', nargs='+', metavar='PKG',
+                        help='Check which packages are available (returns JSON)')
+    parser.add_argument('--family', metavar='FAMILY',
+                        help='Override distro family detection')
+    
+    # Alternative source enablement
+    parser.add_argument('--enable-source', metavar='TYPE',
+                        choices=['copr', 'ppa', 'rpmfusion', 'packman', 'obs'],
+                        help='Enable an alternative package source (copr, ppa, rpmfusion, packman, obs)')
+    parser.add_argument('--repo-id', metavar='ID',
+                        help='Repository ID for COPR, PPA, or OBS (e.g., "user/repo")')
+    parser.add_argument('--install-package', metavar='PKG',
+                        help='Install a specific package after enabling source')
+    
+    # Nextcloud installation
+    parser.add_argument('--nextcloud-install', metavar='PLAN_FILE',
+                        help='Install Nextcloud server using plan from JSON file')
+    
+    args = parser.parse_args()
+    
+    # Package checking doesn't require root
+    if args.check_packages:
+        family = args.family or detect_distro_family()
+        available, unavailable = get_available_packages_report(args.check_packages, family)
+        # Output as JSON for easy parsing
+        result = {
+            'family': family,
+            'available': available,
+            'unavailable': unavailable
+        }
+        print(json.dumps(result))
+        return 0
+    
+    # Verify we're running as root for other operations
+    if os.geteuid() != 0:
+        emit_status("error", "This helper must be run with elevated privileges")
+        emit_output("Use: pkexec tux-helper ...")
+        return 1
+    
+    # Detect or use provided family
+    family = args.family or detect_distro_family()
+    emit_output(f"Distribution family: {family}")
+    emit_output("")
+    
+    # Handle Nextcloud installation
+    if args.nextcloud_install:
+        return install_nextcloud(args.nextcloud_install)
+    
+    # Handle alternative source enablement
+    if args.enable_source:
+        return enable_alternative_source(args.enable_source, args.repo_id, 
+                                         args.install_package, family)
+    
+    # Execute requested operation
+    if args.install:
+        return install_packages(args.install, family)
+    elif args.remove:
+        return remove_packages(args.remove, family)
+    elif args.run_command:
+        return run_command(args.run_command, family)
+    elif args.execute_plan:
+        return execute_plan(args.execute_plan, family)
+    else:
+        parser.print_help()
+        return 1
+
+
+# =============================================================================
+# Alternative Source Enablement
+# =============================================================================
+
+def enable_alternative_source(source_type: str, repo_id: str, package: str, family: str) -> int:
+    """Enable an alternative package source and optionally install a package.
+    
+    Args:
+        source_type: 'copr', 'ppa', 'rpmfusion', 'packman', or 'obs'
+        repo_id: Repository identifier (for copr/ppa/obs)
+        package: Package to install after enabling (optional)
+        family: Distro family
+        
+    Returns:
+        0 on success, 1 on failure
+    """
+    emit_status("start", f"Enabling {source_type} source...")
+    
+    success = False
+    
+    try:
+        if source_type == 'copr':
+            if family != 'fedora':
+                emit_status("error", "COPR is only available on Fedora")
+                return 1
+            if not repo_id:
+                emit_status("error", "COPR requires --repo-id")
+                return 1
+            success = enable_copr(repo_id)
+            
+        elif source_type == 'ppa':
+            if family != 'debian':
+                emit_status("error", "PPA is only available on Debian/Ubuntu")
+                return 1
+            if not repo_id:
+                emit_status("error", "PPA requires --repo-id")
+                return 1
+            success = enable_ppa(repo_id)
+            
+        elif source_type == 'rpmfusion':
+            if family != 'fedora':
+                emit_status("error", "RPM Fusion is only available on Fedora")
+                return 1
+            success = enable_fedora_rpmfusion(enable_free=True, enable_nonfree=True)
+            
+        elif source_type == 'packman':
+            if family != 'opensuse':
+                emit_status("error", "Packman is only available on OpenSUSE")
+                return 1
+            success = enable_opensuse_packman()
+        
+        elif source_type == 'obs':
+            if family != 'opensuse':
+                emit_status("error", "OBS is only available on OpenSUSE")
+                return 1
+            if not repo_id:
+                emit_status("error", "OBS requires --repo-id (e.g., 'home:user/project' or 'games')")
+                return 1
+            success = enable_obs(repo_id)
+            
+        else:
+            emit_status("error", f"Unknown source type: {source_type}")
+            return 1
+        
+        if not success:
+            emit_status("error", f"Failed to enable {source_type}")
+            return 1
+        
+        emit_status("success", f"Enabled {source_type}")
+        
+        # Install package if requested
+        if package:
+            emit_output("")
+            emit_status("start", f"Installing {package}...")
+            
+            # Refresh package cache first
+            refresh_package_cache(family)
+            
+            # Install the package
+            result = install_packages([package], family)
+            
+            if result == 0:
+                emit_status("success", f"Installed {package}")
+            else:
+                emit_status("error", f"Failed to install {package}")
+                return 1
+        
+        return 0
+        
+    except Exception as e:
+        emit_status("error", f"Error: {str(e)}")
+        return 1
+
+
+def enable_copr(repo_id: str) -> bool:
+    """Enable a Fedora COPR repository.
+    
+    Args:
+        repo_id: COPR repository ID (e.g., "user/repo")
+        
+    Returns:
+        True on success, False on failure
+    """
+    emit_output(f"Enabling COPR: {repo_id}")
+    
+    try:
+        result = subprocess.run(
+            ['dnf', 'copr', 'enable', '-y', repo_id],
+            capture_output=True, text=True, timeout=120
+        )
+        
+        if result.returncode == 0:
+            emit_output(result.stdout)
+            return True
+        else:
+            # Check if already enabled
+            if 'already enabled' in result.stderr.lower() or 'already enabled' in result.stdout.lower():
+                emit_output("COPR already enabled")
+                return True
+            emit_output(f"Error: {result.stderr}")
+            return False
+            
+    except subprocess.TimeoutExpired:
+        emit_output("Timeout while enabling COPR")
+        return False
+    except Exception as e:
+        emit_output(f"Error: {str(e)}")
+        return False
+
+
+def enable_ppa(repo_id: str) -> bool:
+    """Enable a PPA repository on Debian/Ubuntu.
+    
+    Args:
+        repo_id: PPA identifier (e.g., "user/repo" or "ppa:user/repo")
+        
+    Returns:
+        True on success, False on failure
+    """
+    # Ensure format is ppa:user/repo
+    if not repo_id.startswith('ppa:'):
+        repo_id = f"ppa:{repo_id}"
+    
+    emit_output(f"Adding PPA: {repo_id}")
+    
+    # First, ensure software-properties-common is installed
+    try:
+        subprocess.run(
+            ['apt', 'install', '-y', 'software-properties-common'],
+            capture_output=True, text=True, timeout=120
+        )
+    except:
+        pass
+    
+    try:
+        result = subprocess.run(
+            ['add-apt-repository', '-y', repo_id],
+            capture_output=True, text=True, timeout=120
+        )
+        
+        if result.returncode == 0:
+            emit_output(result.stdout)
+            
+            # Update apt cache
+            emit_output("Updating package cache...")
+            subprocess.run(['apt', 'update'], capture_output=True, timeout=120)
+            
+            return True
+        else:
+            emit_output(f"Error: {result.stderr}")
+            return False
+            
+    except subprocess.TimeoutExpired:
+        emit_output("Timeout while adding PPA")
+        return False
+    except FileNotFoundError:
+        emit_output("Error: add-apt-repository not found. Installing software-properties-common...")
+        try:
+            subprocess.run(['apt', 'install', '-y', 'software-properties-common'], timeout=120)
+            return enable_ppa(repo_id)  # Retry
+        except:
+            return False
+    except Exception as e:
+        emit_output(f"Error: {str(e)}")
+        return False
+
+
+def refresh_package_cache(family: str):
+    """Refresh package manager cache after enabling repos."""
+    emit_output("Refreshing package cache...")
+    
+    try:
+        if family == 'debian':
+            subprocess.run(['apt', 'update'], capture_output=True, timeout=120)
+        elif family == 'fedora':
+            subprocess.run(['dnf', 'makecache'], capture_output=True, timeout=120)
+        elif family == 'arch':
+            subprocess.run(['pacman', '-Sy'], capture_output=True, timeout=60)
+        elif family == 'opensuse':
+            subprocess.run(['zypper', 'refresh'], capture_output=True, timeout=120)
+    except:
+        pass  # Best effort
+
+
+def enable_obs(repo_id: str) -> bool:
+    """Enable an OpenSUSE Build Service repository.
+    
+    Args:
+        repo_id: OBS repository ID (e.g., 'games', 'home:user/project')
+        
+    Returns:
+        True on success, False on failure
+    """
+    emit_output(f"Adding OBS repository: {repo_id}")
+    
+    # Get OpenSUSE version
+    version = "tumbleweed"
+    try:
+        with open('/etc/os-release', 'r') as f:
+            for line in f:
+                if line.startswith('VERSION_ID='):
+                    ver = line.split('=')[1].strip().strip('"')
+                    if ver:
+                        version = ver
+                    break
+    except:
+        pass
+    
+    # Build OBS repo URL
+    # Format: https://download.opensuse.org/repositories/{repo}/openSUSE_{version}/
+    if '/' in repo_id:
+        # home:user/project format
+        repo_url = f"https://download.opensuse.org/repositories/{repo_id.replace(':', ':/')}/openSUSE_{version}/"
+        repo_name = repo_id.replace(':', '_').replace('/', '_')
+    else:
+        # Simple repo name like 'games'
+        repo_url = f"https://download.opensuse.org/repositories/{repo_id}/openSUSE_{version}/"
+        repo_name = repo_id
+    
+    try:
+        # Check if repo already exists
+        result = subprocess.run(
+            ['zypper', 'repos', repo_name],
+            capture_output=True, text=True, timeout=30
+        )
+        
+        if result.returncode == 0:
+            emit_output(f"Repository {repo_name} already configured")
+            return True
+        
+        # Add the repository
+        emit_output(f"Adding repository from {repo_url}")
+        result = subprocess.run(
+            ['zypper', 'ar', '-f', repo_url, repo_name],
+            capture_output=True, text=True, timeout=60
+        )
+        
+        if result.returncode != 0 and 'already exists' not in result.stderr.lower():
+            emit_output(f"Error adding repo: {result.stderr}")
+            return False
+        
+        # Import GPG key
+        emit_output("Importing GPG key...")
+        subprocess.run(
+            ['zypper', '--gpg-auto-import-keys', 'refresh', repo_name],
+            capture_output=True, timeout=120
+        )
+        
+        emit_output(f"✓ OBS repository {repo_name} added")
+        return True
+        
+    except subprocess.TimeoutExpired:
+        emit_output("Timeout while adding OBS repository")
+        return False
+    except Exception as e:
+        emit_output(f"Error: {str(e)}")
+        return False
+
+
+# =============================================================================
+# Nextcloud Server Installation
+# =============================================================================
+
+def nc_emit(step: str, status: str, message: str = ""):
+    """Emit Nextcloud installation status."""
+    print(f"[NC:{step}:{status}] {message}", flush=True)
+
+
+def install_nextcloud(plan_file: str) -> int:
+    """Install Nextcloud server from a plan file.
+    
+    Args:
+        plan_file: Path to JSON plan file
+        
+    Returns:
+        0 on success, 1 on failure
+    """
+    emit_output("=" * 60)
+    emit_output("NEXTCLOUD SERVER INSTALLATION")
+    emit_output("=" * 60)
+    emit_output("")
+    
+    # Load plan
+    try:
+        with open(plan_file, 'r') as f:
+            plan = json.load(f)
+    except Exception as e:
+        emit_status("error", f"Failed to load plan: {e}")
+        return 1
+    
+    family = plan.get('family', detect_distro_family())
+    config = plan.get('config', {})
+    packages = plan.get('packages', {})
+    services = plan.get('services', {})
+    apache_paths = plan.get('apache_paths', {})
+    nextcloud_url = plan.get('nextcloud_url', '')
+    
+    try:
+        # Step 1: Install packages
+        nc_emit("packages", "running", "Installing required packages...")
+        if not nc_install_packages(packages, family):
+            nc_emit("packages", "error", "Failed to install packages")
+            return 1
+        nc_emit("packages", "success", "Packages installed")
+        
+        # Step 2: Set up database
+        nc_emit("database", "running", "Configuring MariaDB database...")
+        if not nc_setup_database(config, family, services):
+            nc_emit("database", "error", "Failed to set up database")
+            return 1
+        nc_emit("database", "success", "Database configured")
+        
+        # Step 3: Download Nextcloud
+        nc_emit("download", "running", "Downloading Nextcloud...")
+        if not nc_download_nextcloud(nextcloud_url, config):
+            nc_emit("download", "error", "Failed to download Nextcloud")
+            return 1
+        nc_emit("download", "success", "Nextcloud downloaded")
+        
+        # Step 4: Configure Nextcloud
+        nc_emit("configure", "running", "Configuring Nextcloud...")
+        if not nc_configure_nextcloud(config):
+            nc_emit("configure", "error", "Failed to configure Nextcloud")
+            return 1
+        nc_emit("configure", "success", "Nextcloud configured")
+        
+        # Step 5: Configure Apache
+        nc_emit("apache", "running", "Configuring Apache web server...")
+        if not nc_configure_apache(config, family, apache_paths, services):
+            nc_emit("apache", "error", "Failed to configure Apache")
+            return 1
+        nc_emit("apache", "success", "Apache configured")
+        
+        # Step 6: Set up SSL
+        nc_emit("ssl", "running", "Obtaining SSL certificate...")
+        if not nc_setup_ssl(config, family):
+            nc_emit("ssl", "error", "Failed to set up SSL (will continue without)")
+            # Don't fail completely, SSL can be set up later
+        else:
+            nc_emit("ssl", "success", "SSL certificate obtained")
+        
+        # Step 7: Configure DuckDNS
+        nc_emit("duckdns", "running", "Configuring DuckDNS...")
+        if not nc_setup_duckdns(config, family):
+            nc_emit("duckdns", "error", "Failed to configure DuckDNS")
+            # Don't fail completely
+        else:
+            nc_emit("duckdns", "success", "DuckDNS configured")
+        
+        # Step 8: Finalize
+        nc_emit("finalize", "running", "Finalizing installation...")
+        if not nc_finalize(config, family, services):
+            nc_emit("finalize", "error", "Failed to finalize")
+            return 1
+        nc_emit("finalize", "success", "Installation complete!")
+        
+        emit_output("")
+        emit_output("=" * 60)
+        emit_output("NEXTCLOUD INSTALLATION COMPLETE!")
+        emit_output("=" * 60)
+        emit_output(f"Access your cloud at: https://{config.get('domain', 'localhost')}")
+        emit_output("")
+        
+        return 0
+        
+    except Exception as e:
+        emit_status("error", f"Installation failed: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return 1
+
+
+def nc_install_packages(packages: dict, family: str) -> bool:
+    """Install required packages for Nextcloud."""
+    all_packages = []
+    
+    for category, pkg_list in packages.items():
+        emit_output(f"  Installing {category} packages...")
+        all_packages.extend(pkg_list)
+    
+    if not all_packages:
+        emit_output("  No packages to install")
+        return True
+    
+    # Get install command for family
+    cmds = get_package_manager_commands(family)
+    install_cmd = cmds.get('install', [])
+    
+    if not install_cmd:
+        emit_output(f"  Unknown family: {family}")
+        return False
+    
+    # Update package cache first
+    update_cmd = cmds.get('update', [])
+    if update_cmd:
+        emit_output("  Updating package cache...")
+        subprocess.run(update_cmd, capture_output=True, timeout=300)
+    
+    # Install all packages
+    cmd = install_cmd + all_packages
+    emit_output(f"  Running: {' '.join(cmd[:5])}... ({len(all_packages)} packages)")
+    
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+    
+    if result.returncode != 0:
+        emit_output(f"  Error: {result.stderr[:500]}")
+        return False
+    
+    return True
+
+
+def nc_setup_database(config: dict, family: str, services: dict) -> bool:
+    """Set up MariaDB database for Nextcloud."""
+    db_name = config.get('db_name', 'nextcloud')
+    db_user = config.get('db_user', 'nextcloud')
+    db_pass = config.get('db_pass', '')
+    
+    db_service = services.get('database', 'mariadb')
+    
+    # Start and enable MariaDB
+    emit_output("  Starting MariaDB service...")
+    subprocess.run(['systemctl', 'start', db_service], capture_output=True)
+    subprocess.run(['systemctl', 'enable', db_service], capture_output=True)
+    
+    # Wait for MariaDB to be ready
+    import time
+    for i in range(10):
+        result = subprocess.run(
+            ['mysqladmin', 'ping', '-h', 'localhost'],
+            capture_output=True
+        )
+        if result.returncode == 0:
+            break
+        time.sleep(1)
+    
+    # Create database and user
+    emit_output(f"  Creating database '{db_name}'...")
+    
+    sql_commands = f"""
+CREATE DATABASE IF NOT EXISTS {db_name} CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+CREATE USER IF NOT EXISTS '{db_user}'@'localhost' IDENTIFIED BY '{db_pass}';
+GRANT ALL PRIVILEGES ON {db_name}.* TO '{db_user}'@'localhost';
+FLUSH PRIVILEGES;
+"""
+    
+    result = subprocess.run(
+        ['mysql', '-u', 'root'],
+        input=sql_commands,
+        capture_output=True,
+        text=True
+    )
+    
+    if result.returncode != 0:
+        # Try with socket
+        result = subprocess.run(
+            ['mysql', '-u', 'root', '--socket=/var/run/mysqld/mysqld.sock'],
+            input=sql_commands,
+            capture_output=True,
+            text=True
+        )
+    
+    if result.returncode != 0:
+        emit_output(f"  Database setup error: {result.stderr}")
+        # Try alternative approach - mariadb
+        result = subprocess.run(
+            ['mariadb', '-u', 'root'],
+            input=sql_commands,
+            capture_output=True,
+            text=True
+        )
+        if result.returncode != 0:
+            return False
+    
+    emit_output(f"  Database '{db_name}' created successfully")
+    return True
+
+
+def nc_download_nextcloud(url: str, config: dict) -> bool:
+    """Download and extract Nextcloud."""
+    install_dir = config.get('install_dir', '/var/www/nextcloud')
+    
+    # Create parent directory if needed
+    parent_dir = os.path.dirname(install_dir)
+    os.makedirs(parent_dir, exist_ok=True)
+    
+    # Download
+    emit_output(f"  Downloading from {url}...")
+    
+    import tempfile
+    with tempfile.NamedTemporaryFile(suffix='.tar.bz2', delete=False) as tmp:
+        tmp_path = tmp.name
+    
+    result = subprocess.run(
+        ['wget', '-q', '--show-progress', '-O', tmp_path, url],
+        capture_output=True,
+        text=True,
+        timeout=600
+    )
+    
+    if result.returncode != 0:
+        # Try with curl
+        result = subprocess.run(
+            ['curl', '-L', '-o', tmp_path, url],
+            capture_output=True,
+            text=True,
+            timeout=600
+        )
+        if result.returncode != 0:
+            emit_output(f"  Download failed: {result.stderr}")
+            return False
+    
+    emit_output("  Extracting...")
+    
+    # Extract to parent directory
+    result = subprocess.run(
+        ['tar', '-xjf', tmp_path, '-C', parent_dir],
+        capture_output=True,
+        text=True,
+        timeout=300
+    )
+    
+    if result.returncode != 0:
+        emit_output(f"  Extract failed: {result.stderr}")
+        return False
+    
+    # Clean up download
+    os.unlink(tmp_path)
+    
+    # Verify extraction
+    if not os.path.isdir(install_dir):
+        # Might have extracted to a differently named folder
+        extracted = os.path.join(parent_dir, 'nextcloud')
+        if os.path.isdir(extracted) and extracted != install_dir:
+            os.rename(extracted, install_dir)
+    
+    if not os.path.isdir(install_dir):
+        emit_output(f"  Nextcloud directory not found at {install_dir}")
+        return False
+    
+    emit_output(f"  Nextcloud extracted to {install_dir}")
+    return True
+
+
+def nc_configure_nextcloud(config: dict) -> bool:
+    """Configure Nextcloud installation."""
+    install_dir = config.get('install_dir', '/var/www/nextcloud')
+    data_dir = config.get('data_dir', '/var/nextcloud-data')
+    admin_user = config.get('admin_user', 'admin')
+    admin_pass = config.get('admin_pass', '')
+    db_name = config.get('db_name', 'nextcloud')
+    db_user = config.get('db_user', 'nextcloud')
+    db_pass = config.get('db_pass', '')
+    
+    # Create data directory
+    emit_output(f"  Creating data directory: {data_dir}")
+    os.makedirs(data_dir, exist_ok=True)
+    
+    # Set ownership
+    emit_output("  Setting permissions...")
+    
+    # Get web server user (usually www-data or http or apache)
+    web_user = 'www-data'
+    for u in ['www-data', 'http', 'apache', 'wwwrun']:
+        result = subprocess.run(['id', u], capture_output=True)
+        if result.returncode == 0:
+            web_user = u
+            break
+    
+    subprocess.run(['chown', '-R', f'{web_user}:{web_user}', install_dir])
+    subprocess.run(['chown', '-R', f'{web_user}:{web_user}', data_dir])
+    subprocess.run(['chmod', '-R', '750', install_dir])
+    subprocess.run(['chmod', '-R', '750', data_dir])
+    
+    # Run Nextcloud installer
+    emit_output("  Running Nextcloud installer...")
+    
+    occ_path = os.path.join(install_dir, 'occ')
+    
+    result = subprocess.run(
+        [
+            'sudo', '-u', web_user, 'php', occ_path,
+            'maintenance:install',
+            '--database', 'mysql',
+            '--database-name', db_name,
+            '--database-user', db_user,
+            '--database-pass', db_pass,
+            '--admin-user', admin_user,
+            '--admin-pass', admin_pass,
+            '--data-dir', data_dir,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=300
+    )
+    
+    if result.returncode != 0:
+        emit_output(f"  Installer output: {result.stdout}")
+        emit_output(f"  Installer error: {result.stderr}")
+        # Check if it's already installed
+        if 'already installed' in result.stdout.lower() or 'already installed' in result.stderr.lower():
+            emit_output("  Nextcloud already installed, continuing...")
+            return True
+        return False
+    
+    emit_output("  Nextcloud installed successfully")
+    return True
+
+
+def nc_configure_apache(config: dict, family: str, apache_paths: dict, services: dict) -> bool:
+    """Configure Apache for Nextcloud."""
+    install_dir = config.get('install_dir', '/var/www/nextcloud')
+    domain = config.get('domain', 'localhost')
+    
+    conf_dir = apache_paths.get('conf_dir', '/etc/apache2/sites-available')
+    sites_enabled = apache_paths.get('sites_enabled', '/etc/apache2/sites-enabled')
+    
+    web_service = services.get('webserver', 'apache2')
+    
+    # Create Apache config
+    emit_output("  Creating Apache configuration...")
+    
+    apache_conf = f"""<VirtualHost *:80>
+    ServerName {domain}
+    DocumentRoot {install_dir}
+    
+    <Directory {install_dir}>
+        Require all granted
+        AllowOverride All
+        Options FollowSymLinks MultiViews
+        
+        <IfModule mod_dav.c>
+            Dav off
+        </IfModule>
+    </Directory>
+    
+    ErrorLog ${{APACHE_LOG_DIR}}/nextcloud_error.log
+    CustomLog ${{APACHE_LOG_DIR}}/nextcloud_access.log combined
+</VirtualHost>
+"""
+
+    # Adjust for different distros
+    if family in ['arch', 'fedora']:
+        apache_conf = apache_conf.replace('${APACHE_LOG_DIR}', '/var/log/httpd')
+    elif family == 'opensuse':
+        apache_conf = apache_conf.replace('${APACHE_LOG_DIR}', '/var/log/apache2')
+    
+    # Write config
+    conf_file = os.path.join(conf_dir, 'nextcloud.conf')
+    with open(conf_file, 'w') as f:
+        f.write(apache_conf)
+    
+    emit_output(f"  Config written to {conf_file}")
+    
+    # Enable required modules
+    emit_output("  Enabling Apache modules...")
+    
+    if family == 'debian':
+        modules = ['rewrite', 'headers', 'env', 'dir', 'mime', 'ssl']
+        for mod in modules:
+            subprocess.run(['a2enmod', mod], capture_output=True)
+        
+        # Enable site
+        subprocess.run(['a2ensite', 'nextcloud.conf'], capture_output=True)
+        subprocess.run(['a2dissite', '000-default.conf'], capture_output=True)
+    
+    elif family in ['arch', 'fedora']:
+        # Modules are typically compiled in, just need to ensure config is included
+        pass
+    
+    # Start/restart Apache
+    emit_output(f"  Restarting {web_service}...")
+    subprocess.run(['systemctl', 'restart', web_service], capture_output=True)
+    subprocess.run(['systemctl', 'enable', web_service], capture_output=True)
+    
+    # Start Redis for caching
+    cache_service = services.get('cache', 'redis')
+    emit_output(f"  Starting {cache_service}...")
+    subprocess.run(['systemctl', 'start', cache_service], capture_output=True)
+    subprocess.run(['systemctl', 'enable', cache_service], capture_output=True)
+    
+    emit_output("  Apache configured")
+    return True
+
+
+def nc_setup_ssl(config: dict, family: str) -> bool:
+    """Set up Let's Encrypt SSL certificate."""
+    domain = config.get('domain', '')
+    
+    if not domain:
+        emit_output("  No domain specified, skipping SSL")
+        return False
+    
+    emit_output(f"  Obtaining SSL certificate for {domain}...")
+    
+    # First, make sure HTTP is accessible (DuckDNS should be pointing here)
+    # Run certbot
+    result = subprocess.run(
+        [
+            'certbot', '--apache',
+            '-d', domain,
+            '--non-interactive',
+            '--agree-tos',
+            '--email', f'admin@{domain}',
+            '--redirect'
+        ],
+        capture_output=True,
+        text=True,
+        timeout=300
+    )
+    
+    if result.returncode != 0:
+        emit_output(f"  Certbot output: {result.stdout}")
+        emit_output(f"  Certbot error: {result.stderr}")
+        emit_output("  SSL setup failed - you can run certbot manually later")
+        return False
+    
+    emit_output("  SSL certificate obtained and configured")
+    
+    # Set up auto-renewal cron
+    emit_output("  Setting up certificate auto-renewal...")
+    subprocess.run(['systemctl', 'enable', 'certbot.timer'], capture_output=True)
+    subprocess.run(['systemctl', 'start', 'certbot.timer'], capture_output=True)
+    
+    return True
+
+
+def nc_setup_duckdns(config: dict, family: str) -> bool:
+    """Configure DuckDNS dynamic DNS updates."""
+    subdomain = config.get('duckdns_subdomain', '')
+    token = config.get('duckdns_token', '')
+    
+    if not subdomain or not token:
+        emit_output("  DuckDNS not configured, skipping")
+        return False
+    
+    emit_output(f"  Configuring DuckDNS for {subdomain}.duckdns.org...")
+    
+    # Create update script
+    duckdns_dir = '/opt/duckdns'
+    os.makedirs(duckdns_dir, exist_ok=True)
+    
+    script_content = f"""#!/bin/bash
+echo url="https://www.duckdns.org/update?domains={subdomain}&token={token}&ip=" | curl -k -o {duckdns_dir}/duck.log -K -
+"""
+    
+    script_path = os.path.join(duckdns_dir, 'duck.sh')
+    with open(script_path, 'w') as f:
+        f.write(script_content)
+    
+    os.chmod(script_path, 0o700)
+    
+    # Run it once to set initial IP
+    emit_output("  Updating DuckDNS with current IP...")
+    subprocess.run([script_path], capture_output=True, timeout=30)
+    
+    # Set up cron job
+    emit_output("  Setting up cron job for IP updates...")
+    
+    cron_line = f"*/5 * * * * {script_path} >/dev/null 2>&1\n"
+    
+    # Add to root's crontab
+    result = subprocess.run(['crontab', '-l'], capture_output=True, text=True)
+    existing_cron = result.stdout if result.returncode == 0 else ""
+    
+    if 'duckdns' not in existing_cron:
+        new_cron = existing_cron + cron_line
+        subprocess.run(['crontab', '-'], input=new_cron, text=True)
+        emit_output("  Cron job added")
+    else:
+        emit_output("  DuckDNS cron job already exists")
+    
+    return True
+
+
+def nc_finalize(config: dict, family: str, services: dict) -> bool:
+    """Finalize Nextcloud installation."""
+    install_dir = config.get('install_dir', '/var/www/nextcloud')
+    domain = config.get('domain', 'localhost')
+    
+    # Get web user
+    web_user = 'www-data'
+    for u in ['www-data', 'http', 'apache', 'wwwrun']:
+        result = subprocess.run(['id', u], capture_output=True)
+        if result.returncode == 0:
+            web_user = u
+            break
+    
+    occ_path = os.path.join(install_dir, 'occ')
+    
+    # Add trusted domain
+    emit_output(f"  Adding {domain} to trusted domains...")
+    subprocess.run(
+        ['sudo', '-u', web_user, 'php', occ_path, 'config:system:set',
+         'trusted_domains', '1', '--value=' + domain],
+        capture_output=True
+    )
+    
+    # Also add localhost for local access
+    subprocess.run(
+        ['sudo', '-u', web_user, 'php', occ_path, 'config:system:set',
+         'trusted_domains', '2', '--value=localhost'],
+        capture_output=True
+    )
+    
+    # Enable Redis caching
+    emit_output("  Configuring Redis caching...")
+    subprocess.run(
+        ['sudo', '-u', web_user, 'php', occ_path, 'config:system:set',
+         'memcache.local', '--value=\\OC\\Memcache\\APCu'],
+        capture_output=True
+    )
+    subprocess.run(
+        ['sudo', '-u', web_user, 'php', occ_path, 'config:system:set',
+         'memcache.distributed', '--value=\\OC\\Memcache\\Redis'],
+        capture_output=True
+    )
+    subprocess.run(
+        ['sudo', '-u', web_user, 'php', occ_path, 'config:system:set',
+         'redis', 'host', '--value=localhost'],
+        capture_output=True
+    )
+    subprocess.run(
+        ['sudo', '-u', web_user, 'php', occ_path, 'config:system:set',
+         'redis', 'port', '--value=6379', '--type=integer'],
+        capture_output=True
+    )
+    
+    # Set up cron job for background tasks
+    emit_output("  Setting up Nextcloud background jobs...")
+    
+    cron_line = f"*/5 * * * * {web_user} php -f {install_dir}/cron.php\n"
+    
+    # Write to system crontab
+    cron_file = '/etc/cron.d/nextcloud'
+    with open(cron_file, 'w') as f:
+        f.write(cron_line)
+    
+    # Set background job method to cron
+    subprocess.run(
+        ['sudo', '-u', web_user, 'php', occ_path, 'background:cron'],
+        capture_output=True
+    )
+    
+    # Open firewall ports
+    emit_output("  Configuring firewall...")
+    
+    # Try ufw first
+    if subprocess.run(['which', 'ufw'], capture_output=True).returncode == 0:
+        subprocess.run(['ufw', 'allow', '80/tcp'], capture_output=True)
+        subprocess.run(['ufw', 'allow', '443/tcp'], capture_output=True)
+    # Try firewalld
+    elif subprocess.run(['which', 'firewall-cmd'], capture_output=True).returncode == 0:
+        subprocess.run(['firewall-cmd', '--permanent', '--add-service=http'], capture_output=True)
+        subprocess.run(['firewall-cmd', '--permanent', '--add-service=https'], capture_output=True)
+        subprocess.run(['firewall-cmd', '--reload'], capture_output=True)
+    
+    emit_output("  Finalization complete")
+    return True
+
+
+if __name__ == '__main__':
+    sys.exit(main())

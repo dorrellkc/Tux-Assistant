@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.1
+Type=Application
+Name=Tux Assistant
+GenericName=System Setup Tool
+Comment=Linux post-installation setup and configuration tool
+Exec=/opt/tux-assistant/tux-assistant.py
+Icon=tux-assistant
+Terminal=false
+Categories=System;Settings;Utility;
+Keywords=setup;install;configure;linux;
+StartupNotify=true
+StartupWMClass=tux-assistant
