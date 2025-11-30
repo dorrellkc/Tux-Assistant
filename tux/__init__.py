@@ -9,8 +9,20 @@ Supports: Arch, Fedora, Debian/Ubuntu, openSUSE and derivatives.
 Copyright (c) 2025 Christopher Dorrell. All Rights Reserved.
 """
 
-__version__ = "5.0.0"
-__version_info__ = (5, 0, 0)
+import os
+
+# Read version from VERSION file
+_version_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'VERSION')
+try:
+    with open(_version_file, 'r') as f:
+        __version__ = f.read().strip()
+except Exception:
+    __version__ = "0.0.0"
+
+# Parse version info
+_version_parts = __version__.split('.')
+__version_info__ = tuple(int(x) for x in _version_parts[:3]) if len(_version_parts) >= 3 else (0, 0, 0)
+
 __author__ = "Christopher Dorrell"
 __email__ = "dorrellkc@gmail.com"
 __app_name__ = "Tux Assistant"
