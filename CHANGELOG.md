@@ -5,6 +5,13 @@ All notable changes to Tux Assistant will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.7.10] - 2025-11-29
+
+### Added - Version Display
+- Version number now shown in header bar (top left)
+- Quick visual confirmation of which version you're running
+- About dialog still available via hamburger menu
+
 ## [5.7.9] - 2025-11-29
 
 ### Fixed - Auto-fix Execute Permissions

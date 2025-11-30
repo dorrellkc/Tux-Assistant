@@ -360,7 +360,13 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         # Header bar
         header = Adw.HeaderBar()
         
-        # Menu button
+        # Version label on the left
+        version_label = Gtk.Label()
+        version_label.set_markup(f"<small>v{APP_VERSION}</small>")
+        version_label.add_css_class("dim-label")
+        header.pack_start(version_label)
+        
+        # Menu button on the right
         menu_button = Gtk.MenuButton()
         menu_button.set_icon_name("open-menu-symbolic")
         menu_button.set_menu_model(self.create_menu())
