@@ -81,6 +81,9 @@ def detect_distro_family() -> str:
 
 def get_package_manager_commands(family: str) -> dict:
     """Get package manager commands for a distro family."""
+    # Check for dnf5 (Fedora 41+) vs dnf
+    fedora_pkg_mgr = 'dnf5' if shutil.which('dnf5') else 'dnf'
+    
     commands = {
         'arch': {
             'install': ['pacman', '-S', '--needed', '--noconfirm'],
@@ -95,16 +98,16 @@ def get_package_manager_commands(family: str) -> dict:
             'upgrade': ['apt', 'upgrade', '-y'],
         },
         'fedora': {
-            'install': ['dnf', 'install', '-y'],
-            'remove': ['dnf', 'remove', '-y'],
-            'update': ['dnf', 'check-update'],
-            'upgrade': ['dnf', 'upgrade', '-y'],
+            'install': [fedora_pkg_mgr, 'install', '-y'],
+            'remove': [fedora_pkg_mgr, 'remove', '-y'],
+            'update': [fedora_pkg_mgr, 'check-update'],
+            'upgrade': [fedora_pkg_mgr, 'upgrade', '-y'],
         },
         'rhel': {
-            'install': ['dnf', 'install', '-y'],
-            'remove': ['dnf', 'remove', '-y'],
-            'update': ['dnf', 'check-update'],
-            'upgrade': ['dnf', 'upgrade', '-y'],
+            'install': [fedora_pkg_mgr, 'install', '-y'],
+            'remove': [fedora_pkg_mgr, 'remove', '-y'],
+            'update': [fedora_pkg_mgr, 'check-update'],
+            'upgrade': [fedora_pkg_mgr, 'upgrade', '-y'],
         },
         'opensuse': {
             'install': ['zypper', 'install', '-y'],

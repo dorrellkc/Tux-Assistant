@@ -5,6 +5,31 @@ All notable changes to Tux Assistant will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.13.3] - 2025-11-30
+
+### Improved - Distribution Future-Proofing
+
+**ID_LIKE Fallback Detection**
+- Added fallback to `ID_LIKE` field in `/etc/os-release`
+- New distros that properly declare their base (e.g., `ID_LIKE="arch"`) will work automatically
+- No need to manually add every new derivative to our lists
+
+**dnf5 Support (Fedora 41+)**
+- Added automatic detection of `dnf5` vs `dnf`
+- Fedora is transitioning to dnf5 as default package manager
+- Both distro.py and tux-helper now check for dnf5 first
+
+**How Future-Proofing Works:**
+1. We detect by **family** (Arch, Debian, Fedora, openSUSE), not specific versions
+2. Package managers (`pacman`, `apt`, `dnf`, `zypper`) are stable within families
+3. New distros set `ID_LIKE` in os-release → we detect them automatically
+4. If a distro changes package managers, we detect the binary on disk
+
+**What Still Requires Updates:**
+- New distros that don't set `ID_LIKE` properly
+- Major package name changes (rare)
+- Entirely new package managers (we'd need to add support)
+
 ## [5.13.2] - 2025-11-30
 
 ### Changed - Main Page Module Order

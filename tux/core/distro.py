@@ -103,10 +103,11 @@ def parse_os_release() -> dict[str, str]:
     return data
 
 
-def detect_family(distro_id: str) -> DistroFamily:
-    """Determine the distribution family from the distro ID."""
+def detect_family(distro_id: str, id_like: str = "") -> DistroFamily:
+    """Determine the distribution family from the distro ID or ID_LIKE."""
     distro_id_lower = distro_id.lower()
     
+    # First, check exact match in our known list
     for family, members in DISTRO_FAMILY_MAP.items():
         if distro_id_lower in members:
             return family
@@ -116,6 +117,21 @@ def detect_family(distro_id: str) -> DistroFamily:
         for member in members:
             if member in distro_id_lower or distro_id_lower in member:
                 return family
+    
+    # Fallback: Check ID_LIKE for unknown distros (future-proofing)
+    # This catches new distros that properly set ID_LIKE in os-release
+    if id_like:
+        id_like_lower = id_like.lower()
+        if 'arch' in id_like_lower:
+            return DistroFamily.ARCH
+        elif 'ubuntu' in id_like_lower or 'debian' in id_like_lower:
+            return DistroFamily.DEBIAN
+        elif 'fedora' in id_like_lower:
+            return DistroFamily.FEDORA
+        elif 'rhel' in id_like_lower or 'centos' in id_like_lower:
+            return DistroFamily.RHEL
+        elif 'suse' in id_like_lower or 'opensuse' in id_like_lower:
+            return DistroFamily.OPENSUSE
     
     return DistroFamily.UNKNOWN
 
@@ -140,12 +156,21 @@ def get_package_manager_info(family: DistroFamily) -> tuple[str, list[str], list
         )
     
     elif family == DistroFamily.FEDORA:
-        return (
-            'dnf',
-            ['sudo', 'dnf', 'install', '-y'],
-            ['dnf', 'search'],
-            ['sudo', 'dnf', 'upgrade', '-y']
-        )
+        # Check for dnf5 (Fedora 41+) vs dnf (older)
+        if shutil.which('dnf5'):
+            return (
+                'dnf5',
+                ['sudo', 'dnf5', 'install', '-y'],
+                ['dnf5', 'search'],
+                ['sudo', 'dnf5', 'upgrade', '-y']
+            )
+        else:
+            return (
+                'dnf',
+                ['sudo', 'dnf', 'install', '-y'],
+                ['dnf', 'search'],
+                ['sudo', 'dnf', 'upgrade', '-y']
+            )
     
     elif family == DistroFamily.RHEL:
         # Check if dnf is available, otherwise use yum
@@ -194,8 +219,9 @@ def detect() -> DistroInfo:
     distro_id = os_release.get('ID', 'unknown')
     distro_name = os_release.get('NAME', 'Unknown Linux')
     distro_version = os_release.get('VERSION_ID', os_release.get('VERSION', 'unknown'))
+    id_like = os_release.get('ID_LIKE', '')  # For fallback detection
     
-    family = detect_family(distro_id)
+    family = detect_family(distro_id, id_like)
     pkg_mgr, install_cmd, search_cmd, update_cmd = get_package_manager_info(family)
     
     return DistroInfo(
