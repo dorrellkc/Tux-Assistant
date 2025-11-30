@@ -5,6 +5,38 @@ All notable changes to Tux Assistant will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.14.7] - 2025-11-30
+
+### Changed - TuxFetch Uses Real Fastfetch
+
+Complete rewrite of TuxFetch to use actual fastfetch output:
+
+**How it works:**
+1. Checks if fastfetch is installed
+2. If not, offers to install it (pacman/apt/dnf/zypper)
+3. Runs fastfetch with optimized settings for sidebar width
+4. Strips ANSI color codes for clean monochrome display
+5. Falls back to basic info if fastfetch unavailable
+
+**Benefits:**
+- 100% accurate logos and information
+- Honors fastfetch project (uses their tool, doesn't copy)
+- Monochrome display is distinctly "TuxFetch"
+- User's fastfetch config is respected
+- Dramatically simpler code (~200 lines vs ~1200)
+
+**Settings used:**
+- `--logo-width 12` - Fits sidebar
+- `--logo-padding-top 0` - Compact
+- `--logo-padding-left 0` - Left aligned
+- `--logo-padding-right 1` - Small gap before info
+
+**Fallback output (if no fastfetch):**
+- user@hostname
+- OS, Kernel, Uptime, Shell, DE
+- CPU, Memory
+- Hint to install fastfetch
+
 ## [5.14.6] - 2025-11-30
 
 ### Fixed - Distro Logo Accuracy
