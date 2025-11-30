@@ -5,6 +5,14 @@ All notable changes to Tux Assistant will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.7.7] - 2025-11-29
+
+### Improved - Clearer Push/Pull Buttons
+- Buttons now show "↓ Pull" and "↑ Push" with labels
+- No longer look like minimize/maximize window buttons
+- Better tooltips explaining what each does
+- More spacing between buttons
+
 ## [5.7.6] - 2025-11-29
 
 ### Changed - Terminal for Git Operations

@@ -598,22 +598,26 @@ class DeveloperToolsPage(Adw.NavigationPage):
             row.add_prefix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
         
         # Quick action buttons (in the row itself)
-        button_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        button_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         button_box.set_valign(Gtk.Align.CENTER)
         
-        # Pull button
+        # Pull button with label
         pull_btn = Gtk.Button()
-        pull_btn.set_icon_name("go-down-symbolic")
-        pull_btn.set_tooltip_text("Pull latest changes")
-        pull_btn.add_css_class("flat")
+        pull_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        pull_box.append(Gtk.Image.new_from_icon_name("go-down-symbolic"))
+        pull_box.append(Gtk.Label(label="Pull"))
+        pull_btn.set_child(pull_box)
+        pull_btn.set_tooltip_text("Pull latest changes from remote")
         pull_btn.connect("clicked", lambda b: self._on_pull_project(path, row))
         button_box.append(pull_btn)
         
-        # Push button
+        # Push button with label
         push_btn = Gtk.Button()
-        push_btn.set_icon_name("go-up-symbolic")
-        push_btn.set_tooltip_text("Push changes")
-        push_btn.add_css_class("flat")
+        push_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        push_box.append(Gtk.Image.new_from_icon_name("go-up-symbolic"))
+        push_box.append(Gtk.Label(label="Push"))
+        push_btn.set_child(push_box)
+        push_btn.set_tooltip_text("Push your changes to remote")
         if not info.has_changes and info.ahead == 0:
             push_btn.set_sensitive(False)
             push_btn.set_tooltip_text("Nothing to push")
