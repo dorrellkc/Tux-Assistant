@@ -117,16 +117,37 @@ def get_printers() -> List[PrinterInfo]:
     return printers
 
 
-def check_cups_running() -> bool:
-    """Check if CUPS service is running."""
+def check_cups_status() -> Tuple[str, str]:
+    """Check CUPS status.
+    Returns: (status, issue_type)
+    issue_type: "ok", "not_installed", "service_stopped"
+    """
     try:
+        # Check if CUPS is installed
+        result = subprocess.run(['which', 'lpstat'], capture_output=True)
+        if result.returncode != 0:
+            # Also check for cups package
+            result = subprocess.run(['which', 'cupsd'], capture_output=True)
+            if result.returncode != 0:
+                return "CUPS not installed", "not_installed"
+        
+        # Check if CUPS service is running
         result = subprocess.run(
             ['systemctl', 'is-active', 'cups'],
             capture_output=True, text=True
         )
-        return result.stdout.strip() == "active"
+        if result.stdout.strip() == "active":
+            return "Printer service running", "ok"
+        else:
+            return "Printer service not running", "service_stopped"
     except Exception:
-        return False
+        return "Could not check printer status", "error"
+
+
+def check_cups_running() -> bool:
+    """Check if CUPS service is running (legacy helper)."""
+    _, issue_type = check_cups_status()
+    return issue_type == "ok"
 
 
 # =============================================================================
@@ -696,27 +717,46 @@ class HardwareManagerPage(Adw.NavigationPage):
     def _refresh_printers(self):
         """Refresh printer list."""
         def load():
-            cups_running = check_cups_running()
-            printers = get_printers() if cups_running else []
-            GLib.idle_add(self._update_printers, cups_running, printers)
+            status, issue_type = check_cups_status()
+            printers = get_printers() if issue_type == "ok" else []
+            GLib.idle_add(self._update_printers, status, issue_type, printers)
         
         threading.Thread(target=load, daemon=True).start()
     
-    def _update_printers(self, cups_running: bool, printers: List[PrinterInfo]):
+    def _update_printers(self, status: str, issue_type: str, printers: List[PrinterInfo]):
         """Update printers UI."""
         # Clear existing rows
         for row in self.printer_rows:
             self.printers_group.remove(row)
         self.printer_rows.clear()
         
-        if not cups_running:
+        if issue_type == "not_installed":
+            # CUPS not installed
             row = Adw.ActionRow()
-            row.set_title("CUPS Not Running")
-            row.set_subtitle("Printer service is not active")
+            row.set_title("Printer Support Not Installed")
+            row.set_subtitle("Install CUPS to use printers")
             row.add_prefix(Gtk.Image.new_from_icon_name("dialog-warning-symbolic"))
             
-            start_btn = Gtk.Button(label="Start")
+            install_btn = Gtk.Button(label="Install CUPS")
+            install_btn.set_valign(Gtk.Align.CENTER)
+            install_btn.add_css_class("suggested-action")
+            install_btn.connect("clicked", self._on_install_cups)
+            row.add_suffix(install_btn)
+            
+            self.printers_group.add(row)
+            self.printer_rows.append(row)
+            return
+        
+        if issue_type == "service_stopped":
+            # CUPS installed but not running
+            row = Adw.ActionRow()
+            row.set_title("Printer Service Stopped")
+            row.set_subtitle("Start the printer service to manage printers")
+            row.add_prefix(Gtk.Image.new_from_icon_name("printer-symbolic"))
+            
+            start_btn = Gtk.Button(label="Start Service")
             start_btn.set_valign(Gtk.Align.CENTER)
+            start_btn.add_css_class("suggested-action")
             start_btn.connect("clicked", self._on_start_cups)
             row.add_suffix(start_btn)
             
@@ -724,6 +764,7 @@ class HardwareManagerPage(Adw.NavigationPage):
             self.printer_rows.append(row)
             return
         
+        # CUPS is running - show printers
         if not printers:
             row = Adw.ActionRow()
             row.set_title("No Printers Configured")
@@ -732,6 +773,7 @@ class HardwareManagerPage(Adw.NavigationPage):
             
             add_btn = Gtk.Button(label="Add Printer")
             add_btn.set_valign(Gtk.Align.CENTER)
+            add_btn.add_css_class("suggested-action")
             add_btn.connect("clicked", self._on_add_printer)
             row.add_suffix(add_btn)
             
@@ -908,6 +950,48 @@ class HardwareManagerPage(Adw.NavigationPage):
             GLib.timeout_add(2000, self._refresh_printers)
         except Exception:
             self.window.show_toast("Could not start printer service")
+    
+    def _on_install_cups(self, button):
+        """Install CUPS printer support."""
+        packages = {
+            DistroFamily.ARCH: "cups cups-pdf system-config-printer",
+            DistroFamily.DEBIAN: "cups cups-pdf system-config-printer",
+            DistroFamily.FEDORA: "cups cups-pdf system-config-printer",
+            DistroFamily.OPENSUSE: "cups cups-pdf",
+        }
+        
+        pkg = packages.get(self.distro.family, "cups")
+        
+        if self.distro.family == DistroFamily.ARCH:
+            cmd = f"sudo pacman -S --noconfirm {pkg}"
+        elif self.distro.family == DistroFamily.DEBIAN:
+            cmd = f"sudo apt install -y {pkg}"
+        elif self.distro.family == DistroFamily.FEDORA:
+            cmd = f"sudo dnf install -y {pkg}"
+        elif self.distro.family == DistroFamily.OPENSUSE:
+            cmd = f"sudo zypper install -y {pkg}"
+        else:
+            self.window.show_toast("Unsupported distribution")
+            return
+        
+        script = f'''echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  Installing Printer Support (CUPS)..."
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+{cmd}
+echo ""
+echo "Enabling printer service..."
+sudo systemctl enable cups
+sudo systemctl start cups
+echo ""
+echo "✓ Installation complete!"
+echo ""
+echo "Press Enter to close..."
+read'''
+        
+        self._run_in_terminal(script)
+        self.window.show_toast("Installing printer support...")
+        GLib.timeout_add(5000, self._refresh_printers)
     
     def _on_add_printer(self, button):
         """Open printer configuration."""
