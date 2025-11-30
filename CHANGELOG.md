@@ -5,6 +5,53 @@ All notable changes to Tux Assistant will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.12.1] - 2025-11-30
+
+### Changed - Split Networking into Simple and Advanced
+
+**Networking** (Simple - for everyone):
+- Network status (IP, WiFi connection)
+- WiFi settings and hidden network connection
+- Share a Folder (quick Samba share)
+- Find Shared Folders (network scan)
+- Hotspot, Speed Test, Network Settings
+
+**Advanced Networking** (for power users):
+- Full network status with Samba/AD info
+- VPN setup (OpenVPN, WireGuard)
+- Active Directory / Domain join
+- Firewall port management
+- Advanced Samba management
+- Hosts file editor
+
+This follows the "Timmy Test" - new users see simple options, power users can find advanced features.
+
+## [5.12.0] - 2025-11-30
+
+### Added - Networking Additions
+Major expansion of the Networking module:
+
+**WiFi Management**
+- View current WiFi status (connected/disconnected)
+- Open WiFi settings
+- Connect to hidden networks
+
+**VPN Support**
+- View VPN connection status
+- Import OpenVPN (.ovpn) configurations
+- Import WireGuard (.conf) configurations
+- Offers to install missing plugins (networkmanager-openvpn, wireguard-tools)
+- Open VPN settings
+
+**Network Tools**
+- Create WiFi Hotspot (share your connection)
+- Stop existing hotspot
+- Speed Test (uses speedtest-cli, offers to install)
+- Edit /etc/hosts file
+- Open system network settings
+
+All features work with NetworkManager and support GNOME, KDE, and XFCE settings apps.
+
 ## [5.11.3] - 2025-11-30
 
 ### Fixed - Printer Setup Same Pattern as Bluetooth

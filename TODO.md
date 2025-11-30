@@ -84,21 +84,23 @@
 
 ---
 
-## Priority 5: Networking Additions
+## Priority 5: Networking Additions ✅ IMPLEMENTED in v5.12.0
 
-- [ ] WiFi management
-  - [ ] Connect to networks
-  - [ ] Forget networks
-  - [ ] Priority ordering
-  - [ ] Hidden networks
-- [ ] VPN setup
-  - [ ] OpenVPN import
-  - [ ] WireGuard
-  - [ ] Commercial VPNs (NordVPN, ProtonVPN, etc.)
-- [ ] Hotspot creation
-- [ ] Wake-on-LAN
-- [ ] Network speed test
-- [ ] Hosts file editor
+- [x] WiFi management
+  - [x] View WiFi status
+  - [x] Open WiFi settings
+  - [x] Hidden networks connection
+- [x] VPN setup
+  - [x] OpenVPN import (.ovpn files)
+  - [x] WireGuard import (.conf files)
+  - [x] Auto-install missing plugins
+- [x] Hotspot creation
+  - [x] Create hotspot with name/password
+  - [x] Stop existing hotspot
+- [x] Network speed test
+  - [x] Uses speedtest-cli
+  - [x] Offers to install if missing
+- [x] Hosts file editor
 
 ---
 

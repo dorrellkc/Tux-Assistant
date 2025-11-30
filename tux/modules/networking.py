@@ -946,22 +946,490 @@ class FirewallManager:
 
 
 # =============================================================================
-# Networking Module UI
+# Networking Module UI - Split into Simple and Advanced
 # =============================================================================
 
 @register_module(
-    id="networking",
+    id="networking_simple",
     name="Networking",
-    description="Network discovery, file sharing, AD join, and firewall",
-    icon="network-workgroup-symbolic",
+    description="WiFi, file sharing, hotspot, and speed test",
+    icon="network-wireless-symbolic",
     category=ModuleCategory.NETWORK,
     order=10
 )
-class NetworkingPage(Adw.NavigationPage):
-    """Main networking tools page."""
+class SimpleNetworkingPage(Adw.NavigationPage):
+    """Simple networking tools for everyday users."""
     
     def __init__(self, window: 'LinuxToolkitWindow'):
         super().__init__(title="Networking")
+        
+        self.window = window
+        self.distro = get_distro()
+        
+        # Managers (shared)
+        self.samba = SambaManager()
+        self.scanner = NetworkScanner()
+        
+        self.build_ui()
+    
+    def build_ui(self):
+        """Build the networking UI."""
+        toolbar_view = Adw.ToolbarView()
+        self.set_child(toolbar_view)
+        
+        header = Adw.HeaderBar()
+        
+        refresh_btn = Gtk.Button()
+        refresh_btn.set_icon_name("view-refresh-symbolic")
+        refresh_btn.set_tooltip_text("Refresh status")
+        refresh_btn.connect("clicked", self.on_refresh)
+        header.pack_end(refresh_btn)
+        
+        toolbar_view.add_top_bar(header)
+        
+        self.scrolled = Gtk.ScrolledWindow()
+        self.scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        self.scrolled.set_vexpand(True)
+        toolbar_view.set_content(self.scrolled)
+        
+        self._build_content()
+    
+    def _build_content(self):
+        """Build simple networking content."""
+        clamp = Adw.Clamp()
+        clamp.set_maximum_size(800)
+        clamp.set_margin_top(20)
+        clamp.set_margin_bottom(20)
+        clamp.set_margin_start(20)
+        clamp.set_margin_end(20)
+        self.scrolled.set_child(clamp)
+        
+        content_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
+        clamp.set_child(content_box)
+        
+        # Simple status (just IP and connection)
+        content_box.append(self._create_simple_status())
+        
+        # WiFi section
+        content_box.append(self._create_wifi_section())
+        
+        # Quick file sharing
+        content_box.append(self._create_quick_share_section())
+        
+        # Find shared folders
+        content_box.append(self._create_find_shares_section())
+        
+        # Network tools (hotspot, speed test)
+        content_box.append(self._create_network_tools_section())
+    
+    def _create_simple_status(self) -> Gtk.Widget:
+        """Create simple status section."""
+        group = Adw.PreferencesGroup()
+        group.set_title("Network Status")
+        
+        # Connection status
+        ip = get_local_ip()
+        status_row = Adw.ActionRow()
+        status_row.set_title("Connection")
+        if ip and ip != "127.0.0.1":
+            status_row.set_subtitle(f"Connected ({ip})")
+            status_row.add_prefix(Gtk.Image.new_from_icon_name("network-wired-symbolic"))
+        else:
+            status_row.set_subtitle("Not connected")
+            status_row.add_prefix(Gtk.Image.new_from_icon_name("network-offline-symbolic"))
+        group.add(status_row)
+        
+        # WiFi status
+        wifi_status = self._get_wifi_status()
+        wifi_row = Adw.ActionRow()
+        wifi_row.set_title("WiFi")
+        if wifi_status['connected']:
+            wifi_row.set_subtitle(f"Connected to {wifi_status['ssid']}")
+            wifi_row.add_prefix(Gtk.Image.new_from_icon_name("network-wireless-signal-excellent-symbolic"))
+        elif wifi_status['enabled']:
+            wifi_row.set_subtitle("Enabled but not connected")
+            wifi_row.add_prefix(Gtk.Image.new_from_icon_name("network-wireless-offline-symbolic"))
+        else:
+            wifi_row.set_subtitle("Disabled")
+            wifi_row.add_prefix(Gtk.Image.new_from_icon_name("network-wireless-disabled-symbolic"))
+        group.add(wifi_row)
+        
+        return group
+    
+    def _create_wifi_section(self) -> Gtk.Widget:
+        """Create WiFi management section."""
+        group = Adw.PreferencesGroup()
+        group.set_title("WiFi")
+        group.set_description("Wireless network management")
+        
+        has_nmcli = subprocess.run(['which', 'nmcli'], capture_output=True).returncode == 0
+        
+        if not has_nmcli:
+            info_row = Adw.ActionRow()
+            info_row.set_title("NetworkManager Not Found")
+            info_row.set_subtitle("WiFi management requires NetworkManager")
+            info_row.add_prefix(Gtk.Image.new_from_icon_name("dialog-warning-symbolic"))
+            group.add(info_row)
+            return group
+        
+        # WiFi settings link
+        settings_row = Adw.ActionRow()
+        settings_row.set_title("WiFi Settings")
+        settings_row.set_subtitle("Connect to networks, manage saved connections")
+        settings_row.add_prefix(Gtk.Image.new_from_icon_name("network-wireless-symbolic"))
+        settings_row.set_activatable(True)
+        settings_row.connect("activated", self._on_open_wifi_settings)
+        settings_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        group.add(settings_row)
+        
+        # Connect to hidden network
+        hidden_row = Adw.ActionRow()
+        hidden_row.set_title("Connect to Hidden Network")
+        hidden_row.set_subtitle("Join a network that doesn't broadcast its name")
+        hidden_row.add_prefix(Gtk.Image.new_from_icon_name("network-wireless-acquiring-symbolic"))
+        hidden_row.set_activatable(True)
+        hidden_row.connect("activated", self._on_connect_hidden_network)
+        hidden_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        group.add(hidden_row)
+        
+        return group
+    
+    def _create_quick_share_section(self) -> Gtk.Widget:
+        """Create quick file sharing section."""
+        group = Adw.PreferencesGroup()
+        group.set_title("Share Files")
+        group.set_description("Share folders with other computers on your network")
+        
+        if not self.samba.is_installed():
+            # Offer to install
+            install_row = Adw.ActionRow()
+            install_row.set_title("File Sharing Not Installed")
+            install_row.set_subtitle("Install Samba to share files with other computers")
+            install_row.add_prefix(Gtk.Image.new_from_icon_name("folder-remote-symbolic"))
+            
+            install_btn = Gtk.Button(label="Install")
+            install_btn.set_valign(Gtk.Align.CENTER)
+            install_btn.add_css_class("suggested-action")
+            install_btn.connect("clicked", self.on_install_samba)
+            install_row.add_suffix(install_btn)
+            
+            group.add(install_row)
+        else:
+            # Quick share button
+            share_row = Adw.ActionRow()
+            share_row.set_title("Share a Folder")
+            share_row.set_subtitle("Quickly share a folder on your network")
+            share_row.add_prefix(Gtk.Image.new_from_icon_name("folder-publicshare-symbolic"))
+            share_row.set_activatable(True)
+            share_row.connect("activated", self.on_quick_share)
+            share_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+            group.add(share_row)
+            
+            # Status
+            if self.samba.is_running():
+                shares = self.samba.get_shares()
+                if shares:
+                    status_row = Adw.ActionRow()
+                    status_row.set_title("Currently Sharing")
+                    status_row.set_subtitle(f"{len(shares)} folder(s) shared")
+                    status_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
+                    group.add(status_row)
+        
+        return group
+    
+    def _create_find_shares_section(self) -> Gtk.Widget:
+        """Create section to find shared folders."""
+        group = Adw.PreferencesGroup()
+        group.set_title("Find Shared Folders")
+        group.set_description("Browse shared folders on your network")
+        
+        # Quick scan
+        scan_row = Adw.ActionRow()
+        scan_row.set_title("Scan for Shared Folders")
+        scan_row.set_subtitle("Find computers sharing files on your network")
+        scan_row.add_prefix(Gtk.Image.new_from_icon_name("folder-remote-symbolic"))
+        scan_row.set_activatable(True)
+        scan_row.connect("activated", self.on_quick_scan)
+        scan_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        group.add(scan_row)
+        
+        # Browse network
+        browse_row = Adw.ActionRow()
+        browse_row.set_title("Browse Network")
+        browse_row.set_subtitle("Open network location in file manager")
+        browse_row.add_prefix(Gtk.Image.new_from_icon_name("network-workgroup-symbolic"))
+        browse_row.set_activatable(True)
+        browse_row.connect("activated", self.on_browse_network)
+        browse_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        group.add(browse_row)
+        
+        return group
+    
+    def _create_network_tools_section(self) -> Gtk.Widget:
+        """Create network tools section."""
+        group = Adw.PreferencesGroup()
+        group.set_title("Network Tools")
+        
+        # WiFi Hotspot
+        hotspot_row = Adw.ActionRow()
+        hotspot_row.set_title("Create WiFi Hotspot")
+        hotspot_row.set_subtitle("Share your internet connection wirelessly")
+        hotspot_row.add_prefix(Gtk.Image.new_from_icon_name("network-wireless-hotspot-symbolic"))
+        hotspot_row.set_activatable(True)
+        hotspot_row.connect("activated", self._on_create_hotspot)
+        hotspot_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        group.add(hotspot_row)
+        
+        # Speed test
+        speed_row = Adw.ActionRow()
+        speed_row.set_title("Speed Test")
+        speed_row.set_subtitle("Test your internet connection speed")
+        speed_row.add_prefix(Gtk.Image.new_from_icon_name("utilities-system-monitor-symbolic"))
+        speed_row.set_activatable(True)
+        speed_row.connect("activated", self._on_run_speedtest)
+        speed_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        group.add(speed_row)
+        
+        # Network settings
+        settings_row = Adw.ActionRow()
+        settings_row.set_title("Network Settings")
+        settings_row.set_subtitle("Open system network configuration")
+        settings_row.add_prefix(Gtk.Image.new_from_icon_name("preferences-system-network-symbolic"))
+        settings_row.set_activatable(True)
+        settings_row.connect("activated", self._on_open_network_settings)
+        settings_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        group.add(settings_row)
+        
+        return group
+    
+    def on_refresh(self, button):
+        """Refresh the status."""
+        self._build_content()
+        self.window.show_toast("Status refreshed")
+    
+    def _get_wifi_status(self) -> dict:
+        """Get current WiFi status."""
+        status = {'enabled': False, 'connected': False, 'ssid': ''}
+        
+        try:
+            result = subprocess.run(['nmcli', 'radio', 'wifi'], capture_output=True, text=True)
+            status['enabled'] = result.stdout.strip() == 'enabled'
+            
+            if status['enabled']:
+                result = subprocess.run(
+                    ['nmcli', '-t', '-f', 'ACTIVE,SSID', 'dev', 'wifi'],
+                    capture_output=True, text=True
+                )
+                for line in result.stdout.strip().split('\n'):
+                    if line.startswith('yes:'):
+                        status['connected'] = True
+                        status['ssid'] = line.split(':', 1)[1] if ':' in line else ''
+                        break
+        except Exception:
+            pass
+        
+        return status
+    
+    # Event handlers (reuse from original)
+    def _on_open_wifi_settings(self, row):
+        tools = [['gnome-control-center', 'wifi'], ['nm-connection-editor'], 
+                 ['systemsettings', 'kcm_networkmanagement']]
+        for tool in tools:
+            try:
+                if subprocess.run(['which', tool[0]], capture_output=True).returncode == 0:
+                    subprocess.Popen(tool)
+                    return
+            except Exception:
+                continue
+        self.window.show_toast("Could not open WiFi settings")
+    
+    def _on_connect_hidden_network(self, row):
+        dialog = Adw.MessageDialog(transient_for=self.window, heading="Connect to Hidden Network",
+                                    body="Enter the network name (SSID) and password.")
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        content.set_margin_top(12)
+        content.set_margin_bottom(12)
+        content.set_margin_start(12)
+        content.set_margin_end(12)
+        
+        ssid_group = Adw.PreferencesGroup()
+        ssid_entry = Adw.EntryRow()
+        ssid_entry.set_title("Network Name (SSID)")
+        ssid_group.add(ssid_entry)
+        content.append(ssid_group)
+        
+        pass_group = Adw.PreferencesGroup()
+        pass_entry = Adw.PasswordEntryRow()
+        pass_entry.set_title("Password")
+        pass_group.add(pass_entry)
+        content.append(pass_group)
+        
+        dialog.set_extra_child(content)
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("connect", "Connect")
+        dialog.set_response_appearance("connect", Adw.ResponseAppearance.SUGGESTED)
+        dialog.connect("response", self._on_hidden_response, ssid_entry, pass_entry)
+        dialog.present()
+    
+    def _on_hidden_response(self, dialog, response, ssid_entry, pass_entry):
+        if response != "connect":
+            return
+        ssid = ssid_entry.get_text().strip()
+        password = pass_entry.get_text()
+        if not ssid:
+            self.window.show_toast("Please enter a network name")
+            return
+        try:
+            result = subprocess.run(['nmcli', 'device', 'wifi', 'connect', ssid, 
+                                    'password', password, 'hidden', 'yes'],
+                                   capture_output=True, text=True)
+            if result.returncode == 0:
+                self.window.show_toast(f"Connected to {ssid}")
+            else:
+                self.window.show_toast(f"Failed: {result.stderr.strip()}")
+        except Exception as e:
+            self.window.show_toast(f"Error: {str(e)}")
+    
+    def on_install_samba(self, button):
+        dialog = Adw.MessageDialog(transient_for=self.window, heading="Install File Sharing",
+                                    body="This will install Samba for sharing files on your network.")
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("install", "Install")
+        dialog.set_response_appearance("install", Adw.ResponseAppearance.SUGGESTED)
+        dialog.connect("response", self._on_install_samba_response)
+        dialog.present()
+    
+    def _on_install_samba_response(self, dialog, response):
+        if response == "install":
+            plan = self.samba.create_install_plan()
+            self._execute_plan(plan, "Installing File Sharing")
+    
+    def on_quick_share(self, row):
+        dialog = QuickShareDialog(self.window, self.samba, self._execute_plan)
+        dialog.present()
+    
+    def on_quick_scan(self, row):
+        page = NetworkScanPage(self.window, self.scanner, ScanType.QUICK)
+        self.window.navigation_view.push(page)
+    
+    def on_browse_network(self, row):
+        subprocess.Popen(['xdg-open', 'smb://'])
+    
+    def _on_create_hotspot(self, row):
+        # Check if hotspot running
+        try:
+            result = subprocess.run(['nmcli', '-t', '-f', 'NAME,TYPE', 'connection', 'show', '--active'],
+                                   capture_output=True, text=True)
+            for line in result.stdout.strip().split('\n'):
+                if 'Hotspot' in line:
+                    dialog = Adw.MessageDialog(transient_for=self.window, heading="Hotspot Active",
+                                                body="Would you like to stop it?")
+                    dialog.add_response("cancel", "Cancel")
+                    dialog.add_response("stop", "Stop Hotspot")
+                    dialog.set_response_appearance("stop", Adw.ResponseAppearance.DESTRUCTIVE)
+                    dialog.connect("response", lambda d, r: subprocess.run(['nmcli', 'connection', 'down', 'Hotspot']) if r == "stop" else None)
+                    dialog.present()
+                    return
+        except Exception:
+            pass
+        
+        dialog = Adw.MessageDialog(transient_for=self.window, heading="Create WiFi Hotspot", body="")
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        content.set_margin_top(12)
+        content.set_margin_bottom(12)
+        content.set_margin_start(12)
+        content.set_margin_end(12)
+        
+        name_group = Adw.PreferencesGroup()
+        name_entry = Adw.EntryRow()
+        name_entry.set_title("Hotspot Name")
+        name_entry.set_text(f"{os.uname().nodename}-hotspot")
+        name_group.add(name_entry)
+        content.append(name_group)
+        
+        pass_group = Adw.PreferencesGroup()
+        pass_entry = Adw.PasswordEntryRow()
+        pass_entry.set_title("Password (min 8 characters)")
+        pass_group.add(pass_entry)
+        content.append(pass_group)
+        
+        dialog.set_extra_child(content)
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("create", "Create")
+        dialog.set_response_appearance("create", Adw.ResponseAppearance.SUGGESTED)
+        dialog.connect("response", self._on_hotspot_response, name_entry, pass_entry)
+        dialog.present()
+    
+    def _on_hotspot_response(self, dialog, response, name_entry, pass_entry):
+        if response != "create":
+            return
+        name = name_entry.get_text().strip()
+        password = pass_entry.get_text()
+        if not name or len(password) < 8:
+            self.window.show_toast("Name required and password must be 8+ characters")
+            return
+        try:
+            result = subprocess.run(['nmcli', 'device', 'wifi', 'hotspot', 'ssid', name, 'password', password],
+                                   capture_output=True, text=True)
+            self.window.show_toast(f"Hotspot '{name}' created!" if result.returncode == 0 else f"Failed: {result.stderr.strip()}")
+        except Exception as e:
+            self.window.show_toast(f"Error: {str(e)}")
+    
+    def _on_run_speedtest(self, row):
+        if subprocess.run(['which', 'speedtest-cli'], capture_output=True).returncode != 0:
+            dialog = Adw.MessageDialog(transient_for=self.window, heading="Speed Test Required",
+                                        body="speedtest-cli is needed.")
+            dialog.add_response("cancel", "Cancel")
+            dialog.add_response("install", "Install")
+            dialog.set_response_appearance("install", Adw.ResponseAppearance.SUGGESTED)
+            dialog.connect("response", self._on_install_speedtest)
+            dialog.present()
+            return
+        self._run_in_terminal('echo "Speed Test"; echo ""; speedtest-cli; echo ""; read -p "Press Enter..."')
+    
+    def _on_install_speedtest(self, dialog, response):
+        if response == "install":
+            self._execute_plan({"packages": ["speedtest-cli"], "commands": []}, "Installing Speed Test")
+    
+    def _on_open_network_settings(self, row):
+        tools = [['gnome-control-center', 'network'], ['nm-connection-editor'],
+                 ['systemsettings', 'kcm_networkmanagement']]
+        for tool in tools:
+            try:
+                if subprocess.run(['which', tool[0]], capture_output=True).returncode == 0:
+                    subprocess.Popen(tool)
+                    return
+            except Exception:
+                continue
+        self.window.show_toast("Could not open network settings")
+    
+    def _run_in_terminal(self, script: str):
+        terminals = [('konsole', ['konsole', '-e', 'bash', '-c', script]),
+                     ('gnome-terminal', ['gnome-terminal', '--', 'bash', '-c', script]),
+                     ('xfce4-terminal', ['xfce4-terminal', '-e', f'bash -c \'{script}\''])]
+        for name, cmd in terminals:
+            if subprocess.run(['which', name], capture_output=True).returncode == 0:
+                subprocess.Popen(cmd)
+                return
+    
+    def _execute_plan(self, plan: dict, title: str):
+        dialog = PlanExecutionDialog(self.window, plan, title, self.distro)
+        dialog.present()
+
+
+@register_module(
+    id="networking_advanced",
+    name="Advanced Networking",
+    description="VPN, Active Directory, firewall, and advanced sharing",
+    icon="network-server-symbolic",
+    category=ModuleCategory.NETWORK,
+    order=15
+)
+class NetworkingPage(Adw.NavigationPage):
+    """Advanced networking tools page."""
+    
+    def __init__(self, window: 'LinuxToolkitWindow'):
+        super().__init__(title="Advanced Networking")
         
         self.window = window
         self.distro = get_distro()
@@ -1029,6 +1497,15 @@ class NetworkingPage(Adw.NavigationPage):
         
         # Firewall section
         content_box.append(self._create_firewall_section())
+        
+        # WiFi section
+        content_box.append(self._create_wifi_section())
+        
+        # VPN section
+        content_box.append(self._create_vpn_section())
+        
+        # Tools section (Hotspot, Speed Test, etc.)
+        content_box.append(self._create_network_tools_section())
     
     def on_refresh(self, button):
         """Refresh the status by rebuilding content."""
@@ -1271,6 +1748,209 @@ class NetworkingPage(Adw.NavigationPage):
         
         return group
     
+    def _create_wifi_section(self) -> Gtk.Widget:
+        """Create WiFi management section."""
+        group = Adw.PreferencesGroup()
+        group.set_title("WiFi")
+        group.set_description("Wireless network management")
+        
+        # Check if nmcli is available
+        has_nmcli = subprocess.run(['which', 'nmcli'], capture_output=True).returncode == 0
+        
+        if not has_nmcli:
+            info_row = Adw.ActionRow()
+            info_row.set_title("NetworkManager Not Found")
+            info_row.set_subtitle("WiFi management requires NetworkManager")
+            info_row.add_prefix(Gtk.Image.new_from_icon_name("dialog-warning-symbolic"))
+            group.add(info_row)
+            return group
+        
+        # Current WiFi status
+        wifi_status = self._get_wifi_status()
+        
+        status_row = Adw.ActionRow()
+        status_row.set_title("WiFi Status")
+        if wifi_status['enabled']:
+            if wifi_status['connected']:
+                status_row.set_subtitle(f"Connected to {wifi_status['ssid']}")
+                status_row.add_prefix(Gtk.Image.new_from_icon_name("network-wireless-signal-excellent-symbolic"))
+            else:
+                status_row.set_subtitle("Enabled but not connected")
+                status_row.add_prefix(Gtk.Image.new_from_icon_name("network-wireless-offline-symbolic"))
+        else:
+            status_row.set_subtitle("WiFi is disabled")
+            status_row.add_prefix(Gtk.Image.new_from_icon_name("network-wireless-disabled-symbolic"))
+        group.add(status_row)
+        
+        # WiFi settings link
+        settings_row = Adw.ActionRow()
+        settings_row.set_title("WiFi Settings")
+        settings_row.set_subtitle("Connect to networks, manage saved connections")
+        settings_row.add_prefix(Gtk.Image.new_from_icon_name("preferences-system-network-symbolic"))
+        settings_row.set_activatable(True)
+        settings_row.connect("activated", self._on_open_wifi_settings)
+        settings_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        group.add(settings_row)
+        
+        # Connect to hidden network
+        hidden_row = Adw.ActionRow()
+        hidden_row.set_title("Connect to Hidden Network")
+        hidden_row.set_subtitle("Join a network that doesn't broadcast its name")
+        hidden_row.add_prefix(Gtk.Image.new_from_icon_name("network-wireless-acquiring-symbolic"))
+        hidden_row.set_activatable(True)
+        hidden_row.connect("activated", self._on_connect_hidden_network)
+        hidden_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        group.add(hidden_row)
+        
+        return group
+    
+    def _create_vpn_section(self) -> Gtk.Widget:
+        """Create VPN section."""
+        group = Adw.PreferencesGroup()
+        group.set_title("VPN")
+        group.set_description("Virtual Private Network connections")
+        
+        # Check for VPN tools
+        has_nmcli = subprocess.run(['which', 'nmcli'], capture_output=True).returncode == 0
+        
+        # Current VPN status
+        vpn_connected = False
+        vpn_name = ""
+        if has_nmcli:
+            try:
+                result = subprocess.run(
+                    ['nmcli', '-t', '-f', 'TYPE,NAME,STATE', 'connection', 'show', '--active'],
+                    capture_output=True, text=True
+                )
+                for line in result.stdout.strip().split('\n'):
+                    if line and 'vpn' in line.lower():
+                        parts = line.split(':')
+                        if len(parts) >= 2:
+                            vpn_connected = True
+                            vpn_name = parts[1]
+                            break
+            except Exception:
+                pass
+        
+        # Status row
+        status_row = Adw.ActionRow()
+        status_row.set_title("VPN Status")
+        if vpn_connected:
+            status_row.set_subtitle(f"Connected: {vpn_name}")
+            status_row.add_prefix(Gtk.Image.new_from_icon_name("network-vpn-symbolic"))
+        else:
+            status_row.set_subtitle("Not connected")
+            status_row.add_prefix(Gtk.Image.new_from_icon_name("network-vpn-disconnected-symbolic"))
+        group.add(status_row)
+        
+        # Import OpenVPN config
+        openvpn_row = Adw.ActionRow()
+        openvpn_row.set_title("Import OpenVPN Config")
+        openvpn_row.set_subtitle("Import a .ovpn configuration file")
+        openvpn_row.add_prefix(Gtk.Image.new_from_icon_name("document-open-symbolic"))
+        openvpn_row.set_activatable(True)
+        openvpn_row.connect("activated", self._on_import_openvpn)
+        openvpn_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        group.add(openvpn_row)
+        
+        # Import WireGuard config
+        wireguard_row = Adw.ActionRow()
+        wireguard_row.set_title("Import WireGuard Config")
+        wireguard_row.set_subtitle("Import a .conf WireGuard configuration")
+        wireguard_row.add_prefix(Gtk.Image.new_from_icon_name("document-open-symbolic"))
+        wireguard_row.set_activatable(True)
+        wireguard_row.connect("activated", self._on_import_wireguard)
+        wireguard_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        group.add(wireguard_row)
+        
+        # VPN settings
+        settings_row = Adw.ActionRow()
+        settings_row.set_title("VPN Settings")
+        settings_row.set_subtitle("Manage VPN connections")
+        settings_row.add_prefix(Gtk.Image.new_from_icon_name("preferences-system-network-symbolic"))
+        settings_row.set_activatable(True)
+        settings_row.connect("activated", self._on_open_vpn_settings)
+        settings_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        group.add(settings_row)
+        
+        return group
+    
+    def _create_network_tools_section(self) -> Gtk.Widget:
+        """Create network tools section."""
+        group = Adw.PreferencesGroup()
+        group.set_title("Network Tools")
+        group.set_description("Utilities for network management")
+        
+        # WiFi Hotspot
+        hotspot_row = Adw.ActionRow()
+        hotspot_row.set_title("Create WiFi Hotspot")
+        hotspot_row.set_subtitle("Share your internet connection wirelessly")
+        hotspot_row.add_prefix(Gtk.Image.new_from_icon_name("network-wireless-hotspot-symbolic"))
+        hotspot_row.set_activatable(True)
+        hotspot_row.connect("activated", self._on_create_hotspot)
+        hotspot_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        group.add(hotspot_row)
+        
+        # Speed test
+        speed_row = Adw.ActionRow()
+        speed_row.set_title("Speed Test")
+        speed_row.set_subtitle("Test your internet connection speed")
+        speed_row.add_prefix(Gtk.Image.new_from_icon_name("utilities-system-monitor-symbolic"))
+        speed_row.set_activatable(True)
+        speed_row.connect("activated", self._on_run_speedtest)
+        speed_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        group.add(speed_row)
+        
+        # Hosts file editor
+        hosts_row = Adw.ActionRow()
+        hosts_row.set_title("Edit Hosts File")
+        hosts_row.set_subtitle("Manage local hostname mappings")
+        hosts_row.add_prefix(Gtk.Image.new_from_icon_name("text-x-generic-symbolic"))
+        hosts_row.set_activatable(True)
+        hosts_row.connect("activated", self._on_edit_hosts)
+        hosts_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        group.add(hosts_row)
+        
+        # Network settings
+        settings_row = Adw.ActionRow()
+        settings_row.set_title("Network Settings")
+        settings_row.set_subtitle("Open system network configuration")
+        settings_row.add_prefix(Gtk.Image.new_from_icon_name("preferences-system-network-symbolic"))
+        settings_row.set_activatable(True)
+        settings_row.connect("activated", self._on_open_network_settings)
+        settings_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        group.add(settings_row)
+        
+        return group
+    
+    def _get_wifi_status(self) -> dict:
+        """Get current WiFi status."""
+        status = {'enabled': False, 'connected': False, 'ssid': ''}
+        
+        try:
+            # Check if WiFi is enabled
+            result = subprocess.run(
+                ['nmcli', 'radio', 'wifi'],
+                capture_output=True, text=True
+            )
+            status['enabled'] = result.stdout.strip() == 'enabled'
+            
+            if status['enabled']:
+                # Check if connected
+                result = subprocess.run(
+                    ['nmcli', '-t', '-f', 'ACTIVE,SSID', 'dev', 'wifi'],
+                    capture_output=True, text=True
+                )
+                for line in result.stdout.strip().split('\n'):
+                    if line.startswith('yes:'):
+                        status['connected'] = True
+                        status['ssid'] = line.split(':', 1)[1] if ':' in line else ''
+                        break
+        except Exception:
+            pass
+        
+        return status
+    
     # -------------------------------------------------------------------------
     # Event Handlers
     # -------------------------------------------------------------------------
@@ -1377,6 +2057,487 @@ class NetworkingPage(Adw.NavigationPage):
         """Show quick open port dialog."""
         dialog = QuickOpenPortDialog(self.window, self.firewall, self._execute_plan)
         dialog.present()
+    
+    # -------------------------------------------------------------------------
+    # WiFi, VPN, and Tools Handlers
+    # -------------------------------------------------------------------------
+    
+    def _on_open_wifi_settings(self, row):
+        """Open system WiFi settings."""
+        tools = [
+            ['gnome-control-center', 'wifi'],
+            ['nm-connection-editor'],
+            ['systemsettings', 'kcm_networkmanagement'],
+            ['connman-gtk'],
+        ]
+        
+        for tool in tools:
+            try:
+                result = subprocess.run(['which', tool[0]], capture_output=True)
+                if result.returncode == 0:
+                    subprocess.Popen(tool)
+                    return
+            except Exception:
+                continue
+        
+        self.window.show_toast("Could not open WiFi settings")
+    
+    def _on_connect_hidden_network(self, row):
+        """Show dialog to connect to hidden network."""
+        dialog = Adw.MessageDialog(
+            transient_for=self.window,
+            heading="Connect to Hidden Network",
+            body="Enter the network name (SSID) and password."
+        )
+        
+        # Add entry fields
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        content.set_margin_top(12)
+        content.set_margin_bottom(12)
+        content.set_margin_start(12)
+        content.set_margin_end(12)
+        
+        ssid_group = Adw.PreferencesGroup()
+        ssid_entry = Adw.EntryRow()
+        ssid_entry.set_title("Network Name (SSID)")
+        ssid_group.add(ssid_entry)
+        content.append(ssid_group)
+        
+        pass_group = Adw.PreferencesGroup()
+        pass_entry = Adw.PasswordEntryRow()
+        pass_entry.set_title("Password")
+        pass_group.add(pass_entry)
+        content.append(pass_group)
+        
+        dialog.set_extra_child(content)
+        
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("connect", "Connect")
+        dialog.set_response_appearance("connect", Adw.ResponseAppearance.SUGGESTED)
+        dialog.connect("response", self._on_hidden_network_response, ssid_entry, pass_entry)
+        dialog.present()
+    
+    def _on_hidden_network_response(self, dialog, response, ssid_entry, pass_entry):
+        """Handle hidden network connection."""
+        if response != "connect":
+            return
+        
+        ssid = ssid_entry.get_text().strip()
+        password = pass_entry.get_text()
+        
+        if not ssid:
+            self.window.show_toast("Please enter a network name")
+            return
+        
+        # Use nmcli to connect
+        try:
+            cmd = ['nmcli', 'device', 'wifi', 'connect', ssid, 'password', password, 'hidden', 'yes']
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                self.window.show_toast(f"Connected to {ssid}")
+            else:
+                self.window.show_toast(f"Failed to connect: {result.stderr.strip()}")
+        except Exception as e:
+            self.window.show_toast(f"Error: {str(e)}")
+    
+    def _on_import_openvpn(self, row):
+        """Import OpenVPN configuration file."""
+        # Check if OpenVPN plugin is installed
+        has_plugin = subprocess.run(
+            ['which', 'nmcli'], capture_output=True
+        ).returncode == 0
+        
+        if not has_plugin:
+            self.window.show_toast("NetworkManager OpenVPN plugin required")
+            return
+        
+        dialog = Gtk.FileDialog()
+        dialog.set_title("Select OpenVPN Configuration")
+        
+        # Filter for .ovpn files
+        filter_ovpn = Gtk.FileFilter()
+        filter_ovpn.set_name("OpenVPN files (*.ovpn)")
+        filter_ovpn.add_pattern("*.ovpn")
+        
+        filters = Gio.ListStore.new(Gtk.FileFilter)
+        filters.append(filter_ovpn)
+        dialog.set_filters(filters)
+        
+        dialog.open(self.window, None, self._on_openvpn_file_selected)
+    
+    def _on_openvpn_file_selected(self, dialog, result):
+        """Handle OpenVPN file selection."""
+        try:
+            file = dialog.open_finish(result)
+            if file:
+                path = file.get_path()
+                
+                # Import using nmcli
+                result = subprocess.run(
+                    ['nmcli', 'connection', 'import', 'type', 'openvpn', 'file', path],
+                    capture_output=True, text=True
+                )
+                
+                if result.returncode == 0:
+                    self.window.show_toast("OpenVPN config imported successfully")
+                else:
+                    # Check if plugin is missing
+                    if 'plugin' in result.stderr.lower():
+                        self._offer_install_openvpn_plugin()
+                    else:
+                        self.window.show_toast(f"Import failed: {result.stderr.strip()}")
+        except Exception:
+            pass
+    
+    def _offer_install_openvpn_plugin(self):
+        """Offer to install OpenVPN NetworkManager plugin."""
+        dialog = Adw.MessageDialog(
+            transient_for=self.window,
+            heading="OpenVPN Plugin Required",
+            body="The NetworkManager OpenVPN plugin is needed to import this configuration."
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("install", "Install Plugin")
+        dialog.set_response_appearance("install", Adw.ResponseAppearance.SUGGESTED)
+        dialog.connect("response", self._on_install_openvpn_plugin)
+        dialog.present()
+    
+    def _on_install_openvpn_plugin(self, dialog, response):
+        """Install OpenVPN plugin."""
+        if response != "install":
+            return
+        
+        packages = {
+            DistroFamily.ARCH: "networkmanager-openvpn",
+            DistroFamily.DEBIAN: "network-manager-openvpn-gnome",
+            DistroFamily.FEDORA: "NetworkManager-openvpn-gnome",
+            DistroFamily.OPENSUSE: "NetworkManager-openvpn",
+        }
+        
+        pkg = packages.get(self.distro.family, "")
+        if not pkg:
+            self.window.show_toast("Package not found for your distribution")
+            return
+        
+        plan = {
+            "packages": [pkg],
+            "commands": []
+        }
+        self._execute_plan(plan, "Installing OpenVPN Plugin")
+    
+    def _on_import_wireguard(self, row):
+        """Import WireGuard configuration file."""
+        dialog = Gtk.FileDialog()
+        dialog.set_title("Select WireGuard Configuration")
+        
+        # Filter for .conf files
+        filter_conf = Gtk.FileFilter()
+        filter_conf.set_name("WireGuard files (*.conf)")
+        filter_conf.add_pattern("*.conf")
+        
+        filters = Gio.ListStore.new(Gtk.FileFilter)
+        filters.append(filter_conf)
+        dialog.set_filters(filters)
+        
+        dialog.open(self.window, None, self._on_wireguard_file_selected)
+    
+    def _on_wireguard_file_selected(self, dialog, result):
+        """Handle WireGuard file selection."""
+        try:
+            file = dialog.open_finish(result)
+            if file:
+                path = file.get_path()
+                
+                # Import using nmcli
+                result = subprocess.run(
+                    ['nmcli', 'connection', 'import', 'type', 'wireguard', 'file', path],
+                    capture_output=True, text=True
+                )
+                
+                if result.returncode == 0:
+                    self.window.show_toast("WireGuard config imported successfully")
+                else:
+                    if 'plugin' in result.stderr.lower() or 'wireguard' in result.stderr.lower():
+                        self._offer_install_wireguard()
+                    else:
+                        self.window.show_toast(f"Import failed: {result.stderr.strip()}")
+        except Exception:
+            pass
+    
+    def _offer_install_wireguard(self):
+        """Offer to install WireGuard."""
+        dialog = Adw.MessageDialog(
+            transient_for=self.window,
+            heading="WireGuard Required",
+            body="WireGuard tools are needed to use this configuration."
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("install", "Install WireGuard")
+        dialog.set_response_appearance("install", Adw.ResponseAppearance.SUGGESTED)
+        dialog.connect("response", self._on_install_wireguard)
+        dialog.present()
+    
+    def _on_install_wireguard(self, dialog, response):
+        """Install WireGuard."""
+        if response != "install":
+            return
+        
+        packages = {
+            DistroFamily.ARCH: "wireguard-tools",
+            DistroFamily.DEBIAN: "wireguard",
+            DistroFamily.FEDORA: "wireguard-tools",
+            DistroFamily.OPENSUSE: "wireguard-tools",
+        }
+        
+        pkg = packages.get(self.distro.family, "wireguard-tools")
+        
+        plan = {
+            "packages": [pkg],
+            "commands": []
+        }
+        self._execute_plan(plan, "Installing WireGuard")
+    
+    def _on_open_vpn_settings(self, row):
+        """Open VPN settings."""
+        tools = [
+            ['gnome-control-center', 'network'],
+            ['nm-connection-editor'],
+            ['systemsettings', 'kcm_networkmanagement'],
+        ]
+        
+        for tool in tools:
+            try:
+                result = subprocess.run(['which', tool[0]], capture_output=True)
+                if result.returncode == 0:
+                    subprocess.Popen(tool)
+                    return
+            except Exception:
+                continue
+        
+        self.window.show_toast("Could not open VPN settings")
+    
+    def _on_create_hotspot(self, row):
+        """Create WiFi hotspot."""
+        # Check if already running a hotspot
+        try:
+            result = subprocess.run(
+                ['nmcli', '-t', '-f', 'NAME,TYPE', 'connection', 'show', '--active'],
+                capture_output=True, text=True
+            )
+            for line in result.stdout.strip().split('\n'):
+                if 'Hotspot' in line:
+                    # Hotspot is running, offer to stop
+                    dialog = Adw.MessageDialog(
+                        transient_for=self.window,
+                        heading="Hotspot Active",
+                        body="A WiFi hotspot is currently running. Would you like to stop it?"
+                    )
+                    dialog.add_response("cancel", "Cancel")
+                    dialog.add_response("stop", "Stop Hotspot")
+                    dialog.set_response_appearance("stop", Adw.ResponseAppearance.DESTRUCTIVE)
+                    dialog.connect("response", self._on_stop_hotspot)
+                    dialog.present()
+                    return
+        except Exception:
+            pass
+        
+        # Show hotspot creation dialog
+        dialog = Adw.MessageDialog(
+            transient_for=self.window,
+            heading="Create WiFi Hotspot",
+            body="Share your internet connection wirelessly."
+        )
+        
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        content.set_margin_top(12)
+        content.set_margin_bottom(12)
+        content.set_margin_start(12)
+        content.set_margin_end(12)
+        
+        name_group = Adw.PreferencesGroup()
+        name_entry = Adw.EntryRow()
+        name_entry.set_title("Hotspot Name")
+        name_entry.set_text(f"{os.uname().nodename}-hotspot")
+        name_group.add(name_entry)
+        content.append(name_group)
+        
+        pass_group = Adw.PreferencesGroup()
+        pass_entry = Adw.PasswordEntryRow()
+        pass_entry.set_title("Password (min 8 characters)")
+        pass_group.add(pass_entry)
+        content.append(pass_group)
+        
+        dialog.set_extra_child(content)
+        
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("create", "Create Hotspot")
+        dialog.set_response_appearance("create", Adw.ResponseAppearance.SUGGESTED)
+        dialog.connect("response", self._on_create_hotspot_response, name_entry, pass_entry)
+        dialog.present()
+    
+    def _on_create_hotspot_response(self, dialog, response, name_entry, pass_entry):
+        """Handle hotspot creation."""
+        if response != "create":
+            return
+        
+        name = name_entry.get_text().strip()
+        password = pass_entry.get_text()
+        
+        if not name:
+            self.window.show_toast("Please enter a hotspot name")
+            return
+        
+        if len(password) < 8:
+            self.window.show_toast("Password must be at least 8 characters")
+            return
+        
+        # Create hotspot using nmcli
+        try:
+            result = subprocess.run(
+                ['nmcli', 'device', 'wifi', 'hotspot', 'ssid', name, 'password', password],
+                capture_output=True, text=True
+            )
+            
+            if result.returncode == 0:
+                self.window.show_toast(f"Hotspot '{name}' created!")
+            else:
+                self.window.show_toast(f"Failed: {result.stderr.strip()}")
+        except Exception as e:
+            self.window.show_toast(f"Error: {str(e)}")
+    
+    def _on_stop_hotspot(self, dialog, response):
+        """Stop the hotspot."""
+        if response != "stop":
+            return
+        
+        try:
+            subprocess.run(['nmcli', 'connection', 'down', 'Hotspot'], capture_output=True)
+            self.window.show_toast("Hotspot stopped")
+        except Exception:
+            self.window.show_toast("Could not stop hotspot")
+    
+    def _on_run_speedtest(self, row):
+        """Run internet speed test."""
+        # Check if speedtest-cli is installed
+        has_speedtest = subprocess.run(['which', 'speedtest-cli'], capture_output=True).returncode == 0
+        
+        if not has_speedtest:
+            dialog = Adw.MessageDialog(
+                transient_for=self.window,
+                heading="Speed Test Tool Required",
+                body="speedtest-cli is needed to run speed tests."
+            )
+            dialog.add_response("cancel", "Cancel")
+            dialog.add_response("install", "Install speedtest-cli")
+            dialog.set_response_appearance("install", Adw.ResponseAppearance.SUGGESTED)
+            dialog.connect("response", self._on_install_speedtest)
+            dialog.present()
+            return
+        
+        # Run speed test in terminal
+        script = '''echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  Internet Speed Test"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+speedtest-cli
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "Press Enter to close..."
+read'''
+        
+        self._run_in_terminal(script)
+    
+    def _on_install_speedtest(self, dialog, response):
+        """Install speedtest-cli."""
+        if response != "install":
+            return
+        
+        packages = {
+            DistroFamily.ARCH: "speedtest-cli",
+            DistroFamily.DEBIAN: "speedtest-cli",
+            DistroFamily.FEDORA: "speedtest-cli",
+            DistroFamily.OPENSUSE: "speedtest-cli",
+        }
+        
+        pkg = packages.get(self.distro.family, "speedtest-cli")
+        
+        plan = {
+            "packages": [pkg],
+            "commands": []
+        }
+        self._execute_plan(plan, "Installing Speed Test")
+    
+    def _on_edit_hosts(self, row):
+        """Edit the hosts file."""
+        # Try to open with a graphical editor
+        editors = [
+            ['pkexec', 'gedit', '/etc/hosts'],
+            ['pkexec', 'kate', '/etc/hosts'],
+            ['pkexec', 'xed', '/etc/hosts'],
+            ['pkexec', 'mousepad', '/etc/hosts'],
+            ['pkexec', 'nano', '/etc/hosts'],  # Will need terminal
+        ]
+        
+        for editor in editors[:-1]:  # Skip nano for now
+            try:
+                if subprocess.run(['which', editor[1]], capture_output=True).returncode == 0:
+                    subprocess.Popen(editor)
+                    return
+            except Exception:
+                continue
+        
+        # Fallback to terminal with nano
+        script = '''echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  Editing /etc/hosts"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+echo "Use Ctrl+O to save, Ctrl+X to exit"
+echo ""
+sudo nano /etc/hosts'''
+        
+        self._run_in_terminal(script)
+    
+    def _on_open_network_settings(self, row):
+        """Open system network settings."""
+        tools = [
+            ['gnome-control-center', 'network'],
+            ['nm-connection-editor'],
+            ['systemsettings', 'kcm_networkmanagement'],
+            ['connman-gtk'],
+        ]
+        
+        for tool in tools:
+            try:
+                result = subprocess.run(['which', tool[0]], capture_output=True)
+                if result.returncode == 0:
+                    subprocess.Popen(tool)
+                    return
+            except Exception:
+                continue
+        
+        self.window.show_toast("Could not open network settings")
+    
+    def _run_in_terminal(self, script: str):
+        """Run a script in a terminal window."""
+        terminals = [
+            ('konsole', ['konsole', '-e', 'bash', '-c', script]),
+            ('gnome-terminal', ['gnome-terminal', '--', 'bash', '-c', script]),
+            ('xfce4-terminal', ['xfce4-terminal', '-e', f'bash -c \'{script}\'']),
+            ('tilix', ['tilix', '-e', f'bash -c "{script}"']),
+            ('alacritty', ['alacritty', '-e', 'bash', '-c', script]),
+            ('kitty', ['kitty', 'bash', '-c', script]),
+        ]
+        
+        for term_name, term_cmd in terminals:
+            try:
+                if subprocess.run(['which', term_name], capture_output=True).returncode == 0:
+                    subprocess.Popen(term_cmd)
+                    return
+            except Exception:
+                continue
+        
+        self.window.show_toast("Could not find terminal emulator")
     
     def _execute_plan(self, plan: dict, title: str):
         """Execute a plan using tux-helper."""
