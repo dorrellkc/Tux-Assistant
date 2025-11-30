@@ -219,7 +219,7 @@ def save_projects(paths: List[str]):
     description="Git manager, SSH keys, and development utilities",
     icon="utilities-terminal-symbolic",
     category=ModuleCategory.DEVELOPER,
-    order=10
+    order=40  # Power user tier
 )
 class DeveloperToolsPage(Adw.NavigationPage):
     """Developer tools page."""

@@ -3076,7 +3076,7 @@ class PlanExecutionDialog(Adw.Dialog):
     description="Themes, extensions, widgets, and tweaks",
     icon="preferences-desktop-appearance-symbolic",
     category=ModuleCategory.SYSTEM,
-    order=30
+    order=13  # Make it look nice
 )
 class DesktopEnhancementsPage(Adw.NavigationPage):
     """Desktop enhancements module page."""

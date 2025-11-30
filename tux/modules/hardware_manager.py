@@ -462,7 +462,7 @@ def get_displays() -> List[DisplayInfo]:
     description="Printers, Bluetooth, displays, audio",
     icon="computer-symbolic",
     category=ModuleCategory.SYSTEM,
-    order=20
+    order=11  # Windows refugee essential
 )
 class HardwareManagerPage(Adw.NavigationPage):
     """Hardware management module page."""

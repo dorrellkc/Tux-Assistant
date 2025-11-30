@@ -162,7 +162,7 @@ def get_real_user() -> Tuple[str, str]:
     description="Create bootable ISO images from your system",
     icon="media-optical-symbolic",
     category=ModuleCategory.SYSTEM,
-    order=20
+    order=52  # Specialized tier
 )
 class ISOCreatorPage(Adw.NavigationPage):
     """Main ISO Creator page - GUI for penguins-eggs."""

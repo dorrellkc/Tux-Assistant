@@ -151,7 +151,7 @@ def get_tux_tunes_path() -> str:
     description="Internet radio with smart song recording",
     icon="audio-x-generic-symbolic",
     category=ModuleCategory.MEDIA,
-    order=60
+    order=1  # First - fun hook for new users
 )
 class TuxTunesPage(Adw.NavigationPage):
     """Tux Tunes radio player module page."""

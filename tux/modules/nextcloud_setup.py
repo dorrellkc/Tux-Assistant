@@ -790,7 +790,7 @@ class NextcloudInstallDialog(Adw.Dialog):
     description="Set up your own personal cloud server",
     icon="network-server-symbolic",
     category=ModuleCategory.SERVER,
-    order=50
+    order=51  # Specialized tier
 )
 class NextcloudSetupPage(Adw.NavigationPage):
     """Nextcloud setup module main page."""

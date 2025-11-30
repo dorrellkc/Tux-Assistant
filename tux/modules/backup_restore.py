@@ -295,7 +295,7 @@ DEFAULT_BACKUP_FOLDERS = [
     description="File backup and system snapshots",
     icon="drive-harddisk-symbolic",
     category=ModuleCategory.SYSTEM,
-    order=15
+    order=21  # System care tier
 )
 class BackupRestorePage(Adw.NavigationPage):
     """Backup and restore module page."""

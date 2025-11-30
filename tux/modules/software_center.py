@@ -1301,7 +1301,7 @@ from .registry import register_module, ModuleCategory
     description="Browse and install applications by category",
     icon="system-software-install-symbolic",
     category=ModuleCategory.SETUP,
-    order=20
+    order=3  # Third - install apps like app store
 )
 class SoftwareCenterPage(Adw.NavigationPage):
     """The Software Center main page showing categories."""

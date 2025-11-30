@@ -579,7 +579,7 @@ QUICK_TASKS = [
     description="Tutorials, troubleshooting, and guided help",
     icon="help-browser-symbolic",
     category=ModuleCategory.SYSTEM,
-    order=99  # Put at end
+    order=2  # Second - help for new users
 )
 class HelpLearningPage(Adw.NavigationPage):
     """Help and learning center for Linux beginners."""

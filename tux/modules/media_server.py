@@ -281,7 +281,7 @@ def detect_installed_media_server() -> Optional[MediaServer]:
     description="Plex, Jellyfin, Emby setup and drive configuration",
     icon="video-display-symbolic",
     category=ModuleCategory.SERVER,
-    order=51
+    order=50  # Specialized tier
 )
 class MediaServerPage(Adw.NavigationPage):
     """Media server setup module main page."""

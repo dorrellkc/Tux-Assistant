@@ -955,7 +955,7 @@ class FirewallManager:
     description="WiFi, file sharing, hotspot, and speed test",
     icon="network-wireless-symbolic",
     category=ModuleCategory.NETWORK,
-    order=10
+    order=12  # Windows refugee essential
 )
 class SimpleNetworkingPage(Adw.NavigationPage):
     """Simple networking tools for everyday users."""
@@ -1428,7 +1428,7 @@ class SimpleNetworkingPage(Adw.NavigationPage):
     description="VPN, Active Directory, firewall, and advanced sharing",
     icon="network-server-symbolic",
     category=ModuleCategory.NETWORK,
-    order=15
+    order=31  # Power user tier
 )
 class NetworkingPage(Adw.NavigationPage):
     """Advanced networking tools page."""

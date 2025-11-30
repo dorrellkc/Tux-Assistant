@@ -2260,7 +2260,7 @@ class BatchAlternativeInstallDialog(Adw.Dialog):
     description="Complete system setup, codecs, drivers, and apps",
     icon="system-run-symbolic",
     category=ModuleCategory.SETUP,
-    order=10
+    order=30  # Power user tier
 )
 class SetupToolsPage(Adw.NavigationPage):
     """The Setup Tools page with task selection and execution."""

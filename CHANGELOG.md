@@ -5,6 +5,37 @@ All notable changes to Tux Assistant will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.13.2] - 2025-11-30
+
+### Changed - Main Page Module Order
+
+Reordered modules to create a natural progression from "new to Linux" to "power user":
+
+**Tier 1: Fun & Familiar** (New User Hooks)
+1. Tux Tunes - Fun music player to explore first
+2. Help & Learning - "I'm new, help me!"
+3. Software Center - Install apps like an app store
+
+**Tier 2: Windows Refugee Essentials**
+4. Gaming - "Can I play my games?"
+5. Hardware Manager - Printers, Bluetooth, audio
+6. Networking - WiFi, file sharing
+7. Desktop Enhancements - Make it look nice
+
+**Tier 3: System Care**
+8. System Maintenance - Updates, cleanup
+9. Backup & Restore - Protect your files
+
+**Tier 4: Power User / Advanced**
+10. Setup Tools - System configuration
+11. Advanced Networking - VPN, AD, firewall
+12. Developer Tools - Git, coding
+
+**Tier 5: Specialized**
+13. Media Server - Plex, Jellyfin
+14. Nextcloud Server - Self-hosted cloud
+15. ISO Creator - Create custom distros
+
 ## [5.13.1] - 2025-11-30
 
 ### Fixed - Module ID References

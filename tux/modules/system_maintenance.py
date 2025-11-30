@@ -366,7 +366,7 @@ def toggle_autostart_app(app: StartupApp, enable: bool) -> bool:
     description="Cleanup, updates, startup apps, storage",
     icon="applications-system-symbolic",
     category=ModuleCategory.SYSTEM,
-    order=5
+    order=20  # System care tier
 )
 class SystemMaintenancePage(Adw.NavigationPage):
     """System maintenance module page."""
