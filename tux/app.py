@@ -184,6 +184,31 @@ messagedialog .body {
     min-height: 4px;
     background-color: @accent_bg_color;
 }
+
+/* Tux Tunes sidebar button */
+.tux-tunes-sidebar-btn {
+    padding: 12px 16px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, alpha(@accent_bg_color, 0.2), alpha(@accent_bg_color, 0.1));
+    border: 1px solid alpha(@accent_bg_color, 0.3);
+}
+
+.tux-tunes-sidebar-btn:hover {
+    background: linear-gradient(135deg, alpha(@accent_bg_color, 0.3), alpha(@accent_bg_color, 0.2));
+}
+
+.tux-tunes-icon {
+    font-size: 24pt;
+}
+
+.tux-tunes-title {
+    font-size: 11pt;
+    font-weight: bold;
+}
+
+.tux-tunes-subtitle {
+    font-size: 9pt;
+}
 """
 
 
@@ -620,13 +645,46 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         hint_label.add_css_class("dim-label")
         done_box.append(hint_label)
         
-        # RIGHT SIDE: Sidebar with fixed TuxFetch at top, scrollable area below
+        # RIGHT SIDE: Sidebar with Tux Tunes launcher, fixed TuxFetch, scrollable area below
         sidebar_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         sidebar_box.set_size_request(300, -1)  # Fixed width
         sidebar_box.add_css_class("tux-sidebar")
         main_hbox.append(sidebar_box)
         
-        # TOP: Fixed TuxFetch panel
+        # TOP: Tux Tunes launcher button
+        tux_tunes_btn = Gtk.Button()
+        tux_tunes_btn.add_css_class("tux-tunes-sidebar-btn")
+        tux_tunes_btn.set_margin_top(12)
+        tux_tunes_btn.set_margin_start(12)
+        tux_tunes_btn.set_margin_end(12)
+        tux_tunes_btn.connect("clicked", self._on_tux_tunes_clicked)
+        
+        # Button content
+        btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        btn_box.set_halign(Gtk.Align.CENTER)
+        tux_tunes_btn.set_child(btn_box)
+        
+        btn_icon = Gtk.Label(label="🎵")
+        btn_icon.add_css_class("tux-tunes-icon")
+        btn_box.append(btn_icon)
+        
+        btn_label_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        btn_box.append(btn_label_box)
+        
+        btn_title = Gtk.Label(label="Tux Tunes")
+        btn_title.add_css_class("tux-tunes-title")
+        btn_title.set_halign(Gtk.Align.START)
+        btn_label_box.append(btn_title)
+        
+        btn_subtitle = Gtk.Label(label="Internet radio & recording")
+        btn_subtitle.add_css_class("dim-label")
+        btn_subtitle.add_css_class("tux-tunes-subtitle")
+        btn_subtitle.set_halign(Gtk.Align.START)
+        btn_label_box.append(btn_subtitle)
+        
+        sidebar_box.append(tux_tunes_btn)
+        
+        # MIDDLE: Fixed TuxFetch panel
         hardware = get_hardware_info()
         tux_fetch = TuxFetchSidebar(self.distro, self.desktop, hardware)
         sidebar_box.append(tux_fetch)
@@ -693,6 +751,37 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         """Handle goodbye dialog response."""
         if response == "exit":
             self.get_application().quit()
+    
+    def _on_tux_tunes_clicked(self, button):
+        """Launch Tux Tunes application."""
+        import subprocess
+        import os
+        
+        # Try to find and launch Tux Tunes
+        app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        tux_tunes_script = os.path.join(app_dir, 'tux', 'apps', 'tux_tunes', 'tux-tunes.py')
+        
+        if os.path.exists(tux_tunes_script):
+            try:
+                subprocess.Popen(['python3', tux_tunes_script], 
+                               start_new_session=True,
+                               stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL)
+            except Exception as e:
+                # Show error toast
+                toast = Adw.Toast(title=f"Failed to launch Tux Tunes: {e}")
+                toast.set_timeout(3)
+                # Find toast overlay if available
+                pass
+        else:
+            # Show not found message
+            dialog = Adw.MessageDialog(
+                transient_for=self,
+                heading="Tux Tunes Not Found",
+                body="Could not locate the Tux Tunes application."
+            )
+            dialog.add_response("ok", "OK")
+            dialog.present()
     
     def create_system_info_banner(self) -> Gtk.Widget:
         """Create a banner showing system information."""

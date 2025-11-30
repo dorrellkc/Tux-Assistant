@@ -145,14 +145,8 @@ def get_tux_tunes_path() -> str:
     return possible_paths[0]  # Default to installed location
 
 
-@register_module(
-    id="tux_tunes",
-    name="Tux Tunes",
-    description="Internet radio with smart song recording",
-    icon="audio-x-generic-symbolic",
-    category=ModuleCategory.MEDIA,
-    order=1  # First - fun hook for new users
-)
+# NOTE: Tux Tunes is now launched from the sidebar, not the module list
+# Keeping the page class for potential future use but not registering it
 class TuxTunesPage(Adw.NavigationPage):
     """Tux Tunes radio player module page."""
     

@@ -630,33 +630,52 @@ class TuxFetchSidebar(Gtk.Box):
         
         # Separator line
         sep_label = Gtk.Label()
-        sep_label.set_markup("<small>────────────────</small>")
+        sep_label.set_markup("<small>────────────────────</small>")
         sep_label.add_css_class("dim-label")
         sep_label.set_halign(Gtk.Align.CENTER)
         inner.append(sep_label)
         
-        # Info rows (compact)
+        # Info rows - comprehensive like fastfetch
         info_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         info_box.set_margin_top(4)
         inner.append(info_box)
         
+        # System info
         info_lines = [
-            ("OS", self.distro.name),
+            ("OS", f"{self.distro.name} {platform.machine()}"),
+            ("Host", self._get_host_model()),
             ("Kernel", get_kernel()),
             ("Uptime", get_uptime()),
-            ("Pkgs", get_packages_count().split()[0]),  # Just the number
-            ("Shell", get_shell()),
-            ("DE", self.desktop.display_name),
-            ("WM", self.desktop.session_type.upper()),
+            ("Pkgs", get_packages_count()),
+            ("Shell", self._get_shell_with_version()),
         ]
         
         for label, value in info_lines:
             row = self._create_info_row(label, value)
             info_box.append(row)
         
+        # Display/Desktop section
+        info_box2 = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        info_box2.set_margin_top(6)
+        inner.append(info_box2)
+        
+        display_lines = [
+            ("Display", get_resolution()),
+            ("DE", self._get_de_with_version()),
+            ("WM", self._get_wm()),
+            ("Theme", self._get_theme()),
+            ("Icons", self._get_icons()),
+            ("Terminal", self._get_terminal_with_version()),
+        ]
+        
+        for label, value in display_lines:
+            if value and value != "Unknown":
+                row = self._create_info_row(label, value)
+                info_box2.append(row)
+        
         # Hardware section
         hw_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        hw_box.set_margin_top(8)
+        hw_box.set_margin_top(6)
         inner.append(hw_box)
         
         hw_lines = [
@@ -670,13 +689,42 @@ class TuxFetchSidebar(Gtk.Box):
         
         # Memory bar
         used, total, percent = get_memory_usage()
-        mem_row = self._create_bar_row("RAM", f"{used}/{total}GB", percent)
+        mem_row = self._create_bar_row("Memory", f"{used}/{total}GB", percent)
         hw_box.append(mem_row)
+        
+        # Swap info
+        swap_info = self._get_swap_info()
+        if swap_info:
+            swap_row = self._create_info_row("Swap", swap_info)
+            hw_box.append(swap_row)
         
         # Disk bar
         used_d, total_d, percent_d = get_disk_usage()
-        disk_row = self._create_bar_row("Disk", f"{int(used_d)}/{int(total_d)}GB", percent_d)
+        disk_row = self._create_bar_row("Disk (/)", f"{int(used_d)}/{int(total_d)}GB", percent_d)
         hw_box.append(disk_row)
+        
+        # Network/Battery section
+        net_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        net_box.set_margin_top(6)
+        inner.append(net_box)
+        
+        # Local IP
+        local_ip = self._get_local_ip()
+        if local_ip:
+            ip_row = self._create_info_row("Local IP", local_ip)
+            net_box.append(ip_row)
+        
+        # Battery (for laptops)
+        battery_info = self._get_battery_info()
+        if battery_info:
+            bat_row = self._create_info_row("Battery", battery_info)
+            net_box.append(bat_row)
+        
+        # Locale
+        locale_info = self._get_locale()
+        if locale_info:
+            locale_row = self._create_info_row("Locale", locale_info)
+            net_box.append(locale_row)
         
         # Color palette at very bottom
         palette = self._create_color_palette()
@@ -685,29 +733,154 @@ class TuxFetchSidebar(Gtk.Box):
         inner.append(palette)
     
     def _get_logo(self) -> str:
-        """Get a compact ASCII logo."""
+        """Get a compact ASCII logo matching fastfetch style."""
         distro_id = self.distro.id.lower()
         
-        # Compact logos
+        # More accurate logos matching fastfetch
         logos = {
-            'arch': "    /\\\n   /  \\\n  /    \\\n /______\\",
-            'endeavouros': "    /\\\n   /  \\\n  / /\\ \\\n /_/  \\_\\",
-            'manjaro': " ███████\n ██ ████\n ██ ████\n ███████",
-            'debian': "   _____\n  /  __ \\\n |  /   |\n  \\____/",
-            'ubuntu': "    _\n  _( )_\n (_   _)\n   (_)",
-            'fedora': "   ____\n  /    \\\n |  f  |\n  \\____/",
-            'opensuse': "  _____\n /     \\\n | ≋≋≋ |\n \\_____/",
-            'generic': "   .--.\n  |o_o |\n  |:_/ |\n  //||\\\\",
+            # EndeavourOS - curved mountain shape
+            'endeavouros': """      /\\
+     /  \\
+    /`'.,\\
+   /     ',
+  /      ,`\\
+ /   ,.`'   \\
+/.,'`googarch\\""",
+            
+            # Arch - classic A shape  
+            'arch': """       /\\
+      /  \\
+     /    \\
+    /      \\
+   /   /\\   \\
+  /   /  \\   \\
+ /   /    \\   \\
+/___/      \\___\\""",
+            
+            # Manjaro - blocky M
+            'manjaro': """██████████████████
+██████████████████
+████          ████
+████ ████████ ████
+████ ████████ ████
+████ ████████ ████
+████ ████████ ████
+████ ████████ ████""",
+            
+            # CachyOS - arch derivative
+            'cachyos': """      /\\
+     /  \\
+    /    \\
+   / ___  \\
+  / |   |  \\
+ /  |___|   \\
+/____________\\""",
+            
+            # Garuda - eagle/bird
+            'garuda': """       _______
+      /  ___  \\
+     / /`   `\\ \\
+    | | () () | |
+     \\ \\  ^  / /
+      \\ `---' /
+       `-----'""",
+            
+            # Debian - swirl
+            'debian': """    _____
+   /  __ \\
+  |  /    |
+  |  \\___-
+  -_
+    --_""",
+            
+            # Ubuntu - circle of friends
+            'ubuntu': """           _
+       ---(_)
+   _/  ---  \\
+  (_) |   |
+    \\  --- _/
+       ---(_)""",
+            
+            # Linux Mint - leaf
+            'linuxmint': """  ___________
+ |_          \\
+   | | _____ |
+   | | | | | |
+   | | | | | |
+   | \\_____| |
+   \\_________/""",
+            
+            # Pop!_OS
+            'pop': """   ____________
+  /  _______   \\
+ / /        \\   \\
+| |  ______  |  |
+| | |__  __| |  |
+ \\ \\   ||   /  /
+  \\_\\  ||  /__/""",
+            
+            # Fedora - infinity
+            'fedora': """        _____
+       /   __)\\
+       |  /  \\ \\
+    ___|  |__/ /
+   / (_    _)_/
+  / /  |  |
+  \\_)  |__|""",
+            
+            # openSUSE - gecko
+            'opensuse': """    _______
+  __|   __ \\
+       / .\\ \\
+       \\__/ |
+     _______|
+     \\_______
+  __________/""",
+            
+            # Zorin
+            'zorin': """   ________
+  /  ____  \\
+ |  |    |  |
+ |  |    |  |
+ |  |____|  |
+ |    __    |
+  \\__|  |__/""",
+            
+            # Generic Tux
+            'generic': """    .---.
+   /     \\
+   \\.@-@./
+   /`\\_/`\\
+  //  _  \\\\
+ | \\     / |
+  \\|  |  |/
+   |__|__|""",
         }
         
         # Check exact match first
         if distro_id in logos:
             return logos[distro_id]
         
+        # Check for common derivatives
+        if 'endeavour' in distro_id:
+            return logos['endeavouros']
+        if 'manjaro' in distro_id:
+            return logos['manjaro']
+        if 'cachyos' in distro_id or 'cachy' in distro_id:
+            return logos['cachyos']
+        if 'garuda' in distro_id:
+            return logos['garuda']
+        
         # Check family
         family = self.distro.family.value.lower()
-        if family in logos:
-            return logos[family]
+        if family == 'arch':
+            return logos['arch']
+        if family == 'debian':
+            return logos['debian']
+        if family == 'fedora':
+            return logos['fedora']
+        if family == 'opensuse':
+            return logos['opensuse']
         
         return logos['generic']
     
@@ -792,10 +965,245 @@ class TuxFetchSidebar(Gtk.Box):
         gpu = gpu.replace("Intel Corporation", "Intel")
         gpu = gpu.replace("[", "").replace("]", "")
         
-        if len(gpu) > 22:
-            gpu = gpu[:20] + "…"
+        if len(gpu) > 24:
+            gpu = gpu[:22] + "…"
         
         return gpu
+    
+    def _get_host_model(self) -> str:
+        """Get computer model name."""
+        try:
+            # Try DMI info
+            paths = [
+                '/sys/devices/virtual/dmi/id/product_name',
+                '/sys/devices/virtual/dmi/id/product_family',
+            ]
+            for path in paths:
+                if os.path.exists(path):
+                    with open(path, 'r') as f:
+                        model = f.read().strip()
+                        if model and model.lower() not in ('to be filled', 'default string', 'system product name'):
+                            return model[:28] if len(model) > 28 else model
+        except:
+            pass
+        return "Unknown"
+    
+    def _get_shell_with_version(self) -> str:
+        """Get shell name with version."""
+        shell = get_shell()
+        try:
+            if shell == 'bash':
+                result = subprocess.run(['bash', '--version'], capture_output=True, text=True, timeout=2)
+                if result.returncode == 0:
+                    # Parse "GNU bash, version 5.2.15(1)-release"
+                    line = result.stdout.split('\n')[0]
+                    if 'version' in line:
+                        version = line.split('version')[1].split()[0].split('(')[0]
+                        return f"bash {version}"
+            elif shell == 'zsh':
+                result = subprocess.run(['zsh', '--version'], capture_output=True, text=True, timeout=2)
+                if result.returncode == 0:
+                    parts = result.stdout.split()
+                    if len(parts) >= 2:
+                        return f"zsh {parts[1]}"
+            elif shell == 'fish':
+                result = subprocess.run(['fish', '--version'], capture_output=True, text=True, timeout=2)
+                if result.returncode == 0:
+                    parts = result.stdout.split()
+                    if len(parts) >= 3:
+                        return f"fish {parts[2]}"
+        except:
+            pass
+        return shell
+    
+    def _get_de_with_version(self) -> str:
+        """Get DE with version if available."""
+        de = self.desktop.display_name
+        # Try to get version
+        try:
+            if 'plasma' in de.lower() or 'kde' in de.lower():
+                result = subprocess.run(['plasmashell', '--version'], capture_output=True, text=True, timeout=2)
+                if result.returncode == 0:
+                    version = result.stdout.strip().split()[-1]
+                    return f"KDE Plasma {version}"
+            elif 'gnome' in de.lower():
+                result = subprocess.run(['gnome-shell', '--version'], capture_output=True, text=True, timeout=2)
+                if result.returncode == 0:
+                    version = result.stdout.strip().split()[-1]
+                    return f"GNOME {version}"
+            elif 'xfce' in de.lower():
+                result = subprocess.run(['xfce4-session', '--version'], capture_output=True, text=True, timeout=2)
+                if result.returncode == 0:
+                    for line in result.stdout.split('\n'):
+                        if 'xfce4-session' in line:
+                            version = line.split()[-1].strip('()')
+                            return f"XFCE {version}"
+        except:
+            pass
+        return de
+    
+    def _get_wm(self) -> str:
+        """Get window manager."""
+        # Check for specific WMs
+        session_type = self.desktop.session_type.upper()
+        
+        try:
+            # KWin
+            if subprocess.run(['pgrep', '-x', 'kwin_wayland'], capture_output=True).returncode == 0:
+                return "KWin (Wayland)"
+            if subprocess.run(['pgrep', '-x', 'kwin_x11'], capture_output=True).returncode == 0:
+                return "KWin (X11)"
+            # Mutter (GNOME)
+            if subprocess.run(['pgrep', '-x', 'mutter'], capture_output=True).returncode == 0:
+                return "Mutter"
+            # Others
+            wms = ['sway', 'hyprland', 'i3', 'openbox', 'xfwm4', 'marco', 'metacity']
+            for wm in wms:
+                if subprocess.run(['pgrep', '-x', wm], capture_output=True).returncode == 0:
+                    return wm.capitalize()
+        except:
+            pass
+        
+        return session_type
+    
+    def _get_theme(self) -> str:
+        """Get GTK/Qt theme."""
+        try:
+            # Try GTK theme
+            result = subprocess.run(['gsettings', 'get', 'org.gnome.desktop.interface', 'gtk-theme'], 
+                                   capture_output=True, text=True, timeout=2)
+            if result.returncode == 0:
+                theme = result.stdout.strip().strip("'")
+                return theme
+        except:
+            pass
+        
+        # Try reading from config
+        try:
+            gtk3_settings = os.path.expanduser('~/.config/gtk-3.0/settings.ini')
+            if os.path.exists(gtk3_settings):
+                with open(gtk3_settings, 'r') as f:
+                    for line in f:
+                        if line.startswith('gtk-theme-name'):
+                            return line.split('=')[1].strip()
+        except:
+            pass
+        
+        return "Unknown"
+    
+    def _get_icons(self) -> str:
+        """Get icon theme."""
+        try:
+            result = subprocess.run(['gsettings', 'get', 'org.gnome.desktop.interface', 'icon-theme'],
+                                   capture_output=True, text=True, timeout=2)
+            if result.returncode == 0:
+                return result.stdout.strip().strip("'")
+        except:
+            pass
+        return "Unknown"
+    
+    def _get_terminal_with_version(self) -> str:
+        """Get terminal with version."""
+        term = get_terminal()
+        try:
+            if term == 'konsole':
+                result = subprocess.run(['konsole', '--version'], capture_output=True, text=True, timeout=2)
+                if result.returncode == 0:
+                    for line in result.stdout.split('\n'):
+                        if 'konsole' in line.lower():
+                            parts = line.split()
+                            if len(parts) >= 2:
+                                return f"konsole {parts[-1]}"
+            elif term == 'gnome-terminal':
+                result = subprocess.run(['gnome-terminal', '--version'], capture_output=True, text=True, timeout=2)
+                if result.returncode == 0:
+                    parts = result.stdout.split()
+                    if len(parts) >= 4:
+                        return f"gnome-terminal {parts[3]}"
+        except:
+            pass
+        return term
+    
+    def _get_swap_info(self) -> str:
+        """Get swap usage."""
+        try:
+            with open('/proc/meminfo', 'r') as f:
+                swap_total = 0
+                swap_free = 0
+                for line in f:
+                    if line.startswith('SwapTotal:'):
+                        swap_total = int(line.split()[1])
+                    elif line.startswith('SwapFree:'):
+                        swap_free = int(line.split()[1])
+                
+                if swap_total > 0:
+                    swap_used = swap_total - swap_free
+                    used_gb = round(swap_used / 1024 / 1024, 2)
+                    total_gb = round(swap_total / 1024 / 1024, 2)
+                    percent = round((swap_used / swap_total) * 100, 0)
+                    return f"{used_gb}/{total_gb}GB ({int(percent)}%)"
+                else:
+                    return "Disabled"
+        except:
+            pass
+        return None
+    
+    def _get_local_ip(self) -> str:
+        """Get local IP address."""
+        try:
+            # Get default interface IP
+            import socket
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+            s.close()
+            return ip
+        except:
+            pass
+        return None
+    
+    def _get_battery_info(self) -> str:
+        """Get battery status for laptops."""
+        try:
+            bat_path = '/sys/class/power_supply/BAT0'
+            if not os.path.exists(bat_path):
+                bat_path = '/sys/class/power_supply/BAT1'
+            if not os.path.exists(bat_path):
+                return None  # No battery (desktop)
+            
+            # Read capacity
+            with open(f'{bat_path}/capacity', 'r') as f:
+                capacity = f.read().strip()
+            
+            # Read status
+            with open(f'{bat_path}/status', 'r') as f:
+                status = f.read().strip()
+            
+            status_map = {
+                'Charging': '⚡',
+                'Discharging': '🔋',
+                'Full': '✓',
+                'Not charging': '⏸'
+            }
+            icon = status_map.get(status, '')
+            
+            return f"{capacity}% {icon} [{status}]"
+        except:
+            pass
+        return None
+    
+    def _get_locale(self) -> str:
+        """Get system locale."""
+        import locale
+        try:
+            loc = locale.getlocale()[0]
+            if loc:
+                return loc.replace('_', '-')
+        except:
+            pass
+        
+        # Fallback to env
+        return os.environ.get('LANG', 'Unknown').split('.')[0]
     
     def _create_color_palette(self) -> Gtk.Widget:
         """Create small color blocks."""

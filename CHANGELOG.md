@@ -5,6 +5,94 @@ All notable changes to Tux Assistant will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.14.5] - 2025-11-30
+
+### Changed - Tux Tunes Moved to Sidebar
+
+Relocated Tux Tunes from the module list to the sidebar:
+
+**New Layout:**
+- Tux Tunes button at top of sidebar
+- TuxFetch system info below it
+- Scrollable area at bottom for future widgets
+
+**Benefits:**
+- Quick access without scrolling
+- Stays visible as you scroll modules
+- Module list focused on setup/config tasks
+- Sidebar becomes a "dashboard" with info + quick tools
+
+**Styling:**
+- Accent-colored button with gradient
+- Music note icon (🎵)
+- Title and subtitle
+- Hover effect
+
+**Removed:**
+- Tux Tunes no longer appears in "Media and Entertainment" category
+
+## [5.14.4] - 2025-11-30
+
+### Fixed - Accurate Distro ASCII Logos
+
+Updated ASCII logos to match fastfetch style more closely:
+
+**Logos Added/Improved:**
+- EndeavourOS - Curved mountain peak shape (not generic triangle)
+- Arch Linux - Classic A-frame design
+- Manjaro - Blocky M with squared corners
+- CachyOS - Arch derivative with icon
+- Garuda - Bird/eagle shape
+- Debian - Classic swirl
+- Ubuntu - Circle of friends
+- Linux Mint - Leaf shape
+- Pop!_OS - Stylized P
+- Fedora - Infinity loop
+- openSUSE - Gecko/chameleon
+- Zorin - Z shape
+- Generic Tux - Penguin for unknown distros
+
+**Detection:**
+- Exact distro ID matching first
+- Partial name matching for derivatives
+- Family-based fallback (Arch family gets Arch logo, etc.)
+
+## [5.14.3] - 2025-11-30
+
+### Added - Comprehensive System Info (Fastfetch Parity)
+
+TuxFetch now displays nearly all the info that fastfetch shows:
+
+**System:**
+- OS (with architecture)
+- Host (laptop/PC model name)
+- Kernel
+- Uptime
+- Packages (with package manager)
+- Shell (with version)
+
+**Display/Desktop:**
+- Display resolution
+- DE (with version: KDE Plasma 6.x, GNOME 4x, etc.)
+- WM (KWin, Mutter, Sway, etc.)
+- Theme (GTK theme)
+- Icons (icon theme)
+- Terminal (with version)
+
+**Hardware:**
+- CPU
+- GPU
+- Memory (with progress bar)
+- Swap usage
+- Disk (with progress bar)
+
+**Network/Power:**
+- Local IP address
+- Battery status (for laptops: percentage, charging state)
+- Locale
+
+Now we're at ~90% feature parity with fastfetch! 🐧
+
 ## [5.14.2] - 2025-11-30
 
 ### Changed - Sidebar Layout Fix
