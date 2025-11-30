@@ -144,9 +144,17 @@ messagedialog .body {
 }
 
 /* TuxFetch sidebar styles */
+.tux-sidebar {
+    background-color: @window_bg_color;
+    border-left: 1px solid alpha(@borders, 0.5);
+}
+
+.tux-sidebar-scrollable {
+    background-color: darker(@window_bg_color);
+}
+
 .tux-fetch-sidebar {
-    background-color: alpha(@window_bg_color, 0.5);
-    border-left: 1px solid alpha(@borders, 0.3);
+    background-color: transparent;
 }
 
 .tux-fetch-sidebar label {
@@ -155,6 +163,11 @@ messagedialog .body {
 
 .tux-fetch-sidebar .dim-label {
     opacity: 0.7;
+}
+
+.sidebar-separator {
+    margin-top: 8px;
+    margin-bottom: 0px;
 }
 
 .tux-fetch-bar {
@@ -548,7 +561,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         
         page = Adw.NavigationPage(title="Tux Assistant")
         
-        # Main horizontal layout: modules on left, fixed sidebar on right
+        # Main horizontal layout: modules on left, sidebar on right
         main_hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
         page.set_child(main_hbox)
         
@@ -607,14 +620,46 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         hint_label.add_css_class("dim-label")
         done_box.append(hint_label)
         
-        # RIGHT SIDE: Fixed TuxFetch sidebar (not scrollable, fixed position)
+        # RIGHT SIDE: Sidebar with fixed TuxFetch at top, scrollable area below
+        sidebar_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        sidebar_box.set_size_request(300, -1)  # Fixed width
+        sidebar_box.add_css_class("tux-sidebar")
+        main_hbox.append(sidebar_box)
+        
+        # TOP: Fixed TuxFetch panel
         hardware = get_hardware_info()
-        sidebar = TuxFetchSidebar(self.distro, self.desktop, hardware)
-        sidebar.set_size_request(280, -1)  # Fixed width
-        main_hbox.append(sidebar)
+        tux_fetch = TuxFetchSidebar(self.distro, self.desktop, hardware)
+        sidebar_box.append(tux_fetch)
+        
+        # Separator between fixed and scrollable
+        sidebar_sep = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
+        sidebar_sep.add_css_class("sidebar-separator")
+        sidebar_box.append(sidebar_sep)
+        
+        # BOTTOM: Scrollable area for future modules
+        sidebar_scrolled = Gtk.ScrolledWindow()
+        sidebar_scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        sidebar_scrolled.set_vexpand(True)
+        sidebar_scrolled.add_css_class("tux-sidebar-scrollable")
+        sidebar_box.append(sidebar_scrolled)
+        
+        # Container for future sidebar widgets
+        self.sidebar_content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        self.sidebar_content.set_margin_top(12)
+        self.sidebar_content.set_margin_bottom(12)
+        self.sidebar_content.set_margin_start(12)
+        self.sidebar_content.set_margin_end(12)
+        sidebar_scrolled.set_child(self.sidebar_content)
+        
+        # Placeholder text for now
+        placeholder = Gtk.Label()
+        placeholder.set_markup("<small><i>More widgets coming soon...</i></small>")
+        placeholder.add_css_class("dim-label")
+        placeholder.set_valign(Gtk.Align.START)
+        self.sidebar_content.append(placeholder)
         
         # Store reference to hide on small windows
-        self.tux_fetch_panel = sidebar
+        self.tux_fetch_panel = sidebar_box
         
         # Connect to window size changes to show/hide panel
         self.connect("notify::default-width", self._on_width_changed_for_panel)

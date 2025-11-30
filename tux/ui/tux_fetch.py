@@ -594,9 +594,10 @@ class TuxFetchSidebar(Gtk.Box):
         self.desktop = desktop_info
         self.hardware = hardware_info
         
-        # Style as sidebar
+        # Style as sidebar - don't expand, stay at top
         self.add_css_class("tux-fetch-sidebar")
-        self.set_vexpand(True)
+        self.set_vexpand(False)  # Don't expand - stay compact
+        self.set_valign(Gtk.Align.START)  # Align to top
         
         self.build_ui()
     
@@ -653,13 +654,9 @@ class TuxFetchSidebar(Gtk.Box):
             row = self._create_info_row(label, value)
             info_box.append(row)
         
-        # Spacer
-        spacer = Gtk.Box()
-        spacer.set_vexpand(True)
-        inner.append(spacer)
-        
-        # Hardware section at bottom
+        # Hardware section
         hw_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        hw_box.set_margin_top(8)
         inner.append(hw_box)
         
         hw_lines = [

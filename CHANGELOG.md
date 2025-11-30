@@ -5,6 +5,28 @@ All notable changes to Tux Assistant will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.14.2] - 2025-11-30
+
+### Changed - Sidebar Layout Fix
+
+Split the right sidebar into two distinct areas:
+
+**Top: Fixed TuxFetch Panel**
+- Compact system info display
+- Stays fixed at the top
+- Doesn't expand to fill space
+
+**Bottom: Scrollable Dark Area**
+- Dark background matching main content
+- Scrollable independently
+- Reserved for future widgets/modules
+- Shows "More widgets coming soon..." placeholder
+
+**Styling:**
+- Main sidebar has border-left separator
+- Bottom area uses darker background
+- Clean visual separation between fixed and scrollable areas
+
 ## [5.14.1] - 2025-11-30
 
 ### Changed - TuxFetch Sidebar Redesign
