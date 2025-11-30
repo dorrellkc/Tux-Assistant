@@ -51,19 +51,17 @@
 
 ---
 
-## Priority 3: Gaming (NEW MODULE)
+## Priority 3: Gaming (NEW MODULE) ✅ IMPLEMENTED in v5.9.0
 
-- [ ] Steam installation + Proton setup
-- [ ] Lutris for non-Steam games
-- [ ] Wine configuration
-- [ ] Game controller setup
-- [ ] Performance mode toggle
-  - [ ] Disable compositor
-  - [ ] GameMode integration
-- [ ] MangoHud setup (FPS overlay)
-- [ ] Popular games quick-install
-  - [ ] Minecraft
-  - [ ] Discord (for gaming comms)
+- [x] Steam installation
+- [x] Lutris for non-Steam games
+- [x] Heroic Games Launcher
+- [x] Bottles (Wine manager)
+- [x] GameMode (performance optimization)
+- [x] MangoHud (FPS overlay)
+- [x] ProtonUp-Qt (Proton version manager)
+- [x] Controller info
+- [x] Quick tips + ProtonDB link
 
 ---
 

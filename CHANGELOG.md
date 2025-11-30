@@ -5,6 +5,36 @@ All notable changes to Tux Assistant will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.9.0] - 2025-11-30
+
+### Added - Gaming Module (NEW!)
+A simple, safe gaming setup module:
+
+**Gaming Readiness**
+- 32-bit library support check
+- Vulkan support check
+
+**Gaming Platforms**
+- Steam (with Proton for Windows games)
+- Lutris (for GOG, Epic, Origin games)
+- Heroic Games Launcher (Epic/GOG alternative)
+- Bottles (Wine manager for Windows apps)
+
+**Gaming Utilities**
+- GameMode (automatic performance optimization)
+- MangoHud (FPS/stats overlay)
+- ProtonUp-Qt (manage Proton versions)
+
+**Controller Support**
+- Info about Xbox/PlayStation controller compatibility
+
+**Quick Tips**
+- Guidance on Steam Play/Proton
+- Link to ProtonDB for game compatibility
+
+Each app shows Install or Launch button based on status.
+Supports native packages and Flatpak fallback.
+
 ## [5.8.2] - 2025-11-30
 
 ### Fixed - System Maintenance Page Crash
