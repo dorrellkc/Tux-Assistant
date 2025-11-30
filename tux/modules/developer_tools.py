@@ -339,6 +339,12 @@ class DeveloperToolsPage(Adw.NavigationPage):
         projects_label.set_hexpand(True)
         projects_header.append(projects_label)
         
+        # Help button - shows workflow guide
+        help_btn = Gtk.Button(label="How to Update")
+        help_btn.set_tooltip_text("Show the update workflow")
+        help_btn.connect("clicked", self._show_update_workflow_help)
+        projects_header.append(help_btn)
+        
         # Scan button
         self.scan_btn = Gtk.Button()
         self.scan_btn.set_icon_name("folder-saved-search-symbolic")
@@ -1042,6 +1048,69 @@ read'''
     
     # ==================== Developer Kit Export/Import ====================
     
+    def _show_update_workflow_help(self, button):
+        """Show a dialog explaining the update workflow."""
+        dialog = Adw.Dialog()
+        dialog.set_title("How to Update Your Project")
+        dialog.set_content_width(500)
+        dialog.set_content_height(450)
+        
+        toolbar_view = Adw.ToolbarView()
+        dialog.set_child(toolbar_view)
+        
+        header = Adw.HeaderBar()
+        header.set_show_end_title_buttons(False)
+        header.set_show_start_title_buttons(False)
+        
+        close_btn = Gtk.Button(label="Got it!")
+        close_btn.add_css_class("suggested-action")
+        close_btn.connect("clicked", lambda b: dialog.close())
+        header.pack_end(close_btn)
+        
+        toolbar_view.add_top_bar(header)
+        
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
+        content.set_margin_top(20)
+        content.set_margin_bottom(20)
+        content.set_margin_start(20)
+        content.set_margin_end(20)
+        toolbar_view.set_content(content)
+        
+        # Workflow steps
+        help_text = Gtk.Label()
+        help_text.set_markup(
+            "<b>Updating from a Downloaded ZIP</b>\n\n"
+            
+            "<b>Step 1: Update Files</b>\n"
+            "• Scroll down to 'Other Git Tools'\n"
+            "• Click 'Update Project from ZIP'\n"
+            "• Select your downloaded ZIP file\n"
+            "• Select your project and click 'Update Project'\n"
+            "• Click '← Back to Push'\n\n"
+            
+            "<b>Step 2: Push to Git</b>\n"
+            "• Find your project in Git Projects\n"
+            "• Click the 'Push' button\n"
+            "• Enter your SSH passphrase in the terminal\n"
+            "• Press Enter to close terminal\n\n"
+            
+            "<b>Step 3: Install to System</b>\n"
+            "• Click the arrow on your project to expand it\n"
+            "• Click 'Install to System' button\n"
+            "• Enter your sudo password\n"
+            "• Press Enter to close terminal\n\n"
+            
+            "<b>Step 4: Restart</b>\n"
+            "• Close the app\n"
+            "• Relaunch from your app menu\n"
+            "• You're now running the new version!"
+        )
+        help_text.set_halign(Gtk.Align.START)
+        help_text.set_wrap(True)
+        content.append(help_text)
+        
+        dialog.present(self.window)
+
     def _on_export_dev_kit(self, button):
         """Export Developer Kit to a folder."""
         dialog = Gtk.FileDialog()
