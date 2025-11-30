@@ -39,7 +39,7 @@ class BackupLocation:
     device: str
     size_total: int
     size_free: int
-    is_removable: bool
+    location_type: str  # "internal", "external", "network", "custom"
 
 
 def get_human_size(size_bytes: int) -> str:
@@ -55,70 +55,68 @@ def get_human_size(size_bytes: int) -> str:
 
 
 def get_backup_destinations() -> List[BackupLocation]:
-    """Get available backup destinations (external/removable drives)."""
+    """Get available backup destinations (all usable drives)."""
     destinations = []
+    seen_mounts = set()
     
     try:
         # Use lsblk to find mounted drives
         result = subprocess.run(
-            ['lsblk', '-J', '-o', 'NAME,SIZE,MOUNTPOINT,FSTYPE,HOTPLUG,RM'],
+            ['lsblk', '-J', '-o', 'NAME,SIZE,MOUNTPOINT,FSTYPE,HOTPLUG,RM,TYPE'],
             capture_output=True, text=True
         )
         
-        if result.returncode != 0:
-            return destinations
-        
-        data = json.loads(result.stdout)
-        
-        for device in data.get('blockdevices', []):
-            _process_device(device, destinations)
+        if result.returncode == 0:
+            data = json.loads(result.stdout)
             
-            # Check children (partitions)
-            for child in device.get('children', []):
-                _process_device(child, destinations, parent=device.get('name', ''))
+            for device in data.get('blockdevices', []):
+                _process_device(device, destinations, seen_mounts)
+                
+                # Check children (partitions)
+                for child in device.get('children', []):
+                    _process_device(child, destinations, seen_mounts, parent=device.get('name', ''))
     
     except Exception:
         pass
     
-    # Also check common mount points
-    common_mounts = ['/mnt', '/media']
+    # Check common mount points for anything we missed
+    common_mounts = ['/mnt', '/media', '/run/media']
     for mount_base in common_mounts:
         if os.path.exists(mount_base):
             try:
+                # Check subdirectories (user mounts often in /run/media/username/)
                 for name in os.listdir(mount_base):
                     path = os.path.join(mount_base, name)
-                    if os.path.ismount(path):
-                        # Check if already in list
-                        if not any(d.mount_point == path for d in destinations):
-                            try:
-                                statvfs = os.statvfs(path)
-                                total = statvfs.f_blocks * statvfs.f_frsize
-                                free = statvfs.f_bavail * statvfs.f_frsize
-                                
-                                if total > 0:  # Skip empty/invalid
-                                    destinations.append(BackupLocation(
-                                        name=name,
-                                        path=path,
-                                        mount_point=path,
-                                        device="",
-                                        size_total=total,
-                                        size_free=free,
-                                        is_removable=True
-                                    ))
-                            except Exception:
-                                pass
+                    _check_mount_path(path, destinations, seen_mounts)
+                    
+                    # Check one level deeper for /run/media/user/drive
+                    if os.path.isdir(path):
+                        try:
+                            for subname in os.listdir(path):
+                                subpath = os.path.join(path, subname)
+                                _check_mount_path(subpath, destinations, seen_mounts)
+                        except Exception:
+                            pass
             except Exception:
                 pass
+    
+    # Check for network mounts
+    _find_network_mounts(destinations, seen_mounts)
     
     return destinations
 
 
-def _process_device(device: dict, destinations: List[BackupLocation], parent: str = ""):
+def _process_device(device: dict, destinations: List[BackupLocation], seen_mounts: set, parent: str = ""):
     """Process a device from lsblk output."""
     mount = device.get('mountpoint')
     
-    # Skip if not mounted or is root/boot
-    if not mount or mount in ['/', '/boot', '/boot/efi', '/home', '[SWAP]']:
+    # Skip if not mounted
+    if not mount or mount in seen_mounts:
+        return
+    
+    # Skip system mounts
+    skip_mounts = ['/', '/boot', '/boot/efi', '/home', '[SWAP]', '/var', '/tmp', '/usr']
+    if mount in skip_mounts:
         return
     
     # Skip if no filesystem
@@ -134,6 +132,8 @@ def _process_device(device: dict, destinations: List[BackupLocation], parent: st
         
         if total > 0:
             name = os.path.basename(mount) or device.get('name', 'Drive')
+            loc_type = "external" if is_removable else "internal"
+            
             destinations.append(BackupLocation(
                 name=name,
                 path=mount,
@@ -141,8 +141,78 @@ def _process_device(device: dict, destinations: List[BackupLocation], parent: st
                 device=f"/dev/{device.get('name', '')}",
                 size_total=total,
                 size_free=free,
-                is_removable=is_removable
+                location_type=loc_type
             ))
+            seen_mounts.add(mount)
+    except Exception:
+        pass
+
+
+def _check_mount_path(path: str, destinations: List[BackupLocation], seen_mounts: set):
+    """Check if a path is a valid mount point and add it."""
+    if path in seen_mounts:
+        return
+    
+    if not os.path.ismount(path):
+        return
+    
+    try:
+        statvfs = os.statvfs(path)
+        total = statvfs.f_blocks * statvfs.f_frsize
+        free = statvfs.f_bavail * statvfs.f_frsize
+        
+        if total > 0:
+            name = os.path.basename(path) or "Drive"
+            destinations.append(BackupLocation(
+                name=name,
+                path=path,
+                mount_point=path,
+                device="",
+                size_total=total,
+                size_free=free,
+                location_type="external"
+            ))
+            seen_mounts.add(path)
+    except Exception:
+        pass
+
+
+def _find_network_mounts(destinations: List[BackupLocation], seen_mounts: set):
+    """Find network mounts (CIFS/NFS)."""
+    try:
+        with open('/proc/mounts', 'r') as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) >= 3:
+                    device, mount, fstype = parts[0], parts[1], parts[2]
+                    
+                    # Skip if already seen
+                    if mount in seen_mounts:
+                        continue
+                    
+                    # Check for network filesystems
+                    if fstype in ['cifs', 'nfs', 'nfs4', 'smbfs']:
+                        try:
+                            statvfs = os.statvfs(mount)
+                            total = statvfs.f_blocks * statvfs.f_frsize
+                            free = statvfs.f_bavail * statvfs.f_frsize
+                            
+                            if total > 0:
+                                # Extract share name from device
+                                name = os.path.basename(mount) or device.split('/')[-1] or "Network Drive"
+                                
+                                destinations.append(BackupLocation(
+                                    name=f"🌐 {name}",
+                                    path=mount,
+                                    mount_point=mount,
+                                    device=device,
+                                    size_total=total,
+                                    size_free=free,
+                                    location_type="network"
+                                ))
+                                seen_mounts.add(mount)
+                        except Exception:
+                            pass
     except Exception:
         pass
 
@@ -287,14 +357,14 @@ class BackupRestorePage(Adw.NavigationPage):
         """Build the file backup section."""
         self.backup_group = Adw.PreferencesGroup()
         self.backup_group.set_title("File Backup")
-        self.backup_group.set_description("Back up your personal files to an external drive")
+        self.backup_group.set_description("Back up your personal files to any drive or network location")
         self.content_box.append(self.backup_group)
         
         # Destination selector
         self.dest_row = Adw.ComboRow()
         self.dest_row.set_title("Backup Destination")
-        self.dest_row.set_subtitle("Select an external drive")
-        self.dest_row.add_prefix(Gtk.Image.new_from_icon_name("drive-removable-media-symbolic"))
+        self.dest_row.set_subtitle("Select a destination")
+        self.dest_row.add_prefix(Gtk.Image.new_from_icon_name("drive-harddisk-symbolic"))
         
         # Model for destinations
         self.dest_model = Gtk.StringList()
@@ -302,6 +372,28 @@ class BackupRestorePage(Adw.NavigationPage):
         self.dest_row.connect("notify::selected", self._on_destination_changed)
         
         self.backup_group.add(self.dest_row)
+        
+        # Additional destination options
+        dest_options_row = Adw.ActionRow()
+        dest_options_row.set_title("More Options")
+        dest_options_row.set_subtitle("Browse for folder or connect to network share")
+        dest_options_row.add_prefix(Gtk.Image.new_from_icon_name("list-add-symbolic"))
+        
+        # Browse button
+        browse_btn = Gtk.Button(label="Browse...")
+        browse_btn.set_valign(Gtk.Align.CENTER)
+        browse_btn.set_tooltip_text("Select any folder as backup destination")
+        browse_btn.connect("clicked", self._on_browse_destination)
+        dest_options_row.add_suffix(browse_btn)
+        
+        # Network button
+        network_btn = Gtk.Button(label="Network...")
+        network_btn.set_valign(Gtk.Align.CENTER)
+        network_btn.set_tooltip_text("Connect to a network share (Samba/NFS)")
+        network_btn.connect("clicked", self._on_connect_network)
+        dest_options_row.add_suffix(network_btn)
+        
+        self.backup_group.add(dest_options_row)
         
         # Folders to backup
         self.folders_expander = Adw.ExpanderRow()
@@ -440,26 +532,36 @@ class BackupRestorePage(Adw.NavigationPage):
             self.dest_model.remove(0)
         
         if not destinations:
-            self.dest_model.append("No external drives found")
-            self.dest_row.set_subtitle("Connect an external drive and refresh")
+            self.dest_model.append("No drives found - use Browse or Network")
+            self.dest_row.set_subtitle("Use options below to select a destination")
             self.backup_btn.set_sensitive(False)
             self.selected_destination = None
         else:
             for dest in destinations:
-                label = f"{dest.name} ({get_human_size(dest.size_free)} free)"
+                # Add type indicator
+                type_icons = {
+                    "internal": "💾",
+                    "external": "🔌",
+                    "network": "🌐",
+                    "custom": "📁"
+                }
+                icon = type_icons.get(dest.location_type, "📁")
+                label = f"{icon} {dest.name} ({get_human_size(dest.size_free)} free)"
                 self.dest_model.append(label)
             
             self.dest_row.set_selected(0)
             self.selected_destination = destinations[0]
             self.backup_btn.set_sensitive(True)
-            self.dest_row.set_subtitle(f"Path: {destinations[0].path}")
+            type_label = destinations[0].location_type.capitalize()
+            self.dest_row.set_subtitle(f"{type_label}: {destinations[0].path}")
     
     def _on_destination_changed(self, row, param):
         """Handle destination selection change."""
         idx = row.get_selected()
         if idx < len(self.destinations):
             self.selected_destination = self.destinations[idx]
-            self.dest_row.set_subtitle(f"Path: {self.selected_destination.path}")
+            type_label = self.selected_destination.location_type.capitalize()
+            self.dest_row.set_subtitle(f"{type_label}: {self.selected_destination.path}")
             self.backup_btn.set_sensitive(True)
         else:
             self.selected_destination = None
@@ -471,6 +573,215 @@ class BackupRestorePage(Adw.NavigationPage):
             self.selected_folders.add(path)
         else:
             self.selected_folders.discard(path)
+    
+    def _on_browse_destination(self, button):
+        """Browse for a custom backup destination folder."""
+        dialog = Gtk.FileDialog()
+        dialog.set_title("Select Backup Destination Folder")
+        
+        # Start in /mnt or home
+        start_path = "/mnt" if os.path.exists("/mnt") else os.path.expanduser("~")
+        dialog.set_initial_folder(Gio.File.new_for_path(start_path))
+        
+        dialog.select_folder(self.window, None, self._on_browse_destination_selected)
+    
+    def _on_browse_destination_selected(self, dialog, result):
+        """Handle custom destination folder selection."""
+        try:
+            folder = dialog.select_folder_finish(result)
+            if folder:
+                path = folder.get_path()
+                
+                # Check if writable
+                if not os.access(path, os.W_OK):
+                    self.window.show_toast("Cannot write to this location")
+                    return
+                
+                # Get size info
+                try:
+                    statvfs = os.statvfs(path)
+                    total = statvfs.f_blocks * statvfs.f_frsize
+                    free = statvfs.f_bavail * statvfs.f_frsize
+                except Exception:
+                    total = 0
+                    free = 0
+                
+                # Add as custom destination
+                name = os.path.basename(path) or "Custom Location"
+                custom_dest = BackupLocation(
+                    name=name,
+                    path=path,
+                    mount_point=path,
+                    device="",
+                    size_total=total,
+                    size_free=free,
+                    location_type="custom"
+                )
+                
+                # Add to list if not already there
+                if not any(d.path == path for d in self.destinations):
+                    self.destinations.append(custom_dest)
+                    label = f"📁 {name} ({get_human_size(free)} free)"
+                    self.dest_model.append(label)
+                
+                # Select it
+                for i, dest in enumerate(self.destinations):
+                    if dest.path == path:
+                        self.dest_row.set_selected(i)
+                        break
+                
+                self.window.show_toast(f"Added: {name}")
+        except Exception as e:
+            self.window.show_toast(f"Error: {str(e)}")
+    
+    def _on_connect_network(self, button):
+        """Show network share connection dialog."""
+        dialog = Adw.Dialog()
+        dialog.set_title("Connect to Network Share")
+        dialog.set_content_width(450)
+        dialog.set_content_height(400)
+        
+        toolbar_view = Adw.ToolbarView()
+        dialog.set_child(toolbar_view)
+        
+        # Header
+        header = Adw.HeaderBar()
+        header.set_show_end_title_buttons(False)
+        header.set_show_start_title_buttons(False)
+        
+        cancel_btn = Gtk.Button(label="Cancel")
+        cancel_btn.connect("clicked", lambda b: dialog.close())
+        header.pack_start(cancel_btn)
+        
+        connect_btn = Gtk.Button(label="Connect")
+        connect_btn.add_css_class("suggested-action")
+        header.pack_end(connect_btn)
+        
+        toolbar_view.add_top_bar(header)
+        
+        # Content
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
+        content.set_margin_top(24)
+        content.set_margin_bottom(24)
+        content.set_margin_start(24)
+        content.set_margin_end(24)
+        toolbar_view.set_content(content)
+        
+        # Instructions
+        instructions = Gtk.Label(label="Connect to a Samba (Windows) or NFS share")
+        instructions.add_css_class("dim-label")
+        content.append(instructions)
+        
+        # Form
+        form_group = Adw.PreferencesGroup()
+        content.append(form_group)
+        
+        # Share type
+        type_row = Adw.ComboRow()
+        type_row.set_title("Share Type")
+        type_model = Gtk.StringList()
+        type_model.append("Samba (Windows Share)")
+        type_model.append("NFS")
+        type_row.set_model(type_model)
+        form_group.add(type_row)
+        
+        # Server address
+        server_row = Adw.EntryRow()
+        server_row.set_title("Server Address")
+        server_row.set_text("")
+        form_group.add(server_row)
+        
+        # Share name
+        share_row = Adw.EntryRow()
+        share_row.set_title("Share Name")
+        share_row.set_text("")
+        form_group.add(share_row)
+        
+        # Username (for Samba)
+        user_row = Adw.EntryRow()
+        user_row.set_title("Username (optional)")
+        user_row.set_text("")
+        form_group.add(user_row)
+        
+        # Password (for Samba)
+        pass_row = Adw.PasswordEntryRow()
+        pass_row.set_title("Password (optional)")
+        form_group.add(pass_row)
+        
+        # Mount point
+        mount_row = Adw.EntryRow()
+        mount_row.set_title("Mount Point")
+        mount_row.set_text("/mnt/backup")
+        form_group.add(mount_row)
+        
+        # Example
+        example = Gtk.Label(label="Example: Server: 192.168.1.100, Share: backups")
+        example.add_css_class("dim-label")
+        example.set_margin_top(8)
+        content.append(example)
+        
+        # Connect handler
+        connect_btn.connect("clicked", self._on_network_connect_clicked, dialog,
+                          type_row, server_row, share_row, user_row, pass_row, mount_row)
+        
+        dialog.present(self.window)
+    
+    def _on_network_connect_clicked(self, button, dialog, type_row, server_row, 
+                                     share_row, user_row, pass_row, mount_row):
+        """Handle network share connection."""
+        share_type = type_row.get_selected()  # 0 = Samba, 1 = NFS
+        server = server_row.get_text().strip()
+        share = share_row.get_text().strip()
+        username = user_row.get_text().strip()
+        password = pass_row.get_text()
+        mount_point = mount_row.get_text().strip()
+        
+        # Validate
+        if not server:
+            self.window.show_toast("Enter a server address")
+            return
+        if not share:
+            self.window.show_toast("Enter a share name")
+            return
+        if not mount_point:
+            self.window.show_toast("Enter a mount point")
+            return
+        
+        # Build mount command
+        if share_type == 0:  # Samba
+            if username and password:
+                creds = f"username={username},password={password}"
+            elif username:
+                creds = f"username={username}"
+            else:
+                creds = "guest"
+            
+            cmd = f"sudo mkdir -p {mount_point} && sudo mount -t cifs //{server}/{share} {mount_point} -o {creds}"
+        else:  # NFS
+            cmd = f"sudo mkdir -p {mount_point} && sudo mount -t nfs {server}:/{share} {mount_point}"
+        
+        script = f'''echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  Connecting to Network Share..."
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+{cmd}
+if [ $? -eq 0 ]; then
+    echo ""
+    echo "✓ Connected successfully!"
+else
+    echo ""
+    echo "✗ Connection failed. Check your settings."
+fi
+echo ""
+echo "Press Enter to close..."
+read'''
+        
+        self._run_in_terminal(script)
+        dialog.close()
+        self.window.show_toast("Connecting to network share...")
+        
+        # Refresh destinations after delay
+        GLib.timeout_add(3000, self._refresh_destinations)
     
     def _on_add_custom_folder(self, button):
         """Add a custom folder to backup."""

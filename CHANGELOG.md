@@ -5,6 +5,18 @@ All notable changes to Tux Assistant will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.10.2] - 2025-11-30
+
+### Enhanced - Backup Destination Options
+- Now shows ALL drives: internal, external, and network
+- Drives labeled with type icons: 💾 Internal, 🔌 External, 🌐 Network, 📁 Custom
+- **Browse...** button to select any folder as backup destination
+- **Network...** button with connection wizard:
+  - Samba (Windows shares) with optional username/password
+  - NFS support
+  - Creates mount point automatically
+- Auto-detects already-mounted network shares (CIFS/NFS)
+
 ## [5.10.1] - 2025-11-30
 
 ### Fixed - Missing Dependencies Handled
