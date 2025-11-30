@@ -11,6 +11,7 @@ from .registry import (
 # Explicit imports so all modules are guaranteed to be loaded when
 # the application starts. This avoids relying solely on implicit
 # discovery and ensures @register_module decorators are executed.
+from . import system_maintenance
 from . import desktop_enhancements
 from . import software_center
 from . import networking

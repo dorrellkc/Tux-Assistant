@@ -17,12 +17,12 @@ import os
 
 class ModuleCategory(Enum):
     """Categories for organizing modules in the UI."""
+    SYSTEM = "System and Maintenance"
     SETUP = "Setup and Configuration"
     DEVELOPER = "Developer Tools"
     NETWORK = "Network and Sharing"
     SERVER = "Server and Cloud"
     MEDIA = "Media and Entertainment"
-    SYSTEM = "System Tools"
 
 
 @dataclass

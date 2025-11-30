@@ -5,6 +5,37 @@ All notable changes to Tux Assistant will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.0] - 2025-11-30
+
+### Added - System Maintenance Module (NEW!)
+A complete system maintenance toolkit for keeping your Linux healthy:
+
+**System Cleanup**
+- Package cache cleaning (pacman, apt, dnf, zypper)
+- Application cache cleanup
+- Thumbnail cache clearing
+- System log rotation (keeps last 7 days)
+- Trash emptying
+- "Clean All" one-click option with total size display
+
+**System Updates**
+- Check for available updates
+- One-click update in terminal
+- Shows update count
+
+**Startup Applications**
+- See all apps that run at login
+- Enable/disable with toggle switches
+- Works with user and system autostart entries
+
+**Storage Overview**
+- Disk usage display
+- Launch disk analyzer (baobab, filelight, etc.)
+
+### Changed
+- New category "System and Maintenance" appears first in menu
+- Reorganized module categories for better flow
+
 ## [5.7.17] - 2025-11-30
 
 ### Fixed - Removed Duplicate Back Buttons
