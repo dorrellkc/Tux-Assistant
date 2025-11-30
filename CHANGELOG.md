@@ -5,6 +5,13 @@ All notable changes to Tux Assistant will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.2] - 2025-11-30
+
+### Fixed - System Maintenance Page Crash
+- Fixed AdwPreferencesGroup row removal causing critical errors
+- Startup apps section now properly tracks and removes rows
+- Page loads and displays correctly now
+
 ## [5.8.1] - 2025-11-30
 
 ### Fixed - Crash on Launch

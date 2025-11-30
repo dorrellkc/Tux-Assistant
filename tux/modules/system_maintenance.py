@@ -548,10 +548,14 @@ class SystemMaintenancePage(Adw.NavigationPage):
         self.startup_group.set_description("Apps that run when you log in")
         self.content_box.append(self.startup_group)
         
+        # Track rows for cleanup
+        self.startup_rows = []
+        
         # Placeholder - will be populated by _refresh_startup_apps
         self.startup_placeholder = Adw.ActionRow()
         self.startup_placeholder.set_title("Loading...")
         self.startup_group.add(self.startup_placeholder)
+        self.startup_rows.append(self.startup_placeholder)
     
     def _build_storage_section(self):
         """Build the storage overview section."""
@@ -643,18 +647,16 @@ class SystemMaintenancePage(Adw.NavigationPage):
         self.startup_apps = apps
         
         # Clear existing rows
-        while True:
-            row = self.startup_group.get_first_child()
-            if row:
-                self.startup_group.remove(row)
-            else:
-                break
+        for row in self.startup_rows:
+            self.startup_group.remove(row)
+        self.startup_rows.clear()
         
         if not apps:
             empty_row = Adw.ActionRow()
             empty_row.set_title("No startup applications")
             empty_row.set_subtitle("Apps added here will run when you log in")
             self.startup_group.add(empty_row)
+            self.startup_rows.append(empty_row)
             return
         
         for app in apps:
@@ -676,6 +678,7 @@ class SystemMaintenancePage(Adw.NavigationPage):
             row.add_suffix(switch)
             
             self.startup_group.add(row)
+            self.startup_rows.append(row)
     
     def _refresh_storage(self):
         """Refresh storage info."""
