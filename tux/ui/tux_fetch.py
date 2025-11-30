@@ -582,3 +582,246 @@ class TuxFetchCompact(Gtk.Box):
         mem_bar = Gtk.ProgressBar()
         mem_bar.set_fraction(percent / 100)
         mem_box.append(mem_bar)
+
+
+class TuxFetchSidebar(Gtk.Box):
+    """A fixed sidebar version that blends with the window chrome."""
+    
+    def __init__(self, distro_info, desktop_info, hardware_info):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        
+        self.distro = distro_info
+        self.desktop = desktop_info
+        self.hardware = hardware_info
+        
+        # Style as sidebar
+        self.add_css_class("tux-fetch-sidebar")
+        self.set_vexpand(True)
+        
+        self.build_ui()
+    
+    def build_ui(self):
+        """Build the sidebar UI."""
+        # Inner box with padding
+        inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        inner.set_margin_top(16)
+        inner.set_margin_bottom(16)
+        inner.set_margin_start(12)
+        inner.set_margin_end(12)
+        self.append(inner)
+        
+        # ASCII Logo (compact)
+        logo_label = Gtk.Label()
+        logo_label.set_markup(f"<tt><small>{self._get_logo()}</small></tt>")
+        logo_label.set_halign(Gtk.Align.CENTER)
+        logo_label.add_css_class("dim-label")
+        inner.append(logo_label)
+        
+        # User@hostname
+        user = os.environ.get('USER', 'user')
+        hostname = platform.node()
+        
+        user_label = Gtk.Label()
+        user_label.set_markup(f"<b>{user}@{hostname}</b>")
+        user_label.set_halign(Gtk.Align.CENTER)
+        user_label.set_margin_top(8)
+        inner.append(user_label)
+        
+        # Separator line
+        sep_label = Gtk.Label()
+        sep_label.set_markup("<small>────────────────</small>")
+        sep_label.add_css_class("dim-label")
+        sep_label.set_halign(Gtk.Align.CENTER)
+        inner.append(sep_label)
+        
+        # Info rows (compact)
+        info_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        info_box.set_margin_top(4)
+        inner.append(info_box)
+        
+        info_lines = [
+            ("OS", self.distro.name),
+            ("Kernel", get_kernel()),
+            ("Uptime", get_uptime()),
+            ("Pkgs", get_packages_count().split()[0]),  # Just the number
+            ("Shell", get_shell()),
+            ("DE", self.desktop.display_name),
+            ("WM", self.desktop.session_type.upper()),
+        ]
+        
+        for label, value in info_lines:
+            row = self._create_info_row(label, value)
+            info_box.append(row)
+        
+        # Spacer
+        spacer = Gtk.Box()
+        spacer.set_vexpand(True)
+        inner.append(spacer)
+        
+        # Hardware section at bottom
+        hw_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        inner.append(hw_box)
+        
+        hw_lines = [
+            ("CPU", self._format_cpu_short()),
+            ("GPU", self._format_gpu_short()),
+        ]
+        
+        for label, value in hw_lines:
+            row = self._create_info_row(label, value)
+            hw_box.append(row)
+        
+        # Memory bar
+        used, total, percent = get_memory_usage()
+        mem_row = self._create_bar_row("RAM", f"{used}/{total}GB", percent)
+        hw_box.append(mem_row)
+        
+        # Disk bar
+        used_d, total_d, percent_d = get_disk_usage()
+        disk_row = self._create_bar_row("Disk", f"{int(used_d)}/{int(total_d)}GB", percent_d)
+        hw_box.append(disk_row)
+        
+        # Color palette at very bottom
+        palette = self._create_color_palette()
+        palette.set_margin_top(12)
+        palette.set_halign(Gtk.Align.CENTER)
+        inner.append(palette)
+    
+    def _get_logo(self) -> str:
+        """Get a compact ASCII logo."""
+        distro_id = self.distro.id.lower()
+        
+        # Compact logos
+        logos = {
+            'arch': "    /\\\n   /  \\\n  /    \\\n /______\\",
+            'endeavouros': "    /\\\n   /  \\\n  / /\\ \\\n /_/  \\_\\",
+            'manjaro': " ███████\n ██ ████\n ██ ████\n ███████",
+            'debian': "   _____\n  /  __ \\\n |  /   |\n  \\____/",
+            'ubuntu': "    _\n  _( )_\n (_   _)\n   (_)",
+            'fedora': "   ____\n  /    \\\n |  f  |\n  \\____/",
+            'opensuse': "  _____\n /     \\\n | ≋≋≋ |\n \\_____/",
+            'generic': "   .--.\n  |o_o |\n  |:_/ |\n  //||\\\\",
+        }
+        
+        # Check exact match first
+        if distro_id in logos:
+            return logos[distro_id]
+        
+        # Check family
+        family = self.distro.family.value.lower()
+        if family in logos:
+            return logos[family]
+        
+        return logos['generic']
+    
+    def _create_info_row(self, label: str, value: str) -> Gtk.Widget:
+        """Create a compact info row."""
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        
+        lbl = Gtk.Label()
+        lbl.set_markup(f"<small><b>{label}</b></small>")
+        lbl.set_halign(Gtk.Align.START)
+        lbl.set_size_request(50, -1)
+        lbl.add_css_class("dim-label")
+        box.append(lbl)
+        
+        val = Gtk.Label()
+        val.set_markup(f"<small>{GLib.markup_escape_text(value)}</small>")
+        val.set_halign(Gtk.Align.START)
+        val.set_ellipsize(Pango.EllipsizeMode.END)
+        val.set_hexpand(True)
+        box.append(val)
+        
+        return box
+    
+    def _create_bar_row(self, label: str, text: str, percent: float) -> Gtk.Widget:
+        """Create a row with a progress bar."""
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+        box.set_margin_top(4)
+        
+        # Label row
+        label_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        
+        lbl = Gtk.Label()
+        lbl.set_markup(f"<small><b>{label}</b></small>")
+        lbl.set_halign(Gtk.Align.START)
+        lbl.add_css_class("dim-label")
+        label_box.append(lbl)
+        
+        val = Gtk.Label()
+        val.set_markup(f"<small>{text}</small>")
+        val.set_halign(Gtk.Align.END)
+        val.set_hexpand(True)
+        label_box.append(val)
+        
+        box.append(label_box)
+        
+        # Progress bar
+        bar = Gtk.ProgressBar()
+        bar.set_fraction(min(percent / 100, 1.0))
+        bar.add_css_class("tux-fetch-bar")
+        box.append(bar)
+        
+        return box
+    
+    def _format_cpu_short(self) -> str:
+        """Get shortened CPU name."""
+        cpu = self.hardware.cpu_model
+        if cpu == "Unknown CPU":
+            return "Unknown"
+        
+        # Extract key info
+        cpu = cpu.replace("Intel(R) Core(TM)", "Intel")
+        cpu = cpu.replace("Intel(R)", "Intel")
+        cpu = cpu.replace("AMD Ryzen", "Ryzen")
+        cpu = cpu.replace(" Processor", "")
+        cpu = cpu.replace(" with Radeon Graphics", "")
+        cpu = cpu.split('@')[0].strip()
+        
+        if len(cpu) > 22:
+            cpu = cpu[:20] + "…"
+        
+        return cpu
+    
+    def _format_gpu_short(self) -> str:
+        """Get shortened GPU name."""
+        gpu = self.hardware.gpu_model
+        if gpu == "Unknown GPU":
+            return "Unknown"
+        
+        # Simplify
+        gpu = gpu.replace("NVIDIA Corporation", "NVIDIA")
+        gpu = gpu.replace("Advanced Micro Devices, Inc.", "AMD")
+        gpu = gpu.replace("Intel Corporation", "Intel")
+        gpu = gpu.replace("[", "").replace("]", "")
+        
+        if len(gpu) > 22:
+            gpu = gpu[:20] + "…"
+        
+        return gpu
+    
+    def _create_color_palette(self) -> Gtk.Widget:
+        """Create small color blocks."""
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=1)
+        
+        colors = [
+            "#2e3436", "#cc0000", "#4e9a06", "#c4a000",
+            "#3465a4", "#75507b", "#06989a", "#d3d7cf",
+        ]
+        
+        for color in colors:
+            block = Gtk.DrawingArea()
+            block.set_size_request(12, 12)
+            block.set_draw_func(self._draw_color_block, color)
+            box.append(block)
+        
+        return box
+    
+    def _draw_color_block(self, area, cr, width, height, color):
+        """Draw a colored block."""
+        from gi.repository import Gdk
+        rgba = Gdk.RGBA()
+        rgba.parse(color)
+        cr.set_source_rgba(rgba.red, rgba.green, rgba.blue, 1.0)
+        cr.rectangle(0, 0, width, height)
+        cr.fill()

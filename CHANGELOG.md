@@ -5,6 +5,31 @@ All notable changes to Tux Assistant will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.14.1] - 2025-11-30
+
+### Changed - TuxFetch Sidebar Redesign
+
+Reworked TuxFetch to be a fixed sidebar that blends with the window:
+
+**New Design:**
+- Fixed position (doesn't scroll with content)
+- Blends into window chrome (subtle background, border)
+- More compact layout (~280px wide)
+- Smaller, denser information display
+- Progress bars for RAM and Disk usage
+- Compact ASCII logos
+
+**Layout:**
+- Sidebar stays visible as you scroll modules
+- Content area scrolls independently
+- Clean separation between content and info panel
+
+**Visual:**
+- Subtle left border
+- Semi-transparent background
+- Smaller font sizes
+- Thin progress bars (4px height)
+
 ## [5.14.0] - 2025-11-30
 
 ### Added - TuxFetch System Info Panel 🐧

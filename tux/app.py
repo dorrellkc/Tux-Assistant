@@ -143,22 +143,33 @@ messagedialog .body {
     font-size: 11pt;
 }
 
-/* TuxFetch panel styles */
-.tux-fetch-panel {
-    background-color: alpha(@card_bg_color, 0.8);
-    border-radius: 12px;
-    padding: 16px;
+/* TuxFetch sidebar styles */
+.tux-fetch-sidebar {
+    background-color: alpha(@window_bg_color, 0.5);
+    border-left: 1px solid alpha(@borders, 0.3);
 }
 
-.tux-fetch-panel .monospace {
-    font-family: monospace;
-    font-size: 9pt;
-    line-height: 1.1;
+.tux-fetch-sidebar label {
+    font-size: 10pt;
 }
 
-.tux-fetch-panel .title {
-    font-size: 12pt;
-    font-weight: bold;
+.tux-fetch-sidebar .dim-label {
+    opacity: 0.7;
+}
+
+.tux-fetch-bar {
+    min-height: 4px;
+    border-radius: 2px;
+}
+
+.tux-fetch-bar trough {
+    min-height: 4px;
+    background-color: alpha(@borders, 0.3);
+}
+
+.tux-fetch-bar progress {
+    min-height: 4px;
+    background-color: @accent_bg_color;
 }
 """
 
@@ -533,11 +544,11 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
     def create_main_page(self) -> Adw.NavigationPage:
         """Create the main navigation page with dynamically discovered modules."""
         from .core import get_hardware_info
-        from .ui.tux_fetch import TuxFetchPanel
+        from .ui.tux_fetch import TuxFetchSidebar
         
         page = Adw.NavigationPage(title="Tux Assistant")
         
-        # Main horizontal layout: modules on left, TuxFetch on right
+        # Main horizontal layout: modules on left, fixed sidebar on right
         main_hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
         page.set_child(main_hbox)
         
@@ -550,7 +561,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         
         # Content box with clamp for max width
         clamp = Adw.Clamp()
-        clamp.set_maximum_size(750)  # Slightly narrower to make room for panel
+        clamp.set_maximum_size(800)
         clamp.set_margin_top(24)
         clamp.set_margin_bottom(24)
         clamp.set_margin_start(24)
@@ -596,23 +607,14 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         hint_label.add_css_class("dim-label")
         done_box.append(hint_label)
         
-        # RIGHT SIDE: TuxFetch panel (in a scrolled window for safety)
-        right_scrolled = Gtk.ScrolledWindow()
-        right_scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        right_scrolled.set_vexpand(True)
-        right_scrolled.set_size_request(320, -1)  # Minimum width for panel
-        main_hbox.append(right_scrolled)
-        
-        # TuxFetch panel
+        # RIGHT SIDE: Fixed TuxFetch sidebar (not scrollable, fixed position)
         hardware = get_hardware_info()
-        tux_fetch = TuxFetchPanel(self.distro, self.desktop, hardware)
-        tux_fetch.set_margin_top(24)
-        tux_fetch.set_margin_bottom(24)
-        tux_fetch.set_margin_end(24)
-        right_scrolled.set_child(tux_fetch)
+        sidebar = TuxFetchSidebar(self.distro, self.desktop, hardware)
+        sidebar.set_size_request(280, -1)  # Fixed width
+        main_hbox.append(sidebar)
         
         # Store reference to hide on small windows
-        self.tux_fetch_panel = right_scrolled
+        self.tux_fetch_panel = sidebar
         
         # Connect to window size changes to show/hide panel
         self.connect("notify::default-width", self._on_width_changed_for_panel)
