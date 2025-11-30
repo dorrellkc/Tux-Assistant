@@ -943,7 +943,76 @@ read'''
                 continue
         
         # If no analyzer found, offer to install one
-        self.window.show_toast("No disk analyzer found. Install 'baobab' or 'filelight'.")
+        self._show_install_analyzer_dialog()
+    
+    def _show_install_analyzer_dialog(self):
+        """Show dialog to install a disk analyzer."""
+        dialog = Adw.MessageDialog(
+            transient_for=self.window,
+            heading="No Disk Analyzer Found",
+            body="Would you like to install one?"
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("baobab", "Disk Usage Analyzer (GNOME)")
+        dialog.add_response("filelight", "Filelight (KDE)")
+        dialog.set_response_appearance("baobab", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("baobab")
+        dialog.connect("response", self._on_install_analyzer_response)
+        dialog.present()
+    
+    def _on_install_analyzer_response(self, dialog, response):
+        """Handle analyzer installation response."""
+        if response == "cancel":
+            return
+        
+        # Package names per distro
+        packages = {
+            "baobab": {
+                DistroFamily.ARCH: "baobab",
+                DistroFamily.DEBIAN: "baobab",
+                DistroFamily.FEDORA: "baobab",
+                DistroFamily.OPENSUSE: "baobab",
+            },
+            "filelight": {
+                DistroFamily.ARCH: "filelight",
+                DistroFamily.DEBIAN: "filelight",
+                DistroFamily.FEDORA: "filelight",
+                DistroFamily.OPENSUSE: "filelight",
+            },
+        }
+        
+        pkg = packages.get(response, {}).get(self.distro.family)
+        if not pkg:
+            self.window.show_toast(f"Package not available for {self.distro.name}")
+            return
+        
+        # Build install command
+        if self.distro.family == DistroFamily.ARCH:
+            cmd = f"sudo pacman -S --noconfirm {pkg}"
+        elif self.distro.family == DistroFamily.DEBIAN:
+            cmd = f"sudo apt install -y {pkg}"
+        elif self.distro.family == DistroFamily.FEDORA:
+            cmd = f"sudo dnf install -y {pkg}"
+        elif self.distro.family == DistroFamily.OPENSUSE:
+            cmd = f"sudo zypper install -y {pkg}"
+        else:
+            self.window.show_toast("Unsupported distribution")
+            return
+        
+        app_name = "Disk Usage Analyzer" if response == "baobab" else "Filelight"
+        script = f'''echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  Installing {app_name}..."
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+{cmd}
+echo ""
+echo "✓ Installation complete!"
+echo ""
+echo "Press Enter to close..."
+read'''
+        
+        self._run_in_terminal(script)
+        self.window.show_toast(f"Installing {app_name}...")
     
     # =========================================================================
     # Utility Methods
