@@ -5,6 +5,44 @@ All notable changes to Tux Assistant will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.14.0] - 2025-11-30
+
+### Added - TuxFetch System Info Panel 🐧
+
+**Fastfetch-style system information display on the main page!**
+
+A beautiful side panel showing:
+- **User & Hostname** - user@hostname header
+- **ASCII Distro Logo** - Arch, Debian, Ubuntu, Fedora, openSUSE, Manjaro, and more
+- **OS** - Distribution name
+- **Kernel** - Linux kernel version
+- **Uptime** - How long system has been running
+- **Packages** - Count of installed packages (pacman/dpkg/rpm)
+- **Shell** - Current shell (bash, zsh, fish, etc.)
+- **DE** - Desktop environment
+- **WM** - Window manager / display server
+- **Resolution** - Screen resolution
+- **Terminal** - Terminal emulator
+- **CPU** - Processor model (shortened)
+- **GPU** - Graphics card (shortened)
+- **Memory** - RAM usage with percentage
+- **Disk** - Root partition usage with percentage
+- **Color Palette** - Terminal color blocks
+
+**Responsive Design:**
+- Panel automatically hides on windows narrower than 900px
+- Default window size increased to 1280x850 to show panel
+- Window size is remembered between sessions
+
+**Native Implementation:**
+- No external dependencies (no fastfetch required)
+- Uses existing hardware detection code
+- Lightweight and fast
+
+### Changed
+- Main page now uses horizontal layout (modules left, TuxFetch right)
+- Module list clamp reduced to 750px to make room for panel
+
 ## [5.13.3] - 2025-11-30
 
 ### Improved - Distribution Future-Proofing

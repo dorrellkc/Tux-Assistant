@@ -142,6 +142,24 @@ messagedialog .heading {
 messagedialog .body {
     font-size: 11pt;
 }
+
+/* TuxFetch panel styles */
+.tux-fetch-panel {
+    background-color: alpha(@card_bg_color, 0.8);
+    border-radius: 12px;
+    padding: 16px;
+}
+
+.tux-fetch-panel .monospace {
+    font-family: monospace;
+    font-size: 9pt;
+    line-height: 1.1;
+}
+
+.tux-fetch-panel .title {
+    font-size: 12pt;
+    font-weight: bold;
+}
 """
 
 
@@ -296,7 +314,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         """Load saved window size from config file."""
         import os
         
-        default_width, default_height = 1100, 800
+        default_width, default_height = 1280, 850  # Wider to show TuxFetch panel
         maximized = False
         
         try:
@@ -350,6 +368,16 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
     def _on_state_changed(self, widget, param):
         """Handle window state change (maximized/unmaximized)."""
         self._save_window_size()
+    
+    def _on_width_changed_for_panel(self, widget, param):
+        """Show/hide TuxFetch panel based on window width."""
+        if hasattr(self, 'tux_fetch_panel'):
+            width = self.get_width()
+            # Hide panel on narrow windows (< 900px)
+            if width < 900:
+                self.tux_fetch_panel.set_visible(False)
+            else:
+                self.tux_fetch_panel.set_visible(True)
     
     def build_ui(self):
         """Build the main user interface."""
@@ -504,27 +532,35 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
     
     def create_main_page(self) -> Adw.NavigationPage:
         """Create the main navigation page with dynamically discovered modules."""
+        from .core import get_hardware_info
+        from .ui.tux_fetch import TuxFetchPanel
+        
         page = Adw.NavigationPage(title="Tux Assistant")
         
-        # Scrollable content
-        scrolled = Gtk.ScrolledWindow()
-        scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        scrolled.set_vexpand(True)
-        page.set_child(scrolled)
+        # Main horizontal layout: modules on left, TuxFetch on right
+        main_hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+        page.set_child(main_hbox)
+        
+        # LEFT SIDE: Scrollable modules list
+        left_scrolled = Gtk.ScrolledWindow()
+        left_scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        left_scrolled.set_vexpand(True)
+        left_scrolled.set_hexpand(True)
+        main_hbox.append(left_scrolled)
         
         # Content box with clamp for max width
         clamp = Adw.Clamp()
-        clamp.set_maximum_size(950)  # Wider to use more of the larger window
+        clamp.set_maximum_size(750)  # Slightly narrower to make room for panel
         clamp.set_margin_top(24)
         clamp.set_margin_bottom(24)
         clamp.set_margin_start(24)
         clamp.set_margin_end(24)
-        scrolled.set_child(clamp)
+        left_scrolled.set_child(clamp)
         
         content_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
         clamp.set_child(content_box)
         
-        # System info banner
+        # System info banner (compact version for left side)
         info_banner = self.create_system_info_banner()
         content_box.append(info_banner)
         
@@ -558,6 +594,30 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         hint_label = Gtk.Label()
         hint_label.set_markup("<small>Click when you're finished to close the toolkit</small>")
         hint_label.add_css_class("dim-label")
+        done_box.append(hint_label)
+        
+        # RIGHT SIDE: TuxFetch panel (in a scrolled window for safety)
+        right_scrolled = Gtk.ScrolledWindow()
+        right_scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        right_scrolled.set_vexpand(True)
+        right_scrolled.set_size_request(320, -1)  # Minimum width for panel
+        main_hbox.append(right_scrolled)
+        
+        # TuxFetch panel
+        hardware = get_hardware_info()
+        tux_fetch = TuxFetchPanel(self.distro, self.desktop, hardware)
+        tux_fetch.set_margin_top(24)
+        tux_fetch.set_margin_bottom(24)
+        tux_fetch.set_margin_end(24)
+        right_scrolled.set_child(tux_fetch)
+        
+        # Store reference to hide on small windows
+        self.tux_fetch_panel = right_scrolled
+        
+        # Connect to window size changes to show/hide panel
+        self.connect("notify::default-width", self._on_width_changed_for_panel)
+        
+        return page
         done_box.append(hint_label)
         
         return page
