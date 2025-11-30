@@ -5,6 +5,17 @@ All notable changes to Tux Assistant will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.7.13] - 2025-11-29
+
+### Improved - Better Update Workflow
+- "Install to System" button now in project row (expand to see it)
+- Button only appears for projects with install.sh
+- Update from ZIP dialog now shows clear next steps:
+  1. Click "← Back to Push"
+  2. Click Push button
+  3. Expand project → Click "Install to System"
+- Logical flow: Update files → Push to git → Install to system
+
 ## [5.7.12] - 2025-11-29
 
 ### Fixed - Version Display Sync

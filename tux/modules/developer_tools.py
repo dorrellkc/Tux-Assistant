@@ -655,6 +655,15 @@ class DeveloperToolsPage(Adw.NavigationPage):
         action_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         action_box.set_valign(Gtk.Align.CENTER)
         
+        # Install to System (if install.sh exists)
+        install_script = os.path.join(path, 'install.sh')
+        if os.path.exists(install_script):
+            install_btn = Gtk.Button(label="Install to System")
+            install_btn.add_css_class("suggested-action")
+            install_btn.set_tooltip_text("Run install.sh to update system installation")
+            install_btn.connect("clicked", lambda b: self._install_to_system(path))
+            action_box.append(install_btn)
+        
         # Open in file manager
         open_btn = Gtk.Button(label="Open Folder")
         open_btn.connect("clicked", lambda b: self._open_in_file_manager(path))
@@ -948,6 +957,50 @@ read'''
                         subprocess.Popen([term, '--workdir', path])
                     else:
                         subprocess.Popen([term], cwd=path)
+                    return
+            except Exception:
+                continue
+        
+        self.window.show_toast("Could not find terminal emulator")
+    
+    def _install_to_system(self, path: str):
+        """Run install.sh to update the system installation."""
+        project_name = os.path.basename(path)
+        install_script = os.path.join(path, 'install.sh')
+        
+        if not os.path.exists(install_script):
+            self.window.show_toast("No install.sh found in project")
+            return
+        
+        # Run install via terminal
+        install_cmd = f'''echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  Installing {project_name} to System..."
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+cd "{path}"
+sudo bash install.sh
+echo ""
+echo "✓ Installation complete!"
+echo ""
+echo "Restart the app from your menu to use the new version."
+echo ""
+echo "Press Enter to close..."
+read'''
+        
+        terminals = [
+            ('konsole', ['konsole', '-e', 'bash', '-c', install_cmd]),
+            ('gnome-terminal', ['gnome-terminal', '--', 'bash', '-c', install_cmd]),
+            ('xfce4-terminal', ['xfce4-terminal', '-e', f'bash -c \'{install_cmd}\'']),
+            ('tilix', ['tilix', '-e', f'bash -c "{install_cmd}"']),
+            ('alacritty', ['alacritty', '-e', 'bash', '-c', install_cmd]),
+            ('kitty', ['kitty', 'bash', '-c', install_cmd]),
+        ]
+        
+        for term_name, term_cmd in terminals:
+            try:
+                if subprocess.run(['which', term_name], capture_output=True).returncode == 0:
+                    subprocess.Popen(term_cmd)
+                    self.window.show_toast("Terminal opened - enter sudo password")
                     return
             except Exception:
                 continue
@@ -1627,7 +1680,10 @@ class UpdateFromZipDialog(Adw.Dialog):
         if success:
             self.status_label.set_markup(
                 f"<b>Update Complete!</b>\n\n{message}\n\n"
-                "<small>Next: Push your changes, then Install to System.</small>"
+                "<small><b>Next steps:</b>\n"
+                "1. Click '← Back to Push' below\n"
+                "2. Click the Push button on your project\n"
+                "3. Expand the project row and click 'Install to System'</small>"
             )
             
             # Change Update button to "Back to Push"
@@ -1636,62 +1692,8 @@ class UpdateFromZipDialog(Adw.Dialog):
             self.update_btn.disconnect_by_func(self._on_update_clicked)
             self.update_btn.connect("clicked", lambda b: self.close())
             
-            # Add "Install to System" button
-            install_btn = Gtk.Button(label="Install to System")
-            install_btn.add_css_class("suggested-action")
-            install_btn.set_tooltip_text("Run install.sh to update the installed version")
-            install_btn.connect("clicked", self._on_install_to_system)
-            
-            # Add to button area in header
-            self.header.pack_end(install_btn)
-            self.install_btn = install_btn
-            
             if self.on_complete_callback:
                 self.on_complete_callback()
         else:
             self.status_label.set_markup(f"<b>Update Failed</b>\n\n{message}")
             self.update_btn.set_sensitive(True)
-    
-    def _on_install_to_system(self, button):
-        """Run install.sh to update the system installation."""
-        import subprocess
-        
-        project_path = self.selected_project
-        install_script = os.path.join(project_path, 'install.sh')
-        
-        if not os.path.exists(install_script):
-            self.status_label.set_markup(
-                "<b>No install.sh found</b>\n\n"
-                "This project doesn't have an install script."
-            )
-            return
-        
-        # Run install via terminal
-        install_cmd = f'''echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  Installing to System..."
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo ""
-cd "{project_path}"
-sudo bash install.sh
-echo ""
-echo "Press Enter to close..."
-read'''
-        
-        terminals = [
-            ('konsole', ['konsole', '-e', 'bash', '-c', install_cmd]),
-            ('gnome-terminal', ['gnome-terminal', '--', 'bash', '-c', install_cmd]),
-            ('xfce4-terminal', ['xfce4-terminal', '-e', f'bash -c \'{install_cmd}\'']),
-            ('tilix', ['tilix', '-e', f'bash -c "{install_cmd}"']),
-            ('alacritty', ['alacritty', '-e', 'bash', '-c', install_cmd]),
-            ('kitty', ['kitty', 'bash', '-c', install_cmd]),
-        ]
-        
-        for term_name, term_cmd in terminals:
-            try:
-                if subprocess.run(['which', term_name], capture_output=True).returncode == 0:
-                    subprocess.Popen(term_cmd)
-                    button.set_label("Installing...")
-                    button.set_sensitive(False)
-                    return
-            except Exception:
-                continue
