@@ -5,6 +5,34 @@ All notable changes to Tux Assistant will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.11.0] - 2025-11-30
+
+### Added - Hardware Manager Module (NEW!)
+Friendly interface for managing hardware:
+
+**Printers**
+- List configured printers with status
+- Start CUPS if not running
+- Add printer button (opens system-config-printer or CUPS web)
+
+**Bluetooth**
+- Power on/off toggle
+- List paired devices with connection status
+- Open system Bluetooth settings for pairing
+
+**Audio**
+- List output devices (speakers, headphones)
+- List input devices (microphones)
+- Set default device with one click
+- Open system sound settings
+
+**Displays**
+- Show connected monitors with resolution/refresh rate
+- Indicate primary display
+- Open system display settings
+
+Works with GNOME, KDE, and XFCE settings tools.
+
 ## [5.10.2] - 2025-11-30
 
 ### Enhanced - Backup Destination Options

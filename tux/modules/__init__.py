@@ -14,6 +14,7 @@ from .registry import (
 from . import system_maintenance
 from . import backup_restore
 from . import gaming
+from . import hardware_manager
 from . import desktop_enhancements
 from . import software_center
 from . import networking

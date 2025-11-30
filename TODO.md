@@ -63,19 +63,24 @@
 
 ---
 
-## Priority 4: Hardware Manager (NEW MODULE)
+## Priority 4: Hardware Manager (NEW MODULE) ✅ IMPLEMENTED in v5.11.0
 
-- [ ] Device overview (friendly names)
-- [ ] Printer setup wizard
-- [ ] Bluetooth device pairing
-- [ ] Display settings
-  - [ ] Resolution
-  - [ ] Multi-monitor arrangement
-  - [ ] Night light / blue light filter
-- [ ] Audio devices
-  - [ ] Switch output (speakers/headphones)
-  - [ ] Switch input (microphone)
-  - [ ] Volume levels per-app
+- [x] Printer management
+  - [x] List configured printers
+  - [x] Start CUPS if not running
+  - [x] Add printer (opens system tools)
+- [x] Bluetooth management
+  - [x] Power on/off toggle
+  - [x] List paired devices
+  - [x] Open system Bluetooth settings
+- [x] Display info
+  - [x] Show connected monitors
+  - [x] Resolution and refresh rate
+  - [x] Open display settings
+- [x] Audio devices
+  - [x] Switch output device
+  - [x] Switch input device
+  - [x] Set default with one click
 
 ---
 
