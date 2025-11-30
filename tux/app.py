@@ -554,117 +554,135 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             self.show_toast("Failed to launch hardinfo2")
     
     def _on_install_hardinfo2(self, button):
-        """Install hardinfo2 with pre-wiring for AUR/repos if needed."""
-        button.set_sensitive(False)
-        button.set_label("Installing...")
+        """Install hardinfo2 via terminal so user can see progress and enter passwords."""
+        from .core import detect_aur_helper, DistroFamily
+        import subprocess
         
-        import threading
+        # Build the install script based on distro
+        if self.distro.family == DistroFamily.ARCH:
+            aur_helper = detect_aur_helper()
+            if aur_helper:
+                install_script = f'''echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  Installing hardinfo2..."
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+{aur_helper} -S hardinfo2
+echo ""
+if command -v hardinfo2 &> /dev/null; then
+    echo "✓ hardinfo2 installed successfully!"
+else
+    echo "✗ Installation failed"
+fi
+echo ""
+echo "Press Enter to close..."
+read'''
+            else:
+                # Need to install yay first
+                install_script = '''echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  Installing yay (AUR helper) first..."
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+sudo pacman -S --needed --noconfirm base-devel git
+cd /tmp
+rm -rf yay
+git clone https://aur.archlinux.org/yay.git
+cd yay
+makepkg -si
+cd ..
+rm -rf yay
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  Now installing hardinfo2..."
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+yay -S hardinfo2
+echo ""
+if command -v hardinfo2 &> /dev/null; then
+    echo "✓ hardinfo2 installed successfully!"
+else
+    echo "✗ Installation failed"
+fi
+echo ""
+echo "Press Enter to close..."
+read'''
+        elif self.distro.family == DistroFamily.DEBIAN:
+            install_script = '''echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  Installing hardinfo2..."
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+sudo apt-get install -y hardinfo2
+echo ""
+if command -v hardinfo2 &> /dev/null; then
+    echo "✓ hardinfo2 installed successfully!"
+else
+    echo "✗ Installation failed - may need backports enabled"
+fi
+echo ""
+echo "Press Enter to close..."
+read'''
+        elif self.distro.family == DistroFamily.FEDORA:
+            install_script = '''echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  Installing hardinfo2..."
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+sudo dnf install -y hardinfo2
+echo ""
+if command -v hardinfo2 &> /dev/null; then
+    echo "✓ hardinfo2 installed successfully!"
+else
+    echo "✗ Installation failed"
+fi
+echo ""
+echo "Press Enter to close..."
+read'''
+        elif self.distro.family == DistroFamily.SUSE:
+            install_script = '''echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  Installing hardinfo2..."
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+sudo zypper install -y hardinfo2
+echo ""
+if command -v hardinfo2 &> /dev/null; then
+    echo "✓ hardinfo2 installed successfully!"
+else
+    echo "✗ Installation failed"
+fi
+echo ""
+echo "Press Enter to close..."
+read'''
+        else:
+            self.show_toast("Unsupported distribution")
+            return
         
-        def install_thread():
-            from .core import run_sudo, detect_aur_helper, DistroFamily
-            import subprocess
-            
-            success = False
-            message = ""
-            
+        # Find available terminal and launch
+        terminals = [
+            ('konsole', ['konsole', '-e', 'bash', '-c', install_script]),
+            ('gnome-terminal', ['gnome-terminal', '--', 'bash', '-c', install_script]),
+            ('xfce4-terminal', ['xfce4-terminal', '-e', f'bash -c \'{install_script}\'']),
+            ('tilix', ['tilix', '-e', f'bash -c "{install_script}"']),
+            ('alacritty', ['alacritty', '-e', 'bash', '-c', install_script]),
+            ('kitty', ['kitty', 'bash', '-c', install_script]),
+        ]
+        
+        for term_name, term_cmd in terminals:
             try:
-                if self.distro.family == DistroFamily.ARCH:
-                    # Need AUR helper for Arch
-                    aur_helper = detect_aur_helper()
-                    if aur_helper:
-                        result = subprocess.run(
-                            [aur_helper, '-S', '--noconfirm', 'hardinfo2'],
-                            capture_output=True,
-                            text=True
-                        )
-                        success = result.returncode == 0
-                        message = "hardinfo2 installed!" if success else result.stderr
-                    else:
-                        # Install yay first
-                        message = "Installing AUR helper (yay) first..."
-                        GLib.idle_add(lambda: button.set_label(message))
-                        
-                        # Install base-devel and git if needed
-                        subprocess.run(
-                            ['pkexec', 'pacman', '-S', '--noconfirm', '--needed', 'base-devel', 'git'],
-                            capture_output=True
-                        )
-                        
-                        # Clone and build yay
-                        import tempfile
-                        import os
-                        with tempfile.TemporaryDirectory() as tmpdir:
-                            subprocess.run(
-                                ['git', 'clone', 'https://aur.archlinux.org/yay.git', tmpdir],
-                                capture_output=True
-                            )
-                            result = subprocess.run(
-                                ['makepkg', '-si', '--noconfirm'],
-                                cwd=tmpdir,
-                                capture_output=True
-                            )
-                        
-                        if subprocess.run(['which', 'yay'], capture_output=True).returncode == 0:
-                            # Now install hardinfo2
-                            result = subprocess.run(
-                                ['yay', '-S', '--noconfirm', 'hardinfo2'],
-                                capture_output=True,
-                                text=True
-                            )
-                            success = result.returncode == 0
-                            message = "hardinfo2 installed!" if success else result.stderr
-                        else:
-                            message = "Failed to install AUR helper"
-                            
-                elif self.distro.family == DistroFamily.DEBIAN:
-                    result = subprocess.run(
-                        ['pkexec', 'apt-get', 'install', '-y', 'hardinfo2'],
-                        capture_output=True,
-                        text=True
-                    )
-                    success = result.returncode == 0
-                    if not success and 'Unable to locate' in result.stderr:
-                        # Try enabling backports for Debian 12
-                        message = "Enabling backports..."
-                        GLib.idle_add(lambda: button.set_label(message))
-                        # This would need backports setup - simplified for now
-                        message = "hardinfo2 not available - may need backports enabled"
-                    else:
-                        message = "hardinfo2 installed!" if success else result.stderr
-                        
-                elif self.distro.family == DistroFamily.FEDORA:
-                    result = subprocess.run(
-                        ['pkexec', 'dnf', 'install', '-y', 'hardinfo2'],
-                        capture_output=True,
-                        text=True
-                    )
-                    success = result.returncode == 0
-                    message = "hardinfo2 installed!" if success else result.stderr
+                if subprocess.run(['which', term_name], capture_output=True).returncode == 0:
+                    subprocess.Popen(term_cmd)
+                    self.show_toast("Terminal opened - follow the prompts to install")
                     
-                elif self.distro.family == DistroFamily.SUSE:
-                    result = subprocess.run(
-                        ['pkexec', 'zypper', 'install', '-y', 'hardinfo2'],
-                        capture_output=True,
-                        text=True
-                    )
-                    success = result.returncode == 0
-                    message = "hardinfo2 installed!" if success else result.stderr
-                else:
-                    message = "Unsupported distribution"
-                    
-            except Exception as e:
-                message = str(e)
-            
-            GLib.idle_add(self._on_hardinfo2_install_complete, success, message, button)
+                    # Check for completion after a delay and update UI
+                    GLib.timeout_add(5000, self._check_hardinfo2_installed, button)
+                    return
+            except Exception:
+                continue
         
-        threading.Thread(target=install_thread, daemon=True).start()
+        self.show_toast("Could not find terminal emulator")
     
-    def _on_hardinfo2_install_complete(self, success, message, button):
-        """Handle hardinfo2 installation completion."""
+    def _check_hardinfo2_installed(self, button):
+        """Check if hardinfo2 was installed and update UI."""
         from .core import check_hardinfo2_available
         
-        if success and check_hardinfo2_available():
-            self.show_toast("hardinfo2 installed! Infrastructure ready for future tools.")
+        if check_hardinfo2_available():
             # Replace button with launch button
             button.get_parent().remove(button)
             
@@ -677,10 +695,11 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             self.hw_row.add_suffix(launch_btn)
             self.hw_row.set_activatable(True)
             self.hw_row.connect("activated", lambda r: self._on_launch_hardinfo2(None))
-        else:
-            self.show_toast(f"Installation failed: {message}")
-            button.set_label("Install hardinfo2 (Recommended)")
-            button.set_sensitive(True)
+            self.show_toast("hardinfo2 ready!")
+            return False  # Stop checking
+        
+        # Keep checking for a bit (up to 60 seconds)
+        return True
     
     def create_module_group_from_registry(self, title: str, modules: list) -> Gtk.Widget:
         """

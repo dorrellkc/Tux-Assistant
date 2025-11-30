@@ -5,6 +5,15 @@ All notable changes to Tux Assistant will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.7.8] - 2025-11-29
+
+### Fixed - hardinfo2 Installation via Terminal
+- hardinfo2 install now opens a terminal window (like git push/pull)
+- User can see progress, enter sudo password, and confirm prompts
+- Works across all supported distros (Arch, Debian, Fedora, openSUSE)
+- For Arch: Automatically installs yay AUR helper if needed
+- UI updates automatically when installation completes
+
 ## [5.7.7] - 2025-11-29
 
 ### Improved - Clearer Push/Pull Buttons
