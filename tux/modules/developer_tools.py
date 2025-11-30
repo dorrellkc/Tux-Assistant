@@ -1597,6 +1597,17 @@ class UpdateFromZipDialog(Adw.Dialog):
             
             results.append("✓ Copied new files")
         
+        # Fix execute permissions on scripts
+        GLib.idle_add(lambda: self.status_label.set_text("Setting permissions..."))
+        
+        executable_files = ['install.sh', 'tux-helper', 'tux-assistant.py']
+        for exe_file in executable_files:
+            exe_path = os.path.join(project_path, exe_file)
+            if os.path.exists(exe_path):
+                os.chmod(exe_path, 0o755)
+        
+        results.append("✓ Fixed execute permissions")
+        
         # Check git status
         result = subprocess.run(
             ['git', '-C', project_path, 'status', '--porcelain'],
