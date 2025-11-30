@@ -5,6 +5,13 @@ All notable changes to Tux Assistant will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.7.17] - 2025-11-30
+
+### Fixed - Removed Duplicate Back Buttons
+- Oops! NavigationView already adds back buttons automatically
+- Removed the manual ones I added (double back buttons LOL)
+- Now just ONE back button per page, as intended
+
 ## [5.7.16] - 2025-11-30
 
 ### Fixed - Back Button on All Module Pages!
