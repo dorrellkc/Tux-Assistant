@@ -778,25 +778,52 @@ class DeveloperToolsPage(Adw.NavigationPage):
             self.window.show_toast("SSH keys required - set up keys first")
             return
         
-        self.window.show_toast("Pulling...")
+        self._pull_via_terminal(path)
+    
+    def _pull_via_terminal(self, path: str):
+        """Open terminal to run git pull (allows passphrase entry)."""
+        project_name = os.path.basename(path)
         
-        def pull_thread():
+        # Create a script that pulls and waits for user to see result
+        pull_script = f'''echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  Pulling {project_name}..."
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+cd "{path}"
+if git pull; then
+    echo ""
+    echo "✓ Pull successful!"
+else
+    echo ""
+    echo "✗ Pull failed"
+fi
+echo ""
+echo "Press Enter to close..."
+read'''
+        
+        # Find available terminal
+        terminals = [
+            ('konsole', ['konsole', '-e', 'bash', '-c', pull_script]),
+            ('gnome-terminal', ['gnome-terminal', '--', 'bash', '-c', pull_script]),
+            ('xfce4-terminal', ['xfce4-terminal', '-e', f'bash -c \'{pull_script}\'']),
+            ('tilix', ['tilix', '-e', f'bash -c "{pull_script}"']),
+            ('alacritty', ['alacritty', '-e', 'bash', '-c', pull_script]),
+            ('kitty', ['kitty', 'bash', '-c', pull_script]),
+        ]
+        
+        for term_name, term_cmd in terminals:
             try:
-                result = subprocess.run(
-                    ['git', '-C', path, 'pull'],
-                    capture_output=True,
-                    text=True,
-                    timeout=60
-                )
-                success = result.returncode == 0
-                message = "Pull complete!" if success else f"Pull failed: {result.stderr[:100]}"
-                GLib.idle_add(self._on_git_operation_complete, success, message, path)
-            except subprocess.TimeoutExpired:
-                GLib.idle_add(self._on_git_operation_complete, False, "Pull timed out", path)
-            except Exception as e:
-                GLib.idle_add(self._on_git_operation_complete, False, str(e), path)
+                if subprocess.run(['which', term_name], capture_output=True).returncode == 0:
+                    subprocess.Popen(term_cmd)
+                    self.window.show_toast(f"Terminal opened - enter passphrase if prompted")
+                    
+                    # Refresh after a delay to catch the pull result
+                    GLib.timeout_add(3000, self._refresh_project_list)
+                    return
+            except Exception:
+                continue
         
-        threading.Thread(target=pull_thread, daemon=True).start()
+        self.window.show_toast("Could not find terminal emulator")
     
     def _on_push_project(self, path: str, row):
         """Push changes for a project."""
@@ -826,59 +853,70 @@ class DeveloperToolsPage(Adw.NavigationPage):
         self._do_commit_and_push(path, message)
     
     def _do_commit_and_push(self, path: str, message: str):
-        """Commit all changes and push."""
-        self.window.show_toast("Committing and pushing...")
+        """Commit all changes and push using terminal for passphrase."""
+        # Stage and commit first (these don't need passphrase)
+        try:
+            subprocess.run(['git', '-C', path, 'add', '-A'], check=True)
+            subprocess.run(
+                ['git', '-C', path, 'commit', '-m', message],
+                check=True,
+                capture_output=True
+            )
+        except subprocess.CalledProcessError as e:
+            self.window.show_toast(f"Commit failed: {e}")
+            return
         
-        def push_thread():
-            try:
-                # Stage all changes
-                subprocess.run(['git', '-C', path, 'add', '-A'], check=True)
-                
-                # Commit
-                subprocess.run(
-                    ['git', '-C', path, 'commit', '-m', message],
-                    check=True,
-                    capture_output=True
-                )
-                
-                # Push
-                result = subprocess.run(
-                    ['git', '-C', path, 'push'],
-                    capture_output=True,
-                    text=True,
-                    timeout=60
-                )
-                
-                success = result.returncode == 0
-                msg = "Pushed successfully!" if success else f"Push failed: {result.stderr[:100]}"
-                GLib.idle_add(self._on_git_operation_complete, success, msg, path)
-                
-            except subprocess.CalledProcessError as e:
-                GLib.idle_add(self._on_git_operation_complete, False, f"Git error: {e}", path)
-            except Exception as e:
-                GLib.idle_add(self._on_git_operation_complete, False, str(e), path)
-        
-        threading.Thread(target=push_thread, daemon=True).start()
+        # Now push via terminal so user can enter passphrase
+        self._push_via_terminal(path)
     
     def _do_push(self, path: str):
-        """Push existing commits."""
-        self.window.show_toast("Pushing...")
+        """Push existing commits via terminal."""
+        self._push_via_terminal(path)
+    
+    def _push_via_terminal(self, path: str):
+        """Open terminal to run git push (allows passphrase entry)."""
+        project_name = os.path.basename(path)
         
-        def push_thread():
+        # Create a script that pushes and waits for user to see result
+        push_script = f'''echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  Pushing {project_name}..."
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+cd "{path}"
+if git push; then
+    echo ""
+    echo "✓ Push successful!"
+else
+    echo ""
+    echo "✗ Push failed"
+fi
+echo ""
+echo "Press Enter to close..."
+read'''
+        
+        # Find available terminal
+        terminals = [
+            ('konsole', ['konsole', '-e', 'bash', '-c', push_script]),
+            ('gnome-terminal', ['gnome-terminal', '--', 'bash', '-c', push_script]),
+            ('xfce4-terminal', ['xfce4-terminal', '-e', f'bash -c \'{push_script}\'']),
+            ('tilix', ['tilix', '-e', f'bash -c "{push_script}"']),
+            ('alacritty', ['alacritty', '-e', 'bash', '-c', push_script]),
+            ('kitty', ['kitty', 'bash', '-c', push_script]),
+        ]
+        
+        for term_name, term_cmd in terminals:
             try:
-                result = subprocess.run(
-                    ['git', '-C', path, 'push'],
-                    capture_output=True,
-                    text=True,
-                    timeout=60
-                )
-                success = result.returncode == 0
-                msg = "Pushed successfully!" if success else f"Push failed: {result.stderr[:100]}"
-                GLib.idle_add(self._on_git_operation_complete, success, msg, path)
-            except Exception as e:
-                GLib.idle_add(self._on_git_operation_complete, False, str(e), path)
+                if subprocess.run(['which', term_name], capture_output=True).returncode == 0:
+                    subprocess.Popen(term_cmd)
+                    self.window.show_toast(f"Terminal opened - enter passphrase if prompted")
+                    
+                    # Refresh after a delay to catch the push result
+                    GLib.timeout_add(3000, self._refresh_project_list)
+                    return
+            except Exception:
+                continue
         
-        threading.Thread(target=push_thread, daemon=True).start()
+        self.window.show_toast("Could not find terminal emulator")
     
     def _on_git_operation_complete(self, success: bool, message: str, path: str):
         """Handle git operation completion."""

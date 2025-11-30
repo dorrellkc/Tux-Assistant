@@ -5,6 +5,21 @@ All notable changes to Tux Assistant will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.7.6] - 2025-11-29
+
+### Changed - Terminal for Git Operations
+- Push and Pull now open a terminal window
+- User can see the passphrase prompt and enter it
+- Terminal shows clear success/failure message
+- "Press Enter to close..." keeps terminal open so you see the result
+- Works with: Konsole, GNOME Terminal, XFCE Terminal, Tilix, Alacritty, Kitty
+
+### Why?
+SSH passphrase prompts can't be captured by the GUI. Opening a terminal window lets you:
+1. See exactly what git is doing
+2. Enter your passphrase when prompted
+3. See success/failure clearly
+
 ## [5.7.5] - 2025-11-29
 
 ### Fixed
