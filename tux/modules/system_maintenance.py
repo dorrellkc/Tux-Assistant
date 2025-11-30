@@ -347,6 +347,7 @@ def toggle_autostart_app(app: StartupApp, enable: bool) -> bool:
 # =============================================================================
 
 @register_module(
+    id="system_maintenance",
     name="System Maintenance",
     description="Cleanup, updates, startup apps, storage",
     icon="applications-system-symbolic",
