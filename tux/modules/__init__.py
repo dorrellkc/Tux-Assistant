@@ -22,6 +22,7 @@ from . import setup_tools
 from . import developer_tools
 from . import iso_creator
 from . import tux_tunes
+from . import help_learning
 from . import placeholders  # placeholder registrations (if any remain)
 
 __all__ = [

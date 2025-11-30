@@ -957,7 +957,7 @@ class HardwareManagerPage(Adw.NavigationPage):
             DistroFamily.ARCH: "cups cups-pdf system-config-printer",
             DistroFamily.DEBIAN: "cups cups-pdf system-config-printer",
             DistroFamily.FEDORA: "cups cups-pdf system-config-printer",
-            DistroFamily.OPENSUSE: "cups cups-pdf",
+            DistroFamily.OPENSUSE: "cups cups-pdf system-config-printer",
         }
         
         pkg = packages.get(self.distro.family, "cups")

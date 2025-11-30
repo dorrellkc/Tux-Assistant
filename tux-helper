@@ -388,15 +388,87 @@ def ensure_opensuse_packman_for_packages(packages: list[str]) -> None:
 
 
 # =============================================================================
+# openSUSE games:tools Repository Support
+# =============================================================================
+
+# Packages that require games:tools repository on openSUSE
+OPENSUSE_GAMES_PACKAGES = {
+    'steam', 'lutris', 'gamemode', 'gamemoded', 'mangohud', 'mangohud-32bit',
+    'wine', 'wine-gecko', 'wine-mono', 'protonup-qt',
+}
+
+def check_opensuse_games_repo_enabled() -> bool:
+    """Check if games:tools repository is enabled on OpenSUSE."""
+    try:
+        result = subprocess.run(
+            ['zypper', 'repos', '-u'],
+            capture_output=True, text=True, timeout=30
+        )
+        return 'games_tools' in result.stdout.lower() or 'games:tools' in result.stdout.lower()
+    except:
+        return False
+
+def enable_opensuse_games_repo() -> bool:
+    """Enable games:tools repository on OpenSUSE."""
+    version = get_opensuse_version()
+    
+    # games:tools repo URL
+    games_url = f"https://download.opensuse.org/repositories/games:/tools/{version}/"
+    
+    emit_status("info", f"Adding games:tools repository for {version}...")
+    
+    try:
+        # Add games:tools repo
+        result = subprocess.run(
+            ['zypper', 'ar', '-cfp', '90', games_url, 'games_tools'],
+            capture_output=True, text=True, timeout=60
+        )
+        
+        if result.returncode != 0 and 'already exists' not in result.stderr.lower():
+            emit_output(f"Warning: {result.stderr}")
+            return False
+        
+        # Auto-import GPG key
+        emit_status("info", "Importing games:tools GPG key...")
+        subprocess.run(
+            ['zypper', '--gpg-auto-import-keys', 'refresh', 'games_tools'],
+            capture_output=True, text=True, timeout=120
+        )
+        
+        return True
+        
+    except Exception as e:
+        emit_output(f"Warning: Could not enable games:tools: {e}")
+        return False
+
+def ensure_opensuse_games_for_packages(packages: list[str]) -> None:
+    """Automatically enable games:tools if needed for requested packages."""
+    needs_games = any(pkg in OPENSUSE_GAMES_PACKAGES or
+                     any(pkg.startswith(p) for p in ['steam', 'lutris', 'gamemode', 'mangohud', 'wine'])
+                     for pkg in packages)
+    
+    if not needs_games:
+        return
+    
+    if not check_opensuse_games_repo_enabled():
+        emit_status("info", "Gaming packages require games:tools repository...")
+        enable_opensuse_games_repo()
+
+
+# =============================================================================
 # Fedora RPM Fusion Auto-Enablement
 # =============================================================================
 
 # Packages that require RPM Fusion on Fedora
 FEDORA_RPMFUSION_PACKAGES = {
+    # Multimedia
     'ffmpeg', 'ffmpeg-libs', 'libdvdcss', 'vlc', 'x264', 'x265',
     'gstreamer1-plugins-bad-freeworld', 'gstreamer1-plugins-ugly',
     'gstreamer1-libav', 'handbrake', 'handbrake-gui',
+    # NVIDIA drivers
     'akmod-nvidia', 'xorg-x11-drv-nvidia',
+    # Gaming - requires RPM Fusion
+    'steam', 'lutris',
 }
 
 def check_fedora_rpmfusion_enabled() -> dict:
@@ -596,6 +668,7 @@ def install_packages(packages: list[str], family: str) -> int:
         ensure_debian_repos_for_packages(packages)
     elif family == 'opensuse':
         ensure_opensuse_packman_for_packages(packages)
+        ensure_opensuse_games_for_packages(packages)
     elif family == 'fedora':
         ensure_fedora_rpmfusion_for_packages(packages)
     

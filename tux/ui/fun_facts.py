@@ -79,7 +79,7 @@ APP_FEATURE_FACTS = [
         category=FactCategory.APP_FEATURE,
         title="Network File Sharing",
         content="Set up Samba shares to easily share files between Linux, Windows, and Mac computers on your network.",
-        module="networking",
+        module="networking_simple",
         icon="🔗"
     ),
     FunFact(
@@ -120,7 +120,7 @@ APP_FEATURE_FACTS = [
         category=FactCategory.APP_FEATURE,
         title="QR Code Sharing",
         content="When you set up a Samba share, Tux Assistant can generate a QR code for easy mobile device connection!",
-        module="networking",
+        module="networking_simple",
         icon="📱"
     ),
     FunFact(

@@ -143,25 +143,29 @@ CONTROLLER_PACKAGES = {
     "xbox": GamingApp(
         id="xbox",
         name="Xbox Controller Support",
-        description="Support for Xbox One/Series controllers (usually built-in).",
+        description="Support for Xbox One/Series controllers (usually built-in to kernel).",
         icon="input-gaming-symbolic",
         check_command="xboxdrv",
         packages={
             DistroFamily.ARCH: "xboxdrv",
             DistroFamily.DEBIAN: "xboxdrv",
             DistroFamily.FEDORA: "xboxdrv",
+            DistroFamily.OPENSUSE: "xboxdrv",  # Requires hardware repo
         },
     ),
     "ps": GamingApp(
         id="ps",
         name="PlayStation Controller Support",
-        description="Support for DualShock and DualSense controllers.",
+        description="Support for DualShock 4 controllers. DualSense (PS5) works out of the box.",
         icon="input-gaming-symbolic",
         check_command="ds4drv",
         packages={
-            DistroFamily.ARCH: "ds4drv",
+            DistroFamily.ARCH: "ds4drv",  # AUR
             DistroFamily.DEBIAN: "ds4drv",
+            # Fedora/openSUSE: Use pip install ds4drv or kernel support
         },
+        flatpak=None,  # No flatpak available
+        website="https://github.com/chrippa/ds4drv",
     ),
 }
 

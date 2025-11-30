@@ -104,18 +104,32 @@
 
 ---
 
-## Priority 6: Help & Learning (NEW MODULE)
+## Priority 6: Help & Learning (NEW MODULE) ✅ IMPLEMENTED in v5.13.0
 
-- [ ] Interactive tutorials
-- [ ] "What is this?" mode
-- [ ] Common tasks wizard
-  - [ ] "I want to play a DVD"
-  - [ ] "I want to connect to WiFi"
-  - [ ] "I want to print something"
-  - [ ] "My sound isn't working"
-- [ ] Troubleshooter
-  - [ ] Guided diagnosis
-  - [ ] Common fixes
+- [x] Interactive tutorials
+  - [x] Terminal Basics
+  - [x] Installing Software
+  - [x] Files & Folders
+  - [x] Updates & Security
+- [x] "I want to..." wizard (Quick Tasks)
+  - [x] Play a DVD → Media Server
+  - [x] Connect to WiFi → Networking
+  - [x] Print something → Hardware Manager
+  - [x] Install an app → Software Center
+  - [x] Play games → Gaming
+  - [x] Back up files → Backup & Restore
+  - [x] And more...
+- [x] Troubleshooter
+  - [x] No Sound
+  - [x] WiFi Not Working
+  - [x] Printer Not Working
+  - [x] System Running Slow
+  - [x] App Keeps Crashing
+  - [x] Bluetooth Problems
+- [x] Quick Reference
+  - [x] Keyboard shortcuts
+  - [x] Linux terminology
+  - [x] Online help resources
 
 ---
 

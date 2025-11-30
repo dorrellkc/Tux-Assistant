@@ -5,6 +5,102 @@ All notable changes to Tux Assistant will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.13.1] - 2025-11-30
+
+### Fixed - Module ID References
+- Updated fun_facts.py to use `networking_simple` instead of old `networking` ID
+- Prevents potential errors when fun facts try to navigate to networking module
+
+**Note on ChatGPT suggestion:** The stacked decorator approach for backward compatibility wouldn't work correctly in Python. The simpler fix is to update references to use the new module IDs directly.
+
+## [5.13.0] - 2025-11-30
+
+### Added - Help & Learning Module 🎓
+
+**The final TODO priority is COMPLETE!**
+
+#### Interactive Tutorials
+Step-by-step guides for Linux beginners:
+- **Terminal Basics** - Learn the command line without fear
+- **Installing Software** - Package managers, Flatpak, and more
+- **Files & Folders** - Navigate Linux file structure
+- **Updates & Security** - Keep your system safe
+
+#### "I Want To..." Quick Tasks
+One-click shortcuts to common tasks:
+- Play a DVD
+- Connect to WiFi
+- Print a document
+- Install an application
+- Play games
+- Back up files
+- Share files on network
+- Customize desktop
+- Update system
+- Fix audio problems
+
+#### Troubleshooter
+Guided diagnosis for common problems:
+- **No Sound** - Audio troubleshooting
+- **WiFi Not Working** - Network diagnosis
+- **Printer Not Working** - Print queue and CUPS
+- **System Running Slow** - Performance fixes
+- **App Keeps Crashing** - Stability help
+- **Bluetooth Problems** - Connection issues
+
+#### Quick Reference
+- Essential keyboard shortcuts
+- Linux terminology explained
+- Links to online help resources
+
+### Summary
+**All 6 TODO priorities are now COMPLETE! 🎉**
+- ✅ System Maintenance (v5.8.0)
+- ✅ Backup & Restore (v5.10.0)
+- ✅ Gaming (v5.9.0)
+- ✅ Hardware Manager (v5.11.0)
+- ✅ Networking Additions (v5.12.0)
+- ✅ Help & Learning (v5.13.0)
+
+## [5.12.4] - 2025-11-30
+
+### Improved - Cross-Distro Compatibility (REAL fixes)
+
+**tux-helper improvements:**
+- Added `steam` and `lutris` to Fedora RPM Fusion auto-enable list
+- Added openSUSE `games:tools` repository auto-enablement for gaming packages
+- Gaming packages (steam, lutris, gamemode, mangohud) now auto-enable required repos
+
+**Gaming module fixes:**
+- Added `xboxdrv` package for openSUSE
+- Updated controller descriptions to be more accurate
+- DualSense (PS5) controller noted as working out of box on modern kernels
+
+**Documentation:**
+- Created `docs/DISTRO_AUDIT_HONEST.md` with real status of what's verified vs assumed
+- Marked packages that need real-world testing on each distro
+
+### Known Limitations (Being Honest)
+- Only tested thoroughly on Arch-based distros (CachyOS/Start-DE)
+- Debian, Fedora, openSUSE need real hardware testing
+- ds4drv not available via package manager on Fedora/openSUSE (pip or AUR only)
+- Some packages may still fail if repos aren't available
+
+**The "It Just Works" promise requires real testing on each distro family.**
+
+## [5.12.3] - 2025-11-30
+
+### Fixed - Distro Compatibility Audit
+- **Hardware Manager:** Added system-config-printer to openSUSE CUPS install
+- **Backup & Restore:** openSUSE Timeshift now adds required Archiving:Backup repo before install
+- **Backup & Restore:** Added note about snapper (openSUSE's native BTRFS snapshot tool)
+- **Documentation:** Added docs/DISTRO_PACKAGES.md with full package availability matrix
+
+### Verified Package Availability
+- CUPS, Bluetooth tools, rsync, speedtest-cli: All distros ✅
+- Timeshift: All distros (openSUSE needs extra repo) ✅
+- Gaming apps: Flatpak fallback for Bottles/ProtonUp-Qt on non-Arch ✅
+
 ## [5.12.2] - 2025-11-30
 
 ### Fixed - Install Plan Format

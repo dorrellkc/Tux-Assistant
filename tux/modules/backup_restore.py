@@ -981,9 +981,22 @@ read'''
         elif self.distro.family == DistroFamily.FEDORA:
             cmd = f"sudo dnf install -y {pkg}"
         elif self.distro.family == DistroFamily.OPENSUSE:
-            cmd = f"sudo zypper install -y {pkg}"
+            # openSUSE needs the Archiving:Backup repo for Timeshift
+            # Note: openSUSE also has snapper pre-installed for BTRFS
+            cmd = '''# Adding Archiving:Backup repository for Timeshift
+sudo zypper addrepo -f https://download.opensuse.org/repositories/Archiving:Backup/openSUSE_Tumbleweed/Archiving:Backup.repo 2>/dev/null || true
+sudo zypper --gpg-auto-import-keys refresh
+sudo zypper install -y timeshift'''
         else:
             return
+        
+        # Special note for openSUSE about snapper
+        extra_note = ""
+        if self.distro.family == DistroFamily.OPENSUSE:
+            extra_note = '''
+echo ""
+echo "Note: openSUSE also includes 'snapper' for BTRFS snapshots."
+echo "You can use YaST → Filesystem Snapshots for snapper management."'''
         
         script = f'''echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  Installing Timeshift..."
@@ -991,7 +1004,7 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 {cmd}
 echo ""
-echo "✓ Installation complete!"
+echo "✓ Installation complete!"{extra_note}
 echo ""
 echo "Press Enter to close..."
 read'''
