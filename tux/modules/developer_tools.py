@@ -310,7 +310,8 @@ class DeveloperToolsPage(Adw.NavigationPage):
         config_row.set_title("Git Identity")
         
         if git_configured:
-            config_row.set_subtitle(f"✓ {name} <{email}>")
+            # Don't use < > as they're interpreted as markup
+            config_row.set_subtitle(f"✓ {name} ({email})")
             config_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
         else:
             config_row.set_subtitle("✗ Name and email not configured")
@@ -500,6 +501,16 @@ class DeveloperToolsPage(Adw.NavigationPage):
         git_group.set_title("Other Git Tools")
         content_box.append(git_group)
         
+        # Update from ZIP
+        update_row = Adw.ActionRow()
+        update_row.set_title("Update Project from ZIP")
+        update_row.set_subtitle("Safely update a git project from a downloaded ZIP file")
+        update_row.add_prefix(Gtk.Image.new_from_icon_name("package-x-generic-symbolic"))
+        update_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        update_row.set_activatable(True)
+        update_row.connect("activated", self._on_update_from_zip_clicked)
+        git_group.add(update_row)
+        
         # Clone Git Repository
         clone_row = Adw.ActionRow()
         clone_row.set_title("Clone Git Repository")
@@ -513,7 +524,7 @@ class DeveloperToolsPage(Adw.NavigationPage):
         # Restore SSH Keys
         ssh_row = Adw.ActionRow()
         ssh_row.set_title("Restore SSH Keys")
-        ssh_row.set_subtitle("Drag & drop your backed up SSH keys")
+        ssh_row.set_subtitle("Drag and drop your backed up SSH keys")
         ssh_row.add_prefix(Gtk.Image.new_from_icon_name("channel-secure-symbolic"))
         ssh_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
         ssh_row.set_activatable(True)
@@ -802,8 +813,7 @@ class DeveloperToolsPage(Adw.NavigationPage):
         
         # Show commit message dialog if there are changes
         if info.has_changes:
-            dialog = CommitPushDialog(self.window, path, info)
-            dialog.connect("response", self._on_commit_push_response)
+            dialog = CommitPushDialog(self.window, path, info, self._on_commit_push_complete)
             dialog.present(self.window)
         elif info.ahead > 0:
             # Just push existing commits
@@ -811,12 +821,9 @@ class DeveloperToolsPage(Adw.NavigationPage):
         else:
             self.window.show_toast("Nothing to push")
     
-    def _on_commit_push_response(self, dialog, response):
-        """Handle commit/push dialog response."""
-        if response == "push":
-            path = dialog.project_path
-            message = dialog.get_commit_message()
-            self._do_commit_and_push(path, message)
+    def _on_commit_push_complete(self, path: str, message: str):
+        """Handle commit/push dialog completion."""
+        self._do_commit_and_push(path, message)
     
     def _do_commit_and_push(self, path: str, message: str):
         """Commit all changes and push."""
@@ -927,6 +934,16 @@ class DeveloperToolsPage(Adw.NavigationPage):
         from .setup_tools import SSHKeyRestoreDialog
         dialog = SSHKeyRestoreDialog(self.window, self.distro)
         dialog.present(self.window)
+    
+    def _on_update_from_zip_clicked(self, row):
+        """Show dialog to update a project from a ZIP file."""
+        dialog = UpdateFromZipDialog(self.window, self.projects, self._on_update_from_zip_complete)
+        dialog.present(self.window)
+    
+    def _on_update_from_zip_complete(self):
+        """Handle update from ZIP completion."""
+        self._refresh_project_list()
+        self.window.show_toast("Project updated! Review changes and push when ready.")
     
     # ==================== Developer Kit Export/Import ====================
     
@@ -1124,11 +1141,12 @@ class DeveloperToolsPage(Adw.NavigationPage):
 class CommitPushDialog(Adw.Dialog):
     """Dialog for entering commit message before pushing."""
     
-    def __init__(self, parent, path: str, info: GitProject):
+    def __init__(self, parent, path: str, info: GitProject, on_commit_callback=None):
         super().__init__()
         
         self.project_path = path
         self.info = info
+        self.on_commit_callback = on_commit_callback
         
         self.set_title(f"Push {info.name}")
         self.set_content_width(450)
@@ -1200,7 +1218,9 @@ class CommitPushDialog(Adw.Dialog):
     
     def _on_push(self, button):
         """Handle push button."""
-        self.emit("response", "push")
+        if self.on_commit_callback:
+            message = self.get_commit_message()
+            self.on_commit_callback(self.project_path, message)
         self.close()
     
     def get_commit_message(self) -> str:
@@ -1284,3 +1304,281 @@ class GitIdentityDialog(Adw.Dialog):
             self.close()
         except Exception as e:
             print(f"Failed to set git config: {e}")
+
+
+class UpdateFromZipDialog(Adw.Dialog):
+    """Dialog for updating a git project from a downloaded ZIP file."""
+    
+    def __init__(self, parent, projects: List[str], on_complete_callback=None):
+        super().__init__()
+        
+        self.parent_window = parent
+        self.projects = projects
+        self.on_complete_callback = on_complete_callback
+        self.selected_project = None
+        self.selected_zip = None
+        
+        self.set_title("Update Project from ZIP")
+        self.set_content_width(550)
+        self.set_content_height(500)
+        
+        self._build_ui()
+    
+    def _build_ui(self):
+        """Build dialog UI."""
+        toolbar_view = Adw.ToolbarView()
+        self.set_child(toolbar_view)
+        
+        # Header
+        header = Adw.HeaderBar()
+        header.set_show_end_title_buttons(False)
+        header.set_show_start_title_buttons(False)
+        
+        cancel_btn = Gtk.Button(label="Cancel")
+        cancel_btn.connect("clicked", lambda b: self.close())
+        header.pack_start(cancel_btn)
+        
+        self.update_btn = Gtk.Button(label="Update Project")
+        self.update_btn.add_css_class("suggested-action")
+        self.update_btn.set_sensitive(False)
+        self.update_btn.connect("clicked", self._on_update_clicked)
+        header.pack_end(self.update_btn)
+        
+        toolbar_view.add_top_bar(header)
+        
+        # Content
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
+        content.set_margin_top(20)
+        content.set_margin_bottom(20)
+        content.set_margin_start(20)
+        content.set_margin_end(20)
+        toolbar_view.set_content(content)
+        
+        # Instructions
+        info_label = Gtk.Label()
+        info_label.set_markup(
+            "<b>Update a Git project from a ZIP file</b>\n"
+            "<small>This safely updates your project while preserving git history.\n"
+            "Your .git folder stays intact - just the source files are replaced.</small>"
+        )
+        info_label.set_halign(Gtk.Align.START)
+        info_label.set_wrap(True)
+        content.append(info_label)
+        
+        # Step 1: Select ZIP file
+        zip_group = Adw.PreferencesGroup()
+        zip_group.set_title("Step 1: Select ZIP File")
+        content.append(zip_group)
+        
+        self.zip_row = Adw.ActionRow()
+        self.zip_row.set_title("ZIP File")
+        self.zip_row.set_subtitle("No file selected")
+        self.zip_row.add_prefix(Gtk.Image.new_from_icon_name("package-x-generic-symbolic"))
+        
+        browse_btn = Gtk.Button(label="Browse")
+        browse_btn.set_valign(Gtk.Align.CENTER)
+        browse_btn.connect("clicked", self._on_browse_zip)
+        self.zip_row.add_suffix(browse_btn)
+        zip_group.add(self.zip_row)
+        
+        # Step 2: Select target project
+        project_group = Adw.PreferencesGroup()
+        project_group.set_title("Step 2: Select Target Project")
+        content.append(project_group)
+        
+        if self.projects:
+            for project_path in self.projects:
+                project_name = os.path.basename(project_path)
+                row = Adw.ActionRow()
+                row.set_title(project_name)
+                row.set_subtitle(project_path)
+                row.add_prefix(Gtk.Image.new_from_icon_name("folder-symbolic"))
+                
+                # Radio-style selection
+                check = Gtk.CheckButton()
+                check.set_valign(Gtk.Align.CENTER)
+                check.connect("toggled", self._on_project_selected, project_path)
+                
+                # Group the checkbuttons
+                if hasattr(self, 'first_check'):
+                    check.set_group(self.first_check)
+                else:
+                    self.first_check = check
+                
+                row.add_suffix(check)
+                row.set_activatable(True)
+                row.connect("activated", lambda r, c=check: c.set_active(True))
+                project_group.add(row)
+        else:
+            empty_row = Adw.ActionRow()
+            empty_row.set_title("No projects found")
+            empty_row.set_subtitle("Add projects via Scan or Add Manually first")
+            project_group.add(empty_row)
+        
+        # Status area
+        self.status_group = Adw.PreferencesGroup()
+        self.status_group.set_title("Status")
+        self.status_group.set_visible(False)
+        content.append(self.status_group)
+        
+        self.status_label = Gtk.Label()
+        self.status_label.set_wrap(True)
+        self.status_label.set_halign(Gtk.Align.START)
+        self.status_group.add(self.status_label)
+    
+    def _on_browse_zip(self, button):
+        """Browse for ZIP file."""
+        dialog = Gtk.FileDialog()
+        dialog.set_title("Select ZIP File")
+        
+        # Filter for ZIP files
+        filter_zip = Gtk.FileFilter()
+        filter_zip.set_name("ZIP Archives")
+        filter_zip.add_pattern("*.zip")
+        
+        filter_list = Gio.ListStore.new(Gtk.FileFilter)
+        filter_list.append(filter_zip)
+        dialog.set_filters(filter_list)
+        dialog.set_default_filter(filter_zip)
+        
+        # Start in Downloads
+        downloads = os.path.expanduser("~/Downloads")
+        if os.path.isdir(downloads):
+            dialog.set_initial_folder(Gio.File.new_for_path(downloads))
+        
+        dialog.open(self.parent_window, None, self._on_zip_selected)
+    
+    def _on_zip_selected(self, dialog, result):
+        """Handle ZIP file selection."""
+        try:
+            file = dialog.open_finish(result)
+            if file:
+                self.selected_zip = file.get_path()
+                self.zip_row.set_subtitle(os.path.basename(self.selected_zip))
+                self._validate()
+        except Exception:
+            pass  # User cancelled
+    
+    def _on_project_selected(self, check, project_path):
+        """Handle project selection."""
+        if check.get_active():
+            self.selected_project = project_path
+            self._validate()
+    
+    def _validate(self):
+        """Check if we can proceed."""
+        valid = self.selected_zip and self.selected_project
+        self.update_btn.set_sensitive(valid)
+    
+    def _on_update_clicked(self, button):
+        """Perform the update."""
+        if not self.selected_zip or not self.selected_project:
+            return
+        
+        button.set_sensitive(False)
+        button.set_label("Updating...")
+        self.status_group.set_visible(True)
+        self.status_label.set_text("Starting update...")
+        
+        # Run in thread
+        def update_thread():
+            try:
+                results = self._do_update()
+                GLib.idle_add(self._on_update_complete, True, results)
+            except Exception as e:
+                GLib.idle_add(self._on_update_complete, False, str(e))
+        
+        threading.Thread(target=update_thread, daemon=True).start()
+    
+    def _do_update(self) -> str:
+        """Perform the actual update. Returns status message."""
+        import zipfile
+        import tempfile
+        
+        results = []
+        project_path = self.selected_project
+        zip_path = self.selected_zip
+        
+        # Verify .git exists
+        git_dir = os.path.join(project_path, '.git')
+        if not os.path.isdir(git_dir):
+            raise Exception("Not a git repository - .git folder not found!")
+        
+        results.append("✓ Verified .git folder exists")
+        
+        # Create temp directory for extraction
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Extract ZIP
+            GLib.idle_add(lambda: self.status_label.set_text("Extracting ZIP..."))
+            
+            with zipfile.ZipFile(zip_path, 'r') as zf:
+                zf.extractall(temp_dir)
+            
+            results.append("✓ Extracted ZIP file")
+            
+            # Find the source directory (handle nested folder in ZIP)
+            extracted_items = os.listdir(temp_dir)
+            if len(extracted_items) == 1 and os.path.isdir(os.path.join(temp_dir, extracted_items[0])):
+                source_dir = os.path.join(temp_dir, extracted_items[0])
+            else:
+                source_dir = temp_dir
+            
+            results.append(f"✓ Found source: {os.path.basename(source_dir)}")
+            
+            # Get list of items to preserve
+            preserve = ['.git']
+            
+            # Get list of items to remove (everything except .git)
+            GLib.idle_add(lambda: self.status_label.set_text("Removing old files..."))
+            
+            for item in os.listdir(project_path):
+                if item not in preserve:
+                    item_path = os.path.join(project_path, item)
+                    if os.path.isdir(item_path):
+                        shutil.rmtree(item_path)
+                    else:
+                        os.remove(item_path)
+            
+            results.append("✓ Removed old files (preserved .git)")
+            
+            # Copy new files
+            GLib.idle_add(lambda: self.status_label.set_text("Copying new files..."))
+            
+            for item in os.listdir(source_dir):
+                src = os.path.join(source_dir, item)
+                dst = os.path.join(project_path, item)
+                
+                if os.path.isdir(src):
+                    shutil.copytree(src, dst)
+                else:
+                    shutil.copy2(src, dst)
+            
+            results.append("✓ Copied new files")
+        
+        # Check git status
+        result = subprocess.run(
+            ['git', '-C', project_path, 'status', '--porcelain'],
+            capture_output=True, text=True
+        )
+        
+        changed_files = len(result.stdout.strip().split('\n')) if result.stdout.strip() else 0
+        results.append(f"✓ Git sees {changed_files} changed files")
+        
+        return "\n".join(results)
+    
+    def _on_update_complete(self, success: bool, message: str):
+        """Handle update completion."""
+        self.update_btn.set_label("Update Project")
+        
+        if success:
+            self.status_label.set_markup(
+                f"<b>Update Complete!</b>\n\n{message}\n\n"
+                "<small>Click the Push button on your project to commit and push.</small>"
+            )
+            self.update_btn.set_label("Done")
+            self.update_btn.set_sensitive(False)
+            if self.on_complete_callback:
+                self.on_complete_callback()
+        else:
+            self.status_label.set_markup(f"<b>Update Failed</b>\n\n{message}")
+            self.update_btn.set_sensitive(True)

@@ -5,6 +5,47 @@ All notable changes to Tux Assistant will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.7.5] - 2025-11-29
+
+### Fixed
+- Fixed CommitPushDialog signal error (same issue as UpdateFromZipDialog)
+- Push button now properly shows commit message dialog
+
+## [5.7.4] - 2025-11-29
+
+### Fixed
+- Fixed markup error with email display (using parentheses instead of angle brackets)
+- Fixed "Drag & drop" ampersand causing markup parse error
+- Fixed UpdateFromZipDialog signal error (Adw.Dialog doesn't support response signal)
+- Changed to callback pattern for dialog completion
+
+## [5.7.3] - 2025-11-29
+
+### Added - Update from ZIP 🎉
+- **One-click project updates** - No more terminal commands for updating projects!
+- New "Update Project from ZIP" in Other Git Tools
+- Step-by-step wizard:
+  1. Select downloaded ZIP file (defaults to ~/Downloads)
+  2. Select target project from your list
+  3. Click Update - safely replaces files while preserving .git
+- Status updates during the process
+- Automatic git status check after update
+- Shows how many files changed
+
+### How It Works
+1. Download ZIP from Claude (or wherever)
+2. Open Developer Tools → Update Project from ZIP
+3. Browse to ZIP, select your project
+4. Click Update
+5. Project files replaced, .git preserved
+6. Click Push button to commit and push!
+
+### Safe By Design
+- Verifies .git folder exists before touching anything
+- Extracts to temp directory first
+- Only removes non-.git files
+- Handles nested folders in ZIP automatically
+
 ## [5.7.2] - 2025-11-29
 
 ### Added - Developer Kit & Improved Onboarding
