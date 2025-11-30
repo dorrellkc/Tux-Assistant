@@ -237,11 +237,27 @@ class DeveloperToolsPage(Adw.NavigationPage):
     
     def build_ui(self):
         """Build the page UI."""
+        # Use ToolbarView for proper header
+        toolbar_view = Adw.ToolbarView()
+        self.set_child(toolbar_view)
+        
+        # Header bar with back button
+        header = Adw.HeaderBar()
+        
+        # Back button
+        back_btn = Gtk.Button()
+        back_btn.set_icon_name("go-previous-symbolic")
+        back_btn.set_tooltip_text("Back to main menu")
+        back_btn.connect("clicked", lambda b: self.window.navigation_view.pop())
+        header.pack_start(back_btn)
+        
+        toolbar_view.add_top_bar(header)
+        
         # Scrollable content
         scrolled = Gtk.ScrolledWindow()
         scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         scrolled.set_vexpand(True)
-        self.set_child(scrolled)
+        toolbar_view.set_content(scrolled)
         
         # Content box with clamp
         clamp = Adw.Clamp()

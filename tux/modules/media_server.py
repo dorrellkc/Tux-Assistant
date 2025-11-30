@@ -302,6 +302,14 @@ class MediaServerPage(Adw.NavigationPage):
         
         # Header
         header = Adw.HeaderBar()
+        
+        # Back button
+        back_btn = Gtk.Button()
+        back_btn.set_icon_name("go-previous-symbolic")
+        back_btn.set_tooltip_text("Back to main menu")
+        back_btn.connect("clicked", lambda b: self.window.navigation_view.pop())
+        header.pack_start(back_btn)
+        
         toolbar_view.add_top_bar(header)
         
         # Scrollable content

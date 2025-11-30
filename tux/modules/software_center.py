@@ -1321,10 +1321,16 @@ class SoftwareCenterPage(Adw.NavigationPage):
         toolbar_view = Adw.ToolbarView()
         self.set_child(toolbar_view)
         
-        # Header with back button only (no window controls)
+        # Header with back button
         header = Adw.HeaderBar()
-        header.set_show_end_title_buttons(False)
-        header.set_show_start_title_buttons(False)
+        
+        # Back button
+        back_btn = Gtk.Button()
+        back_btn.set_icon_name("go-previous-symbolic")
+        back_btn.set_tooltip_text("Back to main menu")
+        back_btn.connect("clicked", lambda b: self.window.navigation_view.pop())
+        header.pack_start(back_btn)
+        
         toolbar_view.add_top_bar(header)
         
         # Scrollable content
