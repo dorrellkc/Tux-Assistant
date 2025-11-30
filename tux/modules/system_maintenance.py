@@ -148,14 +148,28 @@ def check_updates_available(family: DistroFamily) -> Tuple[bool, int, str]:
     """Check if updates are available. Returns (has_updates, count, details)."""
     try:
         if family == DistroFamily.ARCH:
-            result = subprocess.run(
-                ['checkupdates'],
-                capture_output=True, text=True
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                updates = result.stdout.strip().split('\n')
-                return True, len(updates), result.stdout.strip()
-            return False, 0, ""
+            # Try checkupdates first (from pacman-contrib)
+            which_result = subprocess.run(['which', 'checkupdates'], capture_output=True)
+            if which_result.returncode == 0:
+                result = subprocess.run(
+                    ['checkupdates'],
+                    capture_output=True, text=True
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    updates = result.stdout.strip().split('\n')
+                    return True, len(updates), result.stdout.strip()
+                return False, 0, ""
+            else:
+                # Fallback: sync and check with pacman -Qu
+                subprocess.run(['sudo', 'pacman', '-Sy'], capture_output=True)
+                result = subprocess.run(
+                    ['pacman', '-Qu'],
+                    capture_output=True, text=True
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    updates = result.stdout.strip().split('\n')
+                    return True, len(updates), result.stdout.strip()
+                return False, 0, ""
             
         elif family == DistroFamily.DEBIAN:
             # Update cache first (might need sudo, so just check)
@@ -712,15 +726,25 @@ class SystemMaintenancePage(Adw.NavigationPage):
     
     def _on_clean_package_cache(self, button):
         """Clean package manager cache."""
-        commands = {
-            DistroFamily.ARCH: "sudo paccache -rk1 && sudo paccache -ruk0",
-            DistroFamily.DEBIAN: "sudo apt-get clean",
-            DistroFamily.FEDORA: "sudo dnf clean all",
-            DistroFamily.OPENSUSE: "sudo zypper clean --all",
-        }
-        cmd = commands.get(self.distro.family)
-        if cmd:
-            self._run_cleanup_command(cmd, "Package cache cleaned!")
+        if self.distro.family == DistroFamily.ARCH:
+            # Check if paccache is available (from pacman-contrib)
+            result = subprocess.run(['which', 'paccache'], capture_output=True)
+            if result.returncode == 0:
+                cmd = "sudo paccache -rk1 && sudo paccache -ruk0"
+            else:
+                # Fallback: clear all cached packages except installed versions
+                cmd = "sudo pacman -Sc --noconfirm"
+        elif self.distro.family == DistroFamily.DEBIAN:
+            cmd = "sudo apt-get clean"
+        elif self.distro.family == DistroFamily.FEDORA:
+            cmd = "sudo dnf clean all"
+        elif self.distro.family == DistroFamily.OPENSUSE:
+            cmd = "sudo zypper clean --all"
+        else:
+            self.window.show_toast("Unsupported distribution")
+            return
+        
+        self._run_cleanup_command(cmd, "Package cache cleaned!")
     
     def _on_clean_user_cache(self, button):
         """Clean user application cache."""

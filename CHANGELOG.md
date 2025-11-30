@@ -5,6 +5,34 @@ All notable changes to Tux Assistant will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.10.1] - 2025-11-30
+
+### Fixed - Missing Dependencies Handled
+- Backup: rsync check and install dialog before backup starts
+- System Maintenance: Arch package cache cleaning works without pacman-contrib
+- System Maintenance: Arch update check works without checkupdates (falls back to pacman -Qu)
+
+## [5.10.0] - 2025-11-30
+
+### Added - Backup & Restore Module (NEW!)
+Simple file backup and system snapshot management:
+
+**File Backup**
+- Auto-detects external/removable drives
+- Select folders to backup (Documents, Pictures, Music, Videos, Desktop)
+- Add custom folders
+- Uses rsync for reliable copying with progress
+- Creates timestamped backup folders
+
+**System Snapshots (Timeshift)**
+- Install Timeshift if not present
+- Create snapshots with one click
+- Open Timeshift GUI for full management
+
+**Backup Tips**
+- 3-2-1 rule reminder
+- Best practices guidance
+
 ## [5.9.1] - 2025-11-30
 
 ### Fixed - Disk Analyzer Installation

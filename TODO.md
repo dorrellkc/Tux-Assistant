@@ -33,21 +33,19 @@
 
 ---
 
-## Priority 2: Backup & Restore (NEW MODULE)
+## Priority 2: Backup & Restore (NEW MODULE) ✅ IMPLEMENTED in v5.10.0
 
-- [ ] Simple file backup
-  - [ ] Select folders to backup
-  - [ ] Backup to USB/external drive
-  - [ ] Scheduled backups
-- [ ] Timeshift integration
-  - [ ] Create system snapshot
-  - [ ] Restore from snapshot
-  - [ ] Auto-snapshot before updates
-- [ ] "Oops I broke something" button
-  - [ ] Guided restore process
-- [ ] Cloud backup setup
-  - [ ] Nextcloud sync
-  - [ ] rsync to remote server
+- [x] Simple file backup
+  - [x] Select folders to backup
+  - [x] Backup to USB/external drive
+  - [x] Auto-detect removable drives
+  - [x] Add custom folders
+  - [x] rsync with progress
+- [x] Timeshift integration
+  - [x] Install if not present
+  - [x] Create system snapshot
+  - [x] Open Timeshift GUI
+- [x] Backup tips section
 
 ---
 

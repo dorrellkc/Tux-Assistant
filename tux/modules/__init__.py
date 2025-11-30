@@ -12,6 +12,7 @@ from .registry import (
 # the application starts. This avoids relying solely on implicit
 # discovery and ensures @register_module decorators are executed.
 from . import system_maintenance
+from . import backup_restore
 from . import gaming
 from . import desktop_enhancements
 from . import software_center
