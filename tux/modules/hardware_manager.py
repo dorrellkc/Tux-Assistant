@@ -518,36 +518,125 @@ class HardwareManagerPage(Adw.NavigationPage):
         self.bluetooth_group.set_description("Pair and manage Bluetooth devices")
         self.content_box.append(self.bluetooth_group)
         
-        # Status/power row
-        self.bt_status_row = Adw.ActionRow()
-        self.bt_status_row.set_title("Bluetooth")
-        self.bt_status_row.set_subtitle("Checking...")
-        self.bt_status_row.add_prefix(Gtk.Image.new_from_icon_name("bluetooth-symbolic"))
+        # We'll rebuild this dynamically based on state
+        self.bt_rows = []
+    
+    def _rebuild_bluetooth_ui(self, available: bool, status: str, issue_type: str, devices: List[BluetoothDevice]):
+        """Completely rebuild Bluetooth UI based on current state."""
+        # Clear all existing rows
+        for row in self.bt_rows:
+            self.bluetooth_group.remove(row)
+        self.bt_rows.clear()
         
-        self.bt_switch = Gtk.Switch()
-        self.bt_switch.set_valign(Gtk.Align.CENTER)
-        self.bt_switch.connect("state-set", self._on_bluetooth_toggled)
-        self.bt_status_row.add_suffix(self.bt_switch)
-        
-        self.bluetooth_group.add(self.bt_status_row)
-        
-        # Devices expander
-        self.bt_devices_expander = Adw.ExpanderRow()
-        self.bt_devices_expander.set_title("Paired Devices")
-        self.bt_devices_expander.set_subtitle("No devices")
-        self.bluetooth_group.add(self.bt_devices_expander)
-        
-        # Open Bluetooth settings row
-        bt_settings_row = Adw.ActionRow()
-        bt_settings_row.set_title("Bluetooth Settings")
-        bt_settings_row.set_subtitle("Open system Bluetooth settings for pairing")
-        bt_settings_row.add_prefix(Gtk.Image.new_from_icon_name("preferences-system-symbolic"))
-        bt_settings_row.set_activatable(True)
-        bt_settings_row.connect("activated", self._on_open_bluetooth_settings)
-        bt_settings_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
-        self.bluetooth_group.add(bt_settings_row)
-        
-        self.bt_device_rows = []
+        if issue_type == "no_tools":
+            # No Bluetooth tools installed
+            row = Adw.ActionRow()
+            row.set_title("Bluetooth Tools Not Installed")
+            row.set_subtitle("Install Bluetooth support to use wireless devices")
+            row.add_prefix(Gtk.Image.new_from_icon_name("dialog-warning-symbolic"))
+            
+            install_btn = Gtk.Button(label="Install Bluetooth")
+            install_btn.set_valign(Gtk.Align.CENTER)
+            install_btn.add_css_class("suggested-action")
+            install_btn.connect("clicked", self._on_install_bluetooth_tools)
+            row.add_suffix(install_btn)
+            
+            self.bluetooth_group.add(row)
+            self.bt_rows.append(row)
+            
+        elif issue_type == "service_stopped":
+            # Service not running
+            row = Adw.ActionRow()
+            row.set_title("Bluetooth Service Stopped")
+            row.set_subtitle("Start the Bluetooth service to use wireless devices")
+            row.add_prefix(Gtk.Image.new_from_icon_name("bluetooth-disabled-symbolic"))
+            
+            start_btn = Gtk.Button(label="Start Service")
+            start_btn.set_valign(Gtk.Align.CENTER)
+            start_btn.add_css_class("suggested-action")
+            start_btn.connect("clicked", self._on_start_bluetooth_service)
+            row.add_suffix(start_btn)
+            
+            self.bluetooth_group.add(row)
+            self.bt_rows.append(row)
+            
+        elif issue_type == "no_adapter":
+            # No Bluetooth hardware
+            row = Adw.ActionRow()
+            row.set_title("No Bluetooth Adapter")
+            row.set_subtitle("No Bluetooth hardware detected on this computer")
+            row.add_prefix(Gtk.Image.new_from_icon_name("bluetooth-disabled-symbolic"))
+            
+            self.bluetooth_group.add(row)
+            self.bt_rows.append(row)
+            
+        elif issue_type == "powered_off":
+            # Service running but Bluetooth is off
+            row = Adw.ActionRow()
+            row.set_title("Bluetooth Disabled")
+            row.set_subtitle("Enable Bluetooth to connect wireless devices")
+            row.add_prefix(Gtk.Image.new_from_icon_name("bluetooth-disabled-symbolic"))
+            
+            enable_btn = Gtk.Button(label="Enable Bluetooth")
+            enable_btn.set_valign(Gtk.Align.CENTER)
+            enable_btn.add_css_class("suggested-action")
+            enable_btn.connect("clicked", self._on_enable_bluetooth)
+            row.add_suffix(enable_btn)
+            
+            self.bluetooth_group.add(row)
+            self.bt_rows.append(row)
+            
+        else:
+            # Bluetooth is on and working!
+            # Status row with disable option
+            status_row = Adw.ActionRow()
+            status_row.set_title("Bluetooth Enabled")
+            status_row.set_subtitle("Ready to connect devices")
+            status_row.add_prefix(Gtk.Image.new_from_icon_name("bluetooth-active-symbolic"))
+            
+            disable_btn = Gtk.Button(label="Disable")
+            disable_btn.set_valign(Gtk.Align.CENTER)
+            disable_btn.connect("clicked", self._on_disable_bluetooth)
+            status_row.add_suffix(disable_btn)
+            
+            self.bluetooth_group.add(status_row)
+            self.bt_rows.append(status_row)
+            
+            # Paired devices expander
+            devices_expander = Adw.ExpanderRow()
+            devices_expander.set_title("Paired Devices")
+            
+            if devices:
+                devices_expander.set_subtitle(f"{len(devices)} device(s)")
+                
+                for device in devices:
+                    dev_row = Adw.ActionRow()
+                    dev_row.set_title(device.name)
+                    
+                    status_text = "Connected" if device.connected else "Paired"
+                    dev_row.set_subtitle(f"{device.address} • {status_text}")
+                    
+                    icon = "bluetooth-active-symbolic" if device.connected else "bluetooth-symbolic"
+                    dev_row.add_prefix(Gtk.Image.new_from_icon_name(icon))
+                    
+                    devices_expander.add_row(dev_row)
+            else:
+                devices_expander.set_subtitle("No paired devices")
+            
+            self.bluetooth_group.add(devices_expander)
+            self.bt_rows.append(devices_expander)
+            
+            # Bluetooth settings row
+            settings_row = Adw.ActionRow()
+            settings_row.set_title("Bluetooth Settings")
+            settings_row.set_subtitle("Pair new devices and manage connections")
+            settings_row.add_prefix(Gtk.Image.new_from_icon_name("preferences-system-symbolic"))
+            settings_row.set_activatable(True)
+            settings_row.connect("activated", self._on_open_bluetooth_settings)
+            settings_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+            
+            self.bluetooth_group.add(settings_row)
+            self.bt_rows.append(settings_row)
     
     def _build_audio_section(self):
         """Build the audio section."""
@@ -685,80 +774,7 @@ class HardwareManagerPage(Adw.NavigationPage):
     
     def _update_bluetooth(self, available: bool, status: str, issue_type: str, devices: List[BluetoothDevice]):
         """Update Bluetooth UI."""
-        self.bt_status_row.set_subtitle(status)
-        
-        # Clear device rows
-        for row in self.bt_device_rows:
-            self.bt_devices_expander.remove(row)
-        self.bt_device_rows.clear()
-        
-        # Remove any existing action buttons from status row
-        # (need to rebuild suffix area)
-        child = self.bt_status_row.get_first_child()
-        while child:
-            next_child = child.get_next_sibling()
-            if isinstance(child, Gtk.Box):
-                # Check for suffix box
-                suffix_child = child.get_first_child()
-                while suffix_child:
-                    next_suffix = suffix_child.get_next_sibling()
-                    if isinstance(suffix_child, Gtk.Button) and suffix_child != self.bt_switch:
-                        child.remove(suffix_child)
-                    suffix_child = next_suffix
-            child = next_child
-        
-        # Handle different issue types
-        if issue_type == "no_tools":
-            self.bt_switch.set_visible(False)
-            
-            install_btn = Gtk.Button(label="Install")
-            install_btn.set_valign(Gtk.Align.CENTER)
-            install_btn.connect("clicked", self._on_install_bluetooth_tools)
-            self.bt_status_row.add_suffix(install_btn)
-            
-            self.bt_devices_expander.set_sensitive(False)
-            self.bt_devices_expander.set_subtitle("Install Bluetooth tools first")
-            
-        elif issue_type == "service_stopped":
-            self.bt_switch.set_visible(False)
-            
-            start_btn = Gtk.Button(label="Start Service")
-            start_btn.set_valign(Gtk.Align.CENTER)
-            start_btn.connect("clicked", self._on_start_bluetooth_service)
-            self.bt_status_row.add_suffix(start_btn)
-            
-            self.bt_devices_expander.set_sensitive(False)
-            self.bt_devices_expander.set_subtitle("Start Bluetooth service first")
-            
-        elif issue_type == "no_adapter":
-            self.bt_switch.set_visible(False)
-            self.bt_devices_expander.set_sensitive(False)
-            self.bt_devices_expander.set_subtitle("No Bluetooth hardware detected")
-            
-        else:
-            # Bluetooth is available (ok or powered_off)
-            self.bt_switch.set_visible(True)
-            self.bt_switch.set_sensitive(True)
-            self.bt_switch.set_active(issue_type == "ok")
-            self.bt_devices_expander.set_sensitive(True)
-            
-            if devices:
-                self.bt_devices_expander.set_subtitle(f"{len(devices)} device(s)")
-                
-                for device in devices:
-                    row = Adw.ActionRow()
-                    row.set_title(device.name)
-                    
-                    status_text = "Connected" if device.connected else "Paired"
-                    row.set_subtitle(f"{device.address} • {status_text}")
-                    
-                    icon = "bluetooth-active-symbolic" if device.connected else "bluetooth-symbolic"
-                    row.add_prefix(Gtk.Image.new_from_icon_name(icon))
-                    
-                    self.bt_devices_expander.add_row(row)
-                    self.bt_device_rows.append(row)
-            else:
-                self.bt_devices_expander.set_subtitle("No paired devices")
+        self._rebuild_bluetooth_ui(available, status, issue_type, devices)
     
     def _refresh_audio(self):
         """Refresh audio devices."""
@@ -990,38 +1006,100 @@ read'''
         
         self.window.show_toast("Could not find terminal emulator")
     
-    def _on_bluetooth_toggled(self, switch, state):
-        """Handle Bluetooth power toggle."""
-        success = toggle_bluetooth_power(state)
+    def _on_enable_bluetooth(self, button):
+        """Enable Bluetooth."""
+        success = toggle_bluetooth_power(True)
         if success:
-            status = "on" if state else "off"
-            self.window.show_toast(f"Bluetooth {status}")
+            self.window.show_toast("Bluetooth enabled")
             GLib.timeout_add(1000, self._refresh_bluetooth)
         else:
-            # Revert switch
-            switch.set_active(not state)
-            self.window.show_toast("Could not change Bluetooth state")
-        return True
+            self.window.show_toast("Could not enable Bluetooth")
+    
+    def _on_disable_bluetooth(self, button):
+        """Disable Bluetooth."""
+        success = toggle_bluetooth_power(False)
+        if success:
+            self.window.show_toast("Bluetooth disabled")
+            GLib.timeout_add(1000, self._refresh_bluetooth)
+        else:
+            self.window.show_toast("Could not disable Bluetooth")
     
     def _on_open_bluetooth_settings(self, row):
         """Open system Bluetooth settings."""
         tools = [
-            ['gnome-control-center', 'bluetooth'],
-            ['blueman-manager'],
-            ['bluedevil-wizard'],
-            ['systemsettings', 'kcm_bluetooth'],
+            ('gnome-control-center', ['gnome-control-center', 'bluetooth']),
+            ('blueman-manager', ['blueman-manager']),
+            ('bluedevil-wizard', ['bluedevil-wizard']),
+            ('systemsettings', ['systemsettings', 'kcm_bluetooth']),
         ]
         
-        for tool in tools:
+        for tool_name, tool_cmd in tools:
             try:
-                result = subprocess.run(['which', tool[0]], capture_output=True)
+                result = subprocess.run(['which', tool_name], capture_output=True)
                 if result.returncode == 0:
-                    subprocess.Popen(tool)
+                    subprocess.Popen(tool_cmd)
                     return
             except Exception:
                 continue
         
-        self.window.show_toast("Could not open Bluetooth settings")
+        # No Bluetooth manager found - offer to install one
+        self._show_install_bluetooth_manager_dialog()
+    
+    def _show_install_bluetooth_manager_dialog(self):
+        """Show dialog to install a Bluetooth manager."""
+        dialog = Adw.MessageDialog(
+            transient_for=self.window,
+            heading="No Bluetooth Manager Found",
+            body="Would you like to install one?"
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("blueman", "Blueman (Recommended)")
+        dialog.set_response_appearance("blueman", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("blueman")
+        dialog.connect("response", self._on_install_bluetooth_manager_response)
+        dialog.present()
+    
+    def _on_install_bluetooth_manager_response(self, dialog, response):
+        """Handle Bluetooth manager install response."""
+        if response == "cancel":
+            return
+        
+        packages = {
+            DistroFamily.ARCH: "blueman",
+            DistroFamily.DEBIAN: "blueman",
+            DistroFamily.FEDORA: "blueman",
+            DistroFamily.OPENSUSE: "blueman",
+        }
+        
+        pkg = packages.get(self.distro.family, "blueman")
+        
+        if self.distro.family == DistroFamily.ARCH:
+            cmd = f"sudo pacman -S --noconfirm {pkg}"
+        elif self.distro.family == DistroFamily.DEBIAN:
+            cmd = f"sudo apt install -y {pkg}"
+        elif self.distro.family == DistroFamily.FEDORA:
+            cmd = f"sudo dnf install -y {pkg}"
+        elif self.distro.family == DistroFamily.OPENSUSE:
+            cmd = f"sudo zypper install -y {pkg}"
+        else:
+            self.window.show_toast("Unsupported distribution")
+            return
+        
+        script = f'''echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  Installing Blueman..."
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+{cmd}
+echo ""
+echo "✓ Installation complete!"
+echo ""
+echo "You can now use 'blueman-manager' for Bluetooth settings."
+echo ""
+echo "Press Enter to close..."
+read'''
+        
+        self._run_in_terminal(script)
+        self.window.show_toast("Installing Blueman...")
     
     def _on_set_default_audio(self, button, device: AudioDevice):
         """Set default audio device."""

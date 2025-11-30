@@ -5,6 +5,24 @@ All notable changes to Tux Assistant will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.11.2] - 2025-11-30
+
+### Fixed - Bluetooth UX Completely Rewritten
+Dynamic UI that rebuilds based on actual state:
+
+| State | What Shows |
+|-------|-----------|
+| No tools | "Install Bluetooth" button |
+| Service stopped | "Start Service" button |
+| No adapter | Informative message |
+| Bluetooth off | "Enable Bluetooth" button |
+| Bluetooth on | "Disable" button + paired devices + settings |
+
+- No more confusing toggle switches
+- Each state has ONE clear action
+- "Bluetooth Settings" now offers to install Blueman if no manager found
+- Proper state transitions without getting stuck
+
 ## [5.11.1] - 2025-11-30
 
 ### Fixed - Bluetooth Setup Help
