@@ -5,6 +5,31 @@ All notable changes to Tux Assistant will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.14.6] - 2025-11-30
+
+### Fixed - Distro Logo Accuracy
+
+**Dynamic Logo Detection:**
+- Now tries to fetch logo from fastfetch if installed
+- Extracts clean ASCII art directly from fastfetch output
+- Falls back to built-in logos only if fastfetch unavailable
+
+**Improved Built-in Logos:**
+- Cleaner, simpler ASCII art that renders properly
+- No special Unicode characters that might break
+- Proper escape sequences for backslashes
+
+**Distros with built-in logos:**
+- EndeavourOS, Arch, Manjaro, CachyOS, Garuda
+- Debian, Ubuntu, Linux Mint, Pop!_OS
+- Fedora, openSUSE, Zorin
+- Generic Tux for unknown distros
+
+**Why fastfetch-first approach:**
+- Fastfetch has 300+ logos maintained by the community
+- Always accurate and up-to-date
+- Our built-in logos are just fallbacks
+
 ## [5.14.5] - 2025-11-30
 
 ### Changed - Tux Tunes Moved to Sidebar

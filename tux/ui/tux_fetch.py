@@ -733,154 +733,178 @@ class TuxFetchSidebar(Gtk.Box):
         inner.append(palette)
     
     def _get_logo(self) -> str:
-        """Get a compact ASCII logo matching fastfetch style."""
+        """Get ASCII logo - try fastfetch first, then fallback to built-in."""
         distro_id = self.distro.id.lower()
         
-        # More accurate logos matching fastfetch
+        # Try to get logo from fastfetch if available
+        logo = self._get_fastfetch_logo(distro_id)
+        if logo:
+            return logo
+        
+        # Fallback to built-in logos
+        return self._get_builtin_logo(distro_id)
+    
+    def _get_fastfetch_logo(self, distro_id: str) -> str:
+        """Try to extract logo from fastfetch."""
+        try:
+            # Run fastfetch with just logo output
+            result = subprocess.run(
+                ['fastfetch', '--logo', distro_id, '--logo-width', '20', 
+                 '--structure', 'Title', '--title-format', ''],
+                capture_output=True, text=True, timeout=3
+            )
+            if result.returncode == 0:
+                # Extract just the logo lines (before the empty title)
+                lines = result.stdout.strip().split('\n')
+                # Filter out empty lines at the end and ANSI codes
+                import re
+                clean_lines = []
+                for line in lines:
+                    # Remove ANSI escape codes
+                    clean = re.sub(r'\x1b\[[0-9;]*m', '', line)
+                    if clean.strip():
+                        clean_lines.append(clean)
+                if clean_lines:
+                    return '\n'.join(clean_lines[:12])  # Limit height
+        except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+            pass
+        return None
+    
+    def _get_builtin_logo(self, distro_id: str) -> str:
+        """Get built-in ASCII logo."""
+        # Simple, clean logos that work without special characters
         logos = {
-            # EndeavourOS - curved mountain shape
+            # EndeavourOS - stylized mountain
             'endeavouros': """      /\\
-     /  \\
-    /`'.,\\
-   /     ',
-  /      ,`\\
- /   ,.`'   \\
-/.,'`googarch\\""",
+     //\\\\
+    //  \\\\
+   //    \\\\
+  // //\\ \\\\
+ // //  \\ \\\\
+///      \\\\\\""",
             
-            # Arch - classic A shape  
-            'arch': """       /\\
-      /  \\
-     /    \\
-    /      \\
-   /   /\\   \\
-  /   /  \\   \\
- /   /    \\   \\
-/___/      \\___\\""",
-            
-            # Manjaro - blocky M
-            'manjaro': """██████████████████
-██████████████████
-████          ████
-████ ████████ ████
-████ ████████ ████
-████ ████████ ████
-████ ████████ ████
-████ ████████ ████""",
-            
-            # CachyOS - arch derivative
-            'cachyos': """      /\\
+            # Arch Linux - classic
+            'arch': """      /\\
      /  \\
     /    \\
-   / ___  \\
-  / |   |  \\
- /  |___|   \\
-/____________\\""",
+   /      \\
+  /   /\\   \\
+ /   /  \\   \\
+/___/    \\___\\""",
             
-            # Garuda - eagle/bird
-            'garuda': """       _______
-      /  ___  \\
-     / /`   `\\ \\
-    | | () () | |
-     \\ \\  ^  / /
-      \\ `---' /
-       `-----'""",
+            # Manjaro
+            'manjaro': """||||||||| ||||
+||||||||| ||||
+||||      ||||
+|||| |||| ||||
+|||| |||| ||||
+|||| |||| ||||
+|||| |||| ||||""",
             
-            # Debian - swirl
-            'debian': """    _____
-   /  __ \\
-  |  /    |
-  |  \\___-
-  -_
-    --_""",
+            # Debian
+            'debian': """   ,--._,-.
+  / ,-.    \\
+ (  (   )   )
+  \\  `-'  ,'
+   `.____,'""",
             
-            # Ubuntu - circle of friends
-            'ubuntu': """           _
-       ---(_)
-   _/  ---  \\
-  (_) |   |
-    \\  --- _/
-       ---(_)""",
+            # Ubuntu
+            'ubuntu': """         _
+     ---(_)
+ _/  ---  \\
+(_) |   |
+  \\  --- _/
+     ---(_)""",
             
-            # Linux Mint - leaf
-            'linuxmint': """  ___________
- |_          \\
-   | | _____ |
-   | | | | | |
-   | | | | | |
-   | \\_____| |
-   \\_________/""",
+            # Fedora
+            'fedora': """      _____
+     /   __)\\
+     |  /  \\ \\
+  ___|  |__/ /
+ / (_    _)_/
+/ /  |  |
+\\_)  |__|""",
+            
+            # openSUSE
+            'opensuse': """  _______
+__|   __ \\
+     / .\\ \\
+     \\__/ |
+   _______|
+   \\_______
+__________/""",
+            
+            # Linux Mint
+            'linuxmint': """ ___________
+|_          \\
+  | | _____ |
+  | | | | | |
+  | | | | | |
+  | \\_____| |
+  \\_________|""",
             
             # Pop!_OS
-            'pop': """   ____________
-  /  _______   \\
- / /        \\   \\
-| |  ______  |  |
-| | |__  __| |  |
- \\ \\   ||   /  /
-  \\_\\  ||  /__/""",
+            'pop': """______
+\\   _ \\        __
+ \\ \\ \\ \\      / /
+  \\ \\_\\ \\    / /
+   \\  ___\\  /_/
+    \\ \\    _
+   __\\_\\__(_)_
+  (___________)""",
             
-            # Fedora - infinity
-            'fedora': """        _____
-       /   __)\\
-       |  /  \\ \\
-    ___|  |__/ /
-   / (_    _)_/
-  / /  |  |
-  \\_)  |__|""",
+            # CachyOS
+            'cachyos': """      /\\
+     /  \\
+    / /\\ \\
+   / /  \\ \\
+  / / /\\ \\ \\
+ / / /  \\ \\ \\
+/_/_/    \\_\\_\\""",
             
-            # openSUSE - gecko
-            'opensuse': """    _______
-  __|   __ \\
-       / .\\ \\
-       \\__/ |
-     _______|
-     \\_______
-  __________/""",
+            # Garuda
+            'garuda': """       _______
+      /  ___  \\
+     /  /   \\  \\
+    /  /     \\  \\
+   /  /       \\  \\
+  /__/    _____\\__\\
+          \\_____/""",
             
             # Zorin
-            'zorin': """   ________
-  /  ____  \\
- |  |    |  |
- |  |    |  |
- |  |____|  |
- |    __    |
-  \\__|  |__/""",
+            'zorin': """  ********
+ **      **
+**        **
+**        **
+**        **
+ **      **
+  ********""",
             
             # Generic Tux
-            'generic': """    .---.
-   /     \\
-   \\.@-@./
-   /`\\_/`\\
-  //  _  \\\\
- | \\     / |
-  \\|  |  |/
-   |__|__|""",
+            'generic': """    .--.
+   |o_o |
+   |:_/ |
+  //   \\ \\
+ (|     | )
+/'\\_   _/`\\
+\\___)=(___/""",
         }
         
-        # Check exact match first
+        # Check exact match
         if distro_id in logos:
             return logos[distro_id]
         
-        # Check for common derivatives
-        if 'endeavour' in distro_id:
-            return logos['endeavouros']
-        if 'manjaro' in distro_id:
-            return logos['manjaro']
-        if 'cachyos' in distro_id or 'cachy' in distro_id:
-            return logos['cachyos']
-        if 'garuda' in distro_id:
-            return logos['garuda']
+        # Check for common patterns
+        for key in ['endeavour', 'manjaro', 'cachy', 'garuda', 'pop']:
+            if key in distro_id:
+                matching = [k for k in logos.keys() if key in k]
+                if matching:
+                    return logos[matching[0]]
         
         # Check family
         family = self.distro.family.value.lower()
-        if family == 'arch':
-            return logos['arch']
-        if family == 'debian':
-            return logos['debian']
-        if family == 'fedora':
-            return logos['fedora']
-        if family == 'opensuse':
-            return logos['opensuse']
+        if family in logos:
+            return logos[family]
         
         return logos['generic']
     
