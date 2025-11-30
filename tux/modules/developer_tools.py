@@ -1375,6 +1375,7 @@ class UpdateFromZipDialog(Adw.Dialog):
         header = Adw.HeaderBar()
         header.set_show_end_title_buttons(False)
         header.set_show_start_title_buttons(False)
+        self.header = header  # Save reference for later
         
         cancel_btn = Gtk.Button(label="Cancel")
         cancel_btn.connect("clicked", lambda b: self.close())
@@ -1626,12 +1627,71 @@ class UpdateFromZipDialog(Adw.Dialog):
         if success:
             self.status_label.set_markup(
                 f"<b>Update Complete!</b>\n\n{message}\n\n"
-                "<small>Click the Push button on your project to commit and push.</small>"
+                "<small>Next: Push your changes, then Install to System.</small>"
             )
-            self.update_btn.set_label("Done")
-            self.update_btn.set_sensitive(False)
+            
+            # Change Update button to "Back to Push"
+            self.update_btn.set_label("← Back to Push")
+            self.update_btn.set_sensitive(True)
+            self.update_btn.disconnect_by_func(self._on_update_clicked)
+            self.update_btn.connect("clicked", lambda b: self.close())
+            
+            # Add "Install to System" button
+            install_btn = Gtk.Button(label="Install to System")
+            install_btn.add_css_class("suggested-action")
+            install_btn.set_tooltip_text("Run install.sh to update the installed version")
+            install_btn.connect("clicked", self._on_install_to_system)
+            
+            # Add to button area in header
+            self.header.pack_end(install_btn)
+            self.install_btn = install_btn
+            
             if self.on_complete_callback:
                 self.on_complete_callback()
         else:
             self.status_label.set_markup(f"<b>Update Failed</b>\n\n{message}")
             self.update_btn.set_sensitive(True)
+    
+    def _on_install_to_system(self, button):
+        """Run install.sh to update the system installation."""
+        import subprocess
+        
+        project_path = self.selected_project
+        install_script = os.path.join(project_path, 'install.sh')
+        
+        if not os.path.exists(install_script):
+            self.status_label.set_markup(
+                "<b>No install.sh found</b>\n\n"
+                "This project doesn't have an install script."
+            )
+            return
+        
+        # Run install via terminal
+        install_cmd = f'''echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  Installing to System..."
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+cd "{project_path}"
+sudo bash install.sh
+echo ""
+echo "Press Enter to close..."
+read'''
+        
+        terminals = [
+            ('konsole', ['konsole', '-e', 'bash', '-c', install_cmd]),
+            ('gnome-terminal', ['gnome-terminal', '--', 'bash', '-c', install_cmd]),
+            ('xfce4-terminal', ['xfce4-terminal', '-e', f'bash -c \'{install_cmd}\'']),
+            ('tilix', ['tilix', '-e', f'bash -c "{install_cmd}"']),
+            ('alacritty', ['alacritty', '-e', 'bash', '-c', install_cmd]),
+            ('kitty', ['kitty', 'bash', '-c', install_cmd]),
+        ]
+        
+        for term_name, term_cmd in terminals:
+            try:
+                if subprocess.run(['which', term_name], capture_output=True).returncode == 0:
+                    subprocess.Popen(term_cmd)
+                    button.set_label("Installing...")
+                    button.set_sensitive(False)
+                    return
+            except Exception:
+                continue

@@ -5,6 +5,20 @@ All notable changes to Tux Assistant will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.7.11] - 2025-11-29
+
+### Improved - Update from ZIP Workflow
+- After update completes, "Update Project" button changes to "← Back to Push"
+- New "Install to System" button appears after update
+- "Install to System" opens terminal and runs `sudo bash install.sh`
+- No more confusion about next steps - clear buttons guide you through!
+
+### Full Workflow Now:
+1. Download ZIP → Update from ZIP → Click "Update Project"
+2. Click "← Back to Push" → Click Push button → Enter passphrase
+3. Click "Update from ZIP" again → Click "Install to System" → Enter sudo password
+4. Restart app from menu → Running new version!
+
 ## [5.7.10] - 2025-11-29
 
 ### Added - Version Display
