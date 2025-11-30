@@ -1,9 +1,47 @@
-# Changelog
+# Tux Assistant Changelog
 
 All notable changes to Tux Assistant will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [0.9.0] - 2025-11-30 - First Public Release 🎉
+
+### Overview
+First public release of Tux Assistant - a comprehensive Linux system configuration 
+tool with a modern GTK4/Libadwaita interface.
+
+### Features
+- **Multi-Distribution Support** - Arch, Debian, Fedora, openSUSE and derivatives
+- **System Information** - Fastfetch-powered system info panel in sidebar
+- **Software Center** - Browse and install apps by category
+- **Setup Tools** - One-click codec, driver, and essential app installation
+- **Gaming** - Steam, Lutris, and gaming utilities setup
+- **Developer Tools** - Git manager, SSH keys, development environments
+- **Desktop Enhancements** - Themes, extensions, and tweaks (GNOME, KDE, XFCE)
+- **Hardware Manager** - Printers, Bluetooth, displays, audio configuration
+- **Networking** - WiFi, file sharing, hotspot, speed tests
+- **Advanced Networking** - VPN, Active Directory, firewall, Samba
+- **Media Server** - Plex, Jellyfin, Emby setup
+- **Nextcloud Server** - Personal cloud setup
+- **Backup & Restore** - System snapshots and file backup
+- **ISO Creator** - Create bootable ISOs from your system
+- **Tux Tunes** - Bonus internet radio player with smart recording!
+
+### Distribution
+- Self-extracting `.run` file - works on any Linux distribution
+- Automatic dependency installation (Python, GTK4, Libadwaita)
+- "Install to System" button for permanent installation
+- Portable mode - run without installing
+
+### Technical
+- GTK4 + Libadwaita for modern GNOME-style UI
+- Modular architecture for easy extension
+- Responsive design - adapts to window size
+- Window size persistence between sessions
+
+---
+
+## Development History
+
+The version numbers below reflect internal development history.
 
 ## [5.14.7] - 2025-11-30
 

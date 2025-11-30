@@ -430,6 +430,8 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
     
     def build_ui(self):
         """Build the main user interface."""
+        import os
+        
         # Main layout
         self.main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self.set_content(self.main_box)
@@ -448,6 +450,14 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         getting_started_btn.set_tooltip_text("Quick guide to using Tux Assistant")
         getting_started_btn.connect("clicked", self._show_getting_started)
         header.pack_start(getting_started_btn)
+        
+        # Install to System button (only show if running portable)
+        if self._is_running_portable() and not self._is_installed():
+            install_btn = Gtk.Button(label="Install to System")
+            install_btn.add_css_class("suggested-action")
+            install_btn.set_tooltip_text("Install Tux Assistant permanently")
+            install_btn.connect("clicked", self._on_install_to_system)
+            header.pack_start(install_btn)
         
         # Menu button on the right
         menu_button = Gtk.MenuButton()
@@ -468,6 +478,125 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         # Create main page
         main_page = self.create_main_page()
         self.navigation_view.add(main_page)
+    
+    def _is_running_portable(self) -> bool:
+        """Check if running from portable/temporary location."""
+        import os
+        return os.environ.get('TUX_ASSISTANT_PORTABLE', '') == '1'
+    
+    def _is_installed(self) -> bool:
+        """Check if Tux Assistant is installed to system."""
+        import os
+        return os.path.exists('/opt/tux-assistant/tux-assistant.py')
+    
+    def _on_install_to_system(self, button):
+        """Handle Install to System button click."""
+        dialog = Adw.MessageDialog(
+            transient_for=self,
+            heading="Install Tux Assistant",
+            body=(
+                "This will install Tux Assistant to your system:\n\n"
+                "• Application files → /opt/tux-assistant/\n"
+                "• Desktop shortcut → Applications menu\n\n"
+                "You'll need to enter your administrator password."
+            )
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("install", "Install")
+        dialog.set_response_appearance("install", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("install")
+        dialog.set_close_response("cancel")
+        
+        dialog.connect("response", self._on_install_response)
+        dialog.present()
+    
+    def _on_install_response(self, dialog, response):
+        """Handle install dialog response."""
+        if response != "install":
+            return
+        
+        import os
+        import subprocess
+        
+        # Get the source directory (where we're running from)
+        run_file = os.environ.get('TUX_ASSISTANT_RUN_FILE', '')
+        
+        if not run_file or not os.path.exists(run_file):
+            self.show_toast("Could not locate installation source")
+            return
+        
+        # Create install script
+        install_script = f'''#!/bin/bash
+set -e
+
+# Create destination directory
+mkdir -p /opt/tux-assistant
+
+# Extract the .run file to get fresh copy
+TEMP_DIR=$(mktemp -d)
+PAYLOAD_LINE=$(awk '/^__PAYLOAD_BELOW__$/{{print NR + 1; exit 0;}}' "{run_file}")
+tail -n +$PAYLOAD_LINE "{run_file}" | tar -xzf - -C "$TEMP_DIR"
+
+# Copy files
+cp -r "$TEMP_DIR/tux-assistant/"* /opt/tux-assistant/
+
+# Clean up
+rm -rf "$TEMP_DIR"
+
+# Create desktop file
+cat > /usr/share/applications/tux-assistant.desktop << 'EOF'
+[Desktop Entry]
+Name=Tux Assistant
+Comment=Linux system configuration tool
+Exec=/usr/bin/python3 /opt/tux-assistant/tux-assistant.py
+Icon=/opt/tux-assistant/assets/icon.svg
+Terminal=false
+Type=Application
+Categories=System;Settings;
+Keywords=linux;setup;configuration;
+EOF
+
+# Create symlink for easy CLI access
+ln -sf /opt/tux-assistant/tux-assistant.py /usr/local/bin/tux-assistant 2>/dev/null || true
+
+echo "Installation complete!"
+'''
+        
+        # Write script to temp file
+        script_path = '/tmp/tux-install.sh'
+        with open(script_path, 'w') as f:
+            f.write(install_script)
+        os.chmod(script_path, 0o755)
+        
+        # Run with pkexec
+        try:
+            result = subprocess.run(
+                ['pkexec', 'bash', script_path],
+                capture_output=True, text=True, timeout=60
+            )
+            
+            if result.returncode == 0:
+                success_dialog = Adw.MessageDialog(
+                    transient_for=self,
+                    heading="Installation Complete! 🎉",
+                    body=(
+                        "Tux Assistant has been installed successfully!\n\n"
+                        "You can now find it in your applications menu.\n\n"
+                        "You may close this portable instance."
+                    )
+                )
+                success_dialog.add_response("ok", "OK")
+                success_dialog.present()
+            else:
+                self.show_toast(f"Installation failed: {result.stderr[:100]}")
+        except subprocess.TimeoutExpired:
+            self.show_toast("Installation timed out")
+        except Exception as e:
+            self.show_toast(f"Installation error: {str(e)[:50]}")
+        finally:
+            # Clean up script
+            if os.path.exists(script_path):
+                os.remove(script_path)
     
     def create_menu(self) -> Gio.Menu:
         """Create the application menu."""
