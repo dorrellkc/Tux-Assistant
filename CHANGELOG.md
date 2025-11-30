@@ -5,6 +5,15 @@ All notable changes to Tux Assistant will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.11.1] - 2025-11-30
+
+### Fixed - Bluetooth Setup Help
+- Detects when Bluetooth tools are not installed → offers "Install" button
+- Detects when Bluetooth service is stopped → offers "Start Service" button  
+- Detects when no Bluetooth adapter is present → shows informative message
+- Installs bluez/bluez-utils and enables service automatically
+- Works across all distro families
+
 ## [5.11.0] - 2025-11-30
 
 ### Added - Hardware Manager Module (NEW!)

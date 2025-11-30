@@ -133,13 +133,16 @@ def check_cups_running() -> bool:
 # Bluetooth Utilities
 # =============================================================================
 
-def check_bluetooth_available() -> Tuple[bool, str]:
-    """Check if Bluetooth is available and get status."""
+def check_bluetooth_available() -> Tuple[bool, str, str]:
+    """Check if Bluetooth is available and get status.
+    Returns: (available, status_message, issue_type)
+    issue_type: "ok", "no_tools", "service_stopped", "no_adapter", "powered_off"
+    """
     try:
         # Check if bluetoothctl exists
         result = subprocess.run(['which', 'bluetoothctl'], capture_output=True)
         if result.returncode != 0:
-            return False, "Bluetooth tools not installed"
+            return False, "Bluetooth tools not installed", "no_tools"
         
         # Check if Bluetooth service is running
         result = subprocess.run(
@@ -147,7 +150,7 @@ def check_bluetooth_available() -> Tuple[bool, str]:
             capture_output=True, text=True
         )
         if result.stdout.strip() != "active":
-            return False, "Bluetooth service not running"
+            return False, "Bluetooth service not running", "service_stopped"
         
         # Check if controller exists
         result = subprocess.run(
@@ -155,16 +158,16 @@ def check_bluetooth_available() -> Tuple[bool, str]:
             capture_output=True, text=True
         )
         if "No default controller" in result.stdout or result.returncode != 0:
-            return False, "No Bluetooth adapter found"
+            return False, "No Bluetooth adapter found", "no_adapter"
         
         # Check if powered on
         if "Powered: yes" in result.stdout:
-            return True, "Bluetooth is on"
+            return True, "Bluetooth is on", "ok"
         else:
-            return True, "Bluetooth is off"
+            return True, "Bluetooth is off", "powered_off"
         
     except Exception as e:
-        return False, str(e)
+        return False, str(e), "error"
 
 
 def get_bluetooth_devices() -> List[BluetoothDevice]:
@@ -674,45 +677,88 @@ class HardwareManagerPage(Adw.NavigationPage):
     def _refresh_bluetooth(self):
         """Refresh Bluetooth status."""
         def load():
-            available, status = check_bluetooth_available()
+            available, status, issue_type = check_bluetooth_available()
             devices = get_bluetooth_devices() if available else []
-            GLib.idle_add(self._update_bluetooth, available, status, devices)
+            GLib.idle_add(self._update_bluetooth, available, status, issue_type, devices)
         
         threading.Thread(target=load, daemon=True).start()
     
-    def _update_bluetooth(self, available: bool, status: str, devices: List[BluetoothDevice]):
+    def _update_bluetooth(self, available: bool, status: str, issue_type: str, devices: List[BluetoothDevice]):
         """Update Bluetooth UI."""
         self.bt_status_row.set_subtitle(status)
-        
-        if not available:
-            self.bt_switch.set_sensitive(False)
-            self.bt_switch.set_active(False)
-        else:
-            self.bt_switch.set_sensitive(True)
-            self.bt_switch.set_active("is on" in status)
         
         # Clear device rows
         for row in self.bt_device_rows:
             self.bt_devices_expander.remove(row)
         self.bt_device_rows.clear()
         
-        if devices:
-            self.bt_devices_expander.set_subtitle(f"{len(devices)} device(s)")
+        # Remove any existing action buttons from status row
+        # (need to rebuild suffix area)
+        child = self.bt_status_row.get_first_child()
+        while child:
+            next_child = child.get_next_sibling()
+            if isinstance(child, Gtk.Box):
+                # Check for suffix box
+                suffix_child = child.get_first_child()
+                while suffix_child:
+                    next_suffix = suffix_child.get_next_sibling()
+                    if isinstance(suffix_child, Gtk.Button) and suffix_child != self.bt_switch:
+                        child.remove(suffix_child)
+                    suffix_child = next_suffix
+            child = next_child
+        
+        # Handle different issue types
+        if issue_type == "no_tools":
+            self.bt_switch.set_visible(False)
             
-            for device in devices:
-                row = Adw.ActionRow()
-                row.set_title(device.name)
-                
-                status_text = "Connected" if device.connected else "Paired"
-                row.set_subtitle(f"{device.address} • {status_text}")
-                
-                icon = "bluetooth-active-symbolic" if device.connected else "bluetooth-symbolic"
-                row.add_prefix(Gtk.Image.new_from_icon_name(icon))
-                
-                self.bt_devices_expander.add_row(row)
-                self.bt_device_rows.append(row)
+            install_btn = Gtk.Button(label="Install")
+            install_btn.set_valign(Gtk.Align.CENTER)
+            install_btn.connect("clicked", self._on_install_bluetooth_tools)
+            self.bt_status_row.add_suffix(install_btn)
+            
+            self.bt_devices_expander.set_sensitive(False)
+            self.bt_devices_expander.set_subtitle("Install Bluetooth tools first")
+            
+        elif issue_type == "service_stopped":
+            self.bt_switch.set_visible(False)
+            
+            start_btn = Gtk.Button(label="Start Service")
+            start_btn.set_valign(Gtk.Align.CENTER)
+            start_btn.connect("clicked", self._on_start_bluetooth_service)
+            self.bt_status_row.add_suffix(start_btn)
+            
+            self.bt_devices_expander.set_sensitive(False)
+            self.bt_devices_expander.set_subtitle("Start Bluetooth service first")
+            
+        elif issue_type == "no_adapter":
+            self.bt_switch.set_visible(False)
+            self.bt_devices_expander.set_sensitive(False)
+            self.bt_devices_expander.set_subtitle("No Bluetooth hardware detected")
+            
         else:
-            self.bt_devices_expander.set_subtitle("No paired devices")
+            # Bluetooth is available (ok or powered_off)
+            self.bt_switch.set_visible(True)
+            self.bt_switch.set_sensitive(True)
+            self.bt_switch.set_active(issue_type == "ok")
+            self.bt_devices_expander.set_sensitive(True)
+            
+            if devices:
+                self.bt_devices_expander.set_subtitle(f"{len(devices)} device(s)")
+                
+                for device in devices:
+                    row = Adw.ActionRow()
+                    row.set_title(device.name)
+                    
+                    status_text = "Connected" if device.connected else "Paired"
+                    row.set_subtitle(f"{device.address} • {status_text}")
+                    
+                    icon = "bluetooth-active-symbolic" if device.connected else "bluetooth-symbolic"
+                    row.add_prefix(Gtk.Image.new_from_icon_name(icon))
+                    
+                    self.bt_devices_expander.add_row(row)
+                    self.bt_device_rows.append(row)
+            else:
+                self.bt_devices_expander.set_subtitle("No paired devices")
     
     def _refresh_audio(self):
         """Refresh audio devices."""
@@ -871,6 +917,78 @@ class HardwareManagerPage(Adw.NavigationPage):
             subprocess.Popen(['xdg-open', 'http://localhost:631/admin'])
         except Exception:
             self.window.show_toast("Could not open printer settings")
+    
+    def _on_install_bluetooth_tools(self, button):
+        """Install Bluetooth tools."""
+        packages = {
+            DistroFamily.ARCH: "bluez bluez-utils",
+            DistroFamily.DEBIAN: "bluez bluetooth",
+            DistroFamily.FEDORA: "bluez bluez-tools",
+            DistroFamily.OPENSUSE: "bluez",
+        }
+        
+        pkg = packages.get(self.distro.family, "bluez")
+        
+        if self.distro.family == DistroFamily.ARCH:
+            cmd = f"sudo pacman -S --noconfirm {pkg}"
+        elif self.distro.family == DistroFamily.DEBIAN:
+            cmd = f"sudo apt install -y {pkg}"
+        elif self.distro.family == DistroFamily.FEDORA:
+            cmd = f"sudo dnf install -y {pkg}"
+        elif self.distro.family == DistroFamily.OPENSUSE:
+            cmd = f"sudo zypper install -y {pkg}"
+        else:
+            self.window.show_toast("Unsupported distribution")
+            return
+        
+        script = f'''echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  Installing Bluetooth Tools..."
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+{cmd}
+echo ""
+echo "Enabling Bluetooth service..."
+sudo systemctl enable bluetooth
+sudo systemctl start bluetooth
+echo ""
+echo "✓ Installation complete!"
+echo ""
+echo "Press Enter to close..."
+read'''
+        
+        self._run_in_terminal(script)
+        self.window.show_toast("Installing Bluetooth tools...")
+        GLib.timeout_add(5000, self._refresh_bluetooth)
+    
+    def _on_start_bluetooth_service(self, button):
+        """Start the Bluetooth service."""
+        try:
+            subprocess.Popen(['pkexec', 'systemctl', 'start', 'bluetooth'])
+            self.window.show_toast("Starting Bluetooth service...")
+            GLib.timeout_add(2000, self._refresh_bluetooth)
+        except Exception:
+            self.window.show_toast("Could not start Bluetooth service")
+    
+    def _run_in_terminal(self, script: str):
+        """Run a script in a terminal window."""
+        terminals = [
+            ('konsole', ['konsole', '-e', 'bash', '-c', script]),
+            ('gnome-terminal', ['gnome-terminal', '--', 'bash', '-c', script]),
+            ('xfce4-terminal', ['xfce4-terminal', '-e', f'bash -c \'{script}\'']),
+            ('tilix', ['tilix', '-e', f'bash -c "{script}"']),
+            ('alacritty', ['alacritty', '-e', 'bash', '-c', script]),
+            ('kitty', ['kitty', 'bash', '-c', script]),
+        ]
+        
+        for term_name, term_cmd in terminals:
+            try:
+                if subprocess.run(['which', term_name], capture_output=True).returncode == 0:
+                    subprocess.Popen(term_cmd)
+                    return
+            except Exception:
+                continue
+        
+        self.window.show_toast("Could not find terminal emulator")
     
     def _on_bluetooth_toggled(self, switch, state):
         """Handle Bluetooth power toggle."""
