@@ -182,11 +182,11 @@ class PreferencesDialog(Adw.PreferencesDialog):
         mode_row.set_title("Recording Mode")
         mode_row.set_subtitle("How to handle recorded tracks")
         
-        modes = Gtk.StringList.new(["Ask for each track", "Save all tracks", "Don't record"])
+        modes = Gtk.StringList.new(["Ask for each track", "Auto-save all tracks", "Don't record"])
         mode_row.set_model(modes)
         
         current_mode = self.library.get_config('recording_mode', 'ask')
-        mode_map = {'ask': 0, 'all': 1, 'none': 2}
+        mode_map = {'ask': 0, 'auto': 1, 'none': 2}
         mode_row.set_selected(mode_map.get(current_mode, 0))
         mode_row.connect("notify::selected", self._on_recording_mode_changed)
         rec_group.add(mode_row)
@@ -243,7 +243,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
     
     def _on_recording_mode_changed(self, row, param):
         """Handle recording mode change."""
-        modes = ['ask', 'all', 'none']
+        modes = ['ask', 'auto', 'none']
         selected = row.get_selected()
         if 0 <= selected < len(modes):
             self.library.set_config('recording_mode', modes[selected])

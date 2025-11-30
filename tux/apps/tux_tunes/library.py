@@ -85,7 +85,8 @@ class Library:
         """Load configuration from file."""
         default_config = {
             'volume': 1.0,
-            'recording_mode': 'ask',  # 'all', 'ask', 'none'
+            'recording_mode': 'ask',  # 'auto', 'ask', 'none'
+            'auto_save_prompted': False,  # Whether we've asked about auto-save
             'pre_buffer_seconds': 8,
             'post_buffer_seconds': 3,
             'min_recording_seconds': 30,
@@ -135,6 +136,14 @@ class Library:
         """Remove a station from favorites."""
         self.favorites = [s for s in self.favorites if s.uuid != station_uuid]
         self._save_favorites()
+    
+    def update_favorite(self, old_uuid: str, updated_station: Station):
+        """Update a favorite station (for editing custom stations)."""
+        for i, station in enumerate(self.favorites):
+            if station.uuid == old_uuid:
+                self.favorites[i] = updated_station
+                self._save_favorites()
+                return
     
     def is_favorite(self, station_uuid: str) -> bool:
         """Check if a station is in favorites."""

@@ -540,6 +540,22 @@ class TuxTunesWindow(Adw.ApplicationWindow):
         # Store station reference
         row.station = station
         
+        # Edit and Delete buttons (only for custom stations)
+        if station.uuid.startswith("custom-"):
+            edit_btn = Gtk.Button.new_from_icon_name("document-edit-symbolic")
+            edit_btn.set_valign(Gtk.Align.CENTER)
+            edit_btn.add_css_class("flat")
+            edit_btn.set_tooltip_text("Edit station")
+            edit_btn.connect("clicked", lambda b: self._on_edit_custom_station(station))
+            row.add_suffix(edit_btn)
+            
+            delete_btn = Gtk.Button.new_from_icon_name("user-trash-symbolic")
+            delete_btn.set_valign(Gtk.Align.CENTER)
+            delete_btn.add_css_class("flat")
+            delete_btn.set_tooltip_text("Delete station")
+            delete_btn.connect("clicked", lambda b: self._on_delete_custom_station(station))
+            row.add_suffix(delete_btn)
+        
         # Play button
         play_btn = Gtk.Button.new_from_icon_name("media-playback-start-symbolic")
         play_btn.set_valign(Gtk.Align.CENTER)
@@ -548,15 +564,16 @@ class TuxTunesWindow(Adw.ApplicationWindow):
         play_btn.connect("clicked", lambda b: self._play_station(station))
         row.add_suffix(play_btn)
         
-        # Favorite button
-        is_fav = self.library.is_favorite(station.uuid)
-        fav_icon = "starred-symbolic" if is_fav else "non-starred-symbolic"
-        fav_btn = Gtk.Button.new_from_icon_name(fav_icon)
-        fav_btn.set_valign(Gtk.Align.CENTER)
-        fav_btn.add_css_class("flat")
-        fav_btn.set_tooltip_text("Remove from favorites" if is_fav else "Add to favorites")
-        fav_btn.connect("clicked", lambda b: self._toggle_favorite(station, b))
-        row.add_suffix(fav_btn)
+        # Favorite button (hide for custom stations - they use delete instead)
+        if not station.uuid.startswith("custom-"):
+            is_fav = self.library.is_favorite(station.uuid)
+            fav_icon = "starred-symbolic" if is_fav else "non-starred-symbolic"
+            fav_btn = Gtk.Button.new_from_icon_name(fav_icon)
+            fav_btn.set_valign(Gtk.Align.CENTER)
+            fav_btn.add_css_class("flat")
+            fav_btn.set_tooltip_text("Remove from favorites" if is_fav else "Add to favorites")
+            fav_btn.connect("clicked", lambda b: self._toggle_favorite(station, b))
+            row.add_suffix(fav_btn)
         
         # Connect row activation to play
         row.connect("activated", lambda r: self._play_station(station))
@@ -743,19 +760,51 @@ class TuxTunesWindow(Adw.ApplicationWindow):
     
     def _on_add_custom_station(self, button):
         """Show dialog to add custom station."""
-        dialog = AddStationDialog(self)
-        dialog.connect("response", self._on_add_station_response)
+        dialog = AddStationDialog(self, on_add_callback=self._handle_custom_station_added)
         dialog.present(self)
     
-    def _on_add_station_response(self, dialog, response):
-        """Handle add station dialog response."""
-        if response == "add":
-            station = dialog.get_station()
-            if station:
-                self.library.add_favorite(station)
-                self._refresh_favorites()
-                self._show_toast(f"Added '{station.name}' to favorites")
-                self.view_stack.set_visible_child_name("favorites")
+    def _handle_custom_station_added(self, station):
+        """Handle when a custom station is added."""
+        if station:
+            self.library.add_favorite(station)
+            self._refresh_favorites()
+            self._show_toast(f"Added '{station.name}' to favorites")
+            self.view_stack.set_visible_child_name("favorites")
+    
+    def _on_edit_custom_station(self, station: Station):
+        """Show dialog to edit a custom station."""
+        dialog = EditStationDialog(self, station, on_save_callback=self._handle_custom_station_edited)
+        dialog.present(self)
+    
+    def _handle_custom_station_edited(self, old_uuid: str, updated_station: Station):
+        """Handle when a custom station is edited."""
+        if updated_station:
+            self.library.update_favorite(old_uuid, updated_station)
+            self._refresh_favorites()
+            self._show_toast(f"Updated '{updated_station.name}'")
+    
+    def _on_delete_custom_station(self, station: Station):
+        """Show confirmation dialog to delete a custom station."""
+        dialog = Adw.AlertDialog()
+        dialog.set_heading(f"Delete '{station.name}'?")
+        dialog.set_body("This custom station will be permanently removed.")
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("delete", "Delete")
+        dialog.set_response_appearance("delete", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
+        
+        dialog.station = station
+        dialog.connect("response", self._on_delete_station_response)
+        dialog.present(self)
+    
+    def _on_delete_station_response(self, dialog, response):
+        """Handle delete confirmation response."""
+        if response == "delete":
+            station = dialog.station
+            self.library.remove_favorite(station.uuid)
+            self._refresh_favorites()
+            self._show_toast(f"Deleted '{station.name}'")
     
     def _play_station(self, station: Station):
         """Play a station."""
@@ -850,8 +899,56 @@ class TuxTunesWindow(Adw.ApplicationWindow):
     
     def _on_recording_ready(self, cached):
         """Handle when a recording is ready to be saved."""
-        # Show a toast with save option
-        self._show_save_recording_toast(cached)
+        recording_mode = self.library.get_config('recording_mode', 'ask')
+        
+        if recording_mode == 'none':
+            # Don't save, don't ask
+            return
+        elif recording_mode == 'auto':
+            # Auto-save without asking
+            self._save_recording(cached, notify=True)
+        else:
+            # 'ask' mode - check if we should prompt about auto-save first
+            if not self.library.get_config('auto_save_prompted', False):
+                self._show_auto_save_prompt(cached)
+            else:
+                self._show_save_recording_toast(cached)
+    
+    def _show_auto_save_prompt(self, cached):
+        """Show first-time prompt asking about auto-save preference."""
+        dialog = Adw.AlertDialog()
+        dialog.set_heading("Save Recordings Automatically?")
+        dialog.set_body(
+            "A recording is ready to save. Would you like Tux Tunes to "
+            "automatically save all recordings in the future?\n\n"
+            "You can change this anytime in the menu."
+        )
+        dialog.add_response("no", "Ask Each Time")
+        dialog.add_response("yes", "Auto-Save")
+        dialog.set_response_appearance("yes", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("yes")
+        dialog.set_close_response("no")
+        
+        # Store cached recording for after dialog
+        dialog.cached_recording = cached
+        dialog.connect("response", self._on_auto_save_prompt_response)
+        dialog.present(self)
+    
+    def _on_auto_save_prompt_response(self, dialog, response):
+        """Handle auto-save prompt response."""
+        cached = dialog.cached_recording
+        
+        # Mark that we've prompted
+        self.library.set_config('auto_save_prompted', True)
+        
+        if response == "yes":
+            # Enable auto-save and save this recording
+            self.library.set_config('recording_mode', 'auto')
+            self._save_recording(cached, notify=True)
+            self._show_toast("Auto-save enabled")
+        else:
+            # Keep ask mode, show the normal save toast
+            self._show_save_recording_toast(cached)
     
     def _show_save_recording_toast(self, cached):
         """Show a toast asking if user wants to save the recording."""
@@ -869,12 +966,13 @@ class TuxTunesWindow(Adw.ApplicationWindow):
         toast.connect("button-clicked", lambda t: self._save_recording(cached))
         self.toast_overlay.add_toast(toast)
     
-    def _save_recording(self, cached):
+    def _save_recording(self, cached, notify=False):
         """Save a cached recording."""
         filepath = self.player.save_cached_recording(cached)
         if filepath:
             filename = filepath.split('/')[-1]
-            self._show_toast(f"Saved: {filename}")
+            if notify:
+                self._show_toast(f"Saved: {filename}", timeout=2)
         else:
             self._show_toast("Failed to save recording")
     
@@ -891,9 +989,9 @@ class TuxTunesWindow(Adw.ApplicationWindow):
         toast.set_timeout(timeout)
         self.toast_overlay.add_toast(toast)
     
-    def _show_toast(self, message: str):
+    def _show_toast(self, message: str, timeout: int = 3):
         """Show a toast notification (internal, for backwards compat)."""
-        self.show_toast(message)
+        self.show_toast(message, timeout)
     
     def _set_window_icon(self):
         """Set the window icon."""
@@ -938,10 +1036,11 @@ class TuxTunesWindow(Adw.ApplicationWindow):
 class AddStationDialog(Adw.Dialog):
     """Dialog for adding a custom station."""
     
-    def __init__(self, parent):
+    def __init__(self, parent, on_add_callback=None):
         super().__init__()
         
         self.parent = parent
+        self.on_add_callback = on_add_callback
         self.set_title("Add Custom Station")
         self.set_content_width(400)
         self.set_content_height(300)
@@ -1027,7 +1126,9 @@ class AddStationDialog(Adw.Dialog):
     
     def _on_add(self, button):
         """Handle add button click."""
-        self.emit("response", "add")
+        station = self.get_station()
+        if station and self.on_add_callback:
+            self.on_add_callback(station)
         self.close()
     
     def get_station(self) -> Optional[Station]:
@@ -1052,6 +1153,136 @@ class AddStationDialog(Adw.Dialog):
             state="",
             language="",
             tags=[genre] if genre else ["Custom"],
+            codec="",
+            bitrate=0,
+            votes=0,
+            clickcount=0,
+        )
+
+
+class EditStationDialog(Adw.Dialog):
+    """Dialog for editing a custom station."""
+    
+    def __init__(self, parent, station: Station, on_save_callback=None):
+        super().__init__()
+        
+        self.parent = parent
+        self.station = station
+        self.on_save_callback = on_save_callback
+        self.set_title("Edit Station")
+        self.set_content_width(400)
+        self.set_content_height(300)
+        
+        self._build_ui()
+    
+    def _build_ui(self):
+        """Build dialog UI."""
+        toolbar_view = Adw.ToolbarView()
+        self.set_child(toolbar_view)
+        
+        # Header
+        header = Adw.HeaderBar()
+        header.set_show_end_title_buttons(False)
+        header.set_show_start_title_buttons(False)
+        
+        cancel_btn = Gtk.Button(label="Cancel")
+        cancel_btn.connect("clicked", lambda b: self.close())
+        header.pack_start(cancel_btn)
+        
+        self.save_btn = Gtk.Button(label="Save")
+        self.save_btn.add_css_class("suggested-action")
+        self.save_btn.connect("clicked", self._on_save)
+        header.pack_end(self.save_btn)
+        
+        toolbar_view.add_top_bar(header)
+        
+        # Content
+        clamp = Adw.Clamp()
+        clamp.set_maximum_size(400)
+        clamp.set_margin_top(24)
+        clamp.set_margin_bottom(24)
+        clamp.set_margin_start(16)
+        clamp.set_margin_end(16)
+        toolbar_view.set_content(clamp)
+        
+        group = Adw.PreferencesGroup()
+        group.set_title("Station Details")
+        group.set_description("Edit the stream URL or name")
+        clamp.set_child(group)
+        
+        # Name entry (pre-filled)
+        self.name_row = Adw.EntryRow()
+        self.name_row.set_title("Station Name")
+        self.name_row.set_text(self.station.name)
+        self.name_row.connect("changed", self._validate)
+        group.add(self.name_row)
+        
+        # URL entry (pre-filled)
+        self.url_row = Adw.EntryRow()
+        self.url_row.set_title("Stream URL")
+        self.url_row.set_text(self.station.url)
+        self.url_row.set_input_purpose(Gtk.InputPurpose.URL)
+        self.url_row.connect("changed", self._validate)
+        group.add(self.url_row)
+        
+        # Genre/tags entry (pre-filled)
+        self.genre_row = Adw.EntryRow()
+        self.genre_row.set_title("Genre (optional)")
+        self.genre_row.set_text(", ".join(self.station.tags) if self.station.tags else "")
+        group.add(self.genre_row)
+        
+        # Help text
+        help_label = Gtk.Label()
+        help_label.set_markup(
+            "<small>Supported formats: MP3, AAC, OGG streams\n"
+            "Example: http://stream.example.com:8000/radio.mp3</small>"
+        )
+        help_label.set_wrap(True)
+        help_label.add_css_class("dim-label")
+        help_label.set_margin_top(12)
+        group.add(help_label)
+    
+    def _validate(self, entry):
+        """Validate input and enable/disable save button."""
+        name = self.name_row.get_text().strip()
+        url = self.url_row.get_text().strip()
+        
+        # Basic validation
+        valid = bool(name) and bool(url) and (
+            url.startswith("http://") or url.startswith("https://")
+        )
+        
+        self.save_btn.set_sensitive(valid)
+    
+    def _on_save(self, button):
+        """Handle save button click."""
+        updated = self.get_updated_station()
+        if updated and self.on_save_callback:
+            self.on_save_callback(self.station.uuid, updated)
+        self.close()
+    
+    def get_updated_station(self) -> Optional[Station]:
+        """Get the updated station from dialog input."""
+        name = self.name_row.get_text().strip()
+        url = self.url_row.get_text().strip()
+        genre = self.genre_row.get_text().strip()
+        
+        if not name or not url:
+            return None
+        
+        # Keep the same UUID so it updates in place
+        return Station(
+            uuid=self.station.uuid,
+            name=name,
+            url=url,
+            url_resolved=url,
+            homepage="",
+            favicon="",
+            country="Custom",
+            countrycode="",
+            state="",
+            language="",
+            tags=[t.strip() for t in genre.split(",")] if genre else ["Custom"],
             codec="",
             bitrate=0,
             votes=0,

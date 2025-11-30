@@ -474,6 +474,8 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
     
     def create_system_info_banner(self) -> Gtk.Widget:
         """Create a banner showing system information."""
+        from .core import get_hardware_info, check_hardinfo2_available
+        
         banner = Adw.PreferencesGroup()
         banner.set_title("System Information")
         
@@ -498,7 +500,187 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         pkg_row.add_prefix(Gtk.Image.new_from_icon_name("package-x-generic-symbolic"))
         banner.add(pkg_row)
         
+        # Hardware info row
+        hardware = get_hardware_info()
+        hw_row = Adw.ActionRow()
+        hw_row.set_title("Hardware")
+        
+        # Build hardware summary
+        hw_parts = []
+        if hardware.cpu_model and hardware.cpu_model != "Unknown CPU":
+            # Shorten CPU model name
+            cpu_short = hardware.cpu_model.split('@')[0].strip()
+            if len(cpu_short) > 40:
+                cpu_short = cpu_short[:37] + "..."
+            hw_parts.append(cpu_short)
+        if hardware.ram_total_gb > 0:
+            hw_parts.append(f"{hardware.ram_total_gb}GB RAM")
+        
+        hw_subtitle = " • ".join(hw_parts) if hw_parts else "Click for details"
+        hw_row.set_subtitle(hw_subtitle)
+        hw_row.add_prefix(Gtk.Image.new_from_icon_name("computer-symbolic"))
+        
+        # Add button based on hardinfo2 availability
+        if hardware.hardinfo2_available:
+            # Launch hardinfo2 button
+            launch_btn = Gtk.Button()
+            launch_btn.set_icon_name("go-next-symbolic")
+            launch_btn.set_valign(Gtk.Align.CENTER)
+            launch_btn.add_css_class("flat")
+            launch_btn.set_tooltip_text("Open hardinfo2 for detailed hardware info")
+            launch_btn.connect("clicked", self._on_launch_hardinfo2)
+            hw_row.add_suffix(launch_btn)
+            hw_row.set_activatable(True)
+            hw_row.connect("activated", lambda r: self._on_launch_hardinfo2(None))
+        else:
+            # Install button
+            install_btn = Gtk.Button(label="Install hardinfo2 (Recommended)")
+            install_btn.add_css_class("suggested-action")
+            install_btn.set_valign(Gtk.Align.CENTER)
+            install_btn.connect("clicked", self._on_install_hardinfo2)
+            hw_row.add_suffix(install_btn)
+        
+        banner.add(hw_row)
+        
+        # Store reference for refresh
+        self.hw_row = hw_row
+        
         return banner
+    
+    def _on_launch_hardinfo2(self, button):
+        """Launch hardinfo2."""
+        from .core import launch_hardinfo2
+        if not launch_hardinfo2():
+            self.show_toast("Failed to launch hardinfo2")
+    
+    def _on_install_hardinfo2(self, button):
+        """Install hardinfo2 with pre-wiring for AUR/repos if needed."""
+        button.set_sensitive(False)
+        button.set_label("Installing...")
+        
+        import threading
+        
+        def install_thread():
+            from .core import run_sudo, detect_aur_helper, DistroFamily
+            import subprocess
+            
+            success = False
+            message = ""
+            
+            try:
+                if self.distro.family == DistroFamily.ARCH:
+                    # Need AUR helper for Arch
+                    aur_helper = detect_aur_helper()
+                    if aur_helper:
+                        result = subprocess.run(
+                            [aur_helper, '-S', '--noconfirm', 'hardinfo2'],
+                            capture_output=True,
+                            text=True
+                        )
+                        success = result.returncode == 0
+                        message = "hardinfo2 installed!" if success else result.stderr
+                    else:
+                        # Install yay first
+                        message = "Installing AUR helper (yay) first..."
+                        GLib.idle_add(lambda: button.set_label(message))
+                        
+                        # Install base-devel and git if needed
+                        subprocess.run(
+                            ['pkexec', 'pacman', '-S', '--noconfirm', '--needed', 'base-devel', 'git'],
+                            capture_output=True
+                        )
+                        
+                        # Clone and build yay
+                        import tempfile
+                        import os
+                        with tempfile.TemporaryDirectory() as tmpdir:
+                            subprocess.run(
+                                ['git', 'clone', 'https://aur.archlinux.org/yay.git', tmpdir],
+                                capture_output=True
+                            )
+                            result = subprocess.run(
+                                ['makepkg', '-si', '--noconfirm'],
+                                cwd=tmpdir,
+                                capture_output=True
+                            )
+                        
+                        if subprocess.run(['which', 'yay'], capture_output=True).returncode == 0:
+                            # Now install hardinfo2
+                            result = subprocess.run(
+                                ['yay', '-S', '--noconfirm', 'hardinfo2'],
+                                capture_output=True,
+                                text=True
+                            )
+                            success = result.returncode == 0
+                            message = "hardinfo2 installed!" if success else result.stderr
+                        else:
+                            message = "Failed to install AUR helper"
+                            
+                elif self.distro.family == DistroFamily.DEBIAN:
+                    result = subprocess.run(
+                        ['pkexec', 'apt-get', 'install', '-y', 'hardinfo2'],
+                        capture_output=True,
+                        text=True
+                    )
+                    success = result.returncode == 0
+                    if not success and 'Unable to locate' in result.stderr:
+                        # Try enabling backports for Debian 12
+                        message = "Enabling backports..."
+                        GLib.idle_add(lambda: button.set_label(message))
+                        # This would need backports setup - simplified for now
+                        message = "hardinfo2 not available - may need backports enabled"
+                    else:
+                        message = "hardinfo2 installed!" if success else result.stderr
+                        
+                elif self.distro.family == DistroFamily.FEDORA:
+                    result = subprocess.run(
+                        ['pkexec', 'dnf', 'install', '-y', 'hardinfo2'],
+                        capture_output=True,
+                        text=True
+                    )
+                    success = result.returncode == 0
+                    message = "hardinfo2 installed!" if success else result.stderr
+                    
+                elif self.distro.family == DistroFamily.SUSE:
+                    result = subprocess.run(
+                        ['pkexec', 'zypper', 'install', '-y', 'hardinfo2'],
+                        capture_output=True,
+                        text=True
+                    )
+                    success = result.returncode == 0
+                    message = "hardinfo2 installed!" if success else result.stderr
+                else:
+                    message = "Unsupported distribution"
+                    
+            except Exception as e:
+                message = str(e)
+            
+            GLib.idle_add(self._on_hardinfo2_install_complete, success, message, button)
+        
+        threading.Thread(target=install_thread, daemon=True).start()
+    
+    def _on_hardinfo2_install_complete(self, success, message, button):
+        """Handle hardinfo2 installation completion."""
+        from .core import check_hardinfo2_available
+        
+        if success and check_hardinfo2_available():
+            self.show_toast("hardinfo2 installed! Infrastructure ready for future tools.")
+            # Replace button with launch button
+            button.get_parent().remove(button)
+            
+            launch_btn = Gtk.Button()
+            launch_btn.set_icon_name("go-next-symbolic")
+            launch_btn.set_valign(Gtk.Align.CENTER)
+            launch_btn.add_css_class("flat")
+            launch_btn.set_tooltip_text("Open hardinfo2 for detailed hardware info")
+            launch_btn.connect("clicked", self._on_launch_hardinfo2)
+            self.hw_row.add_suffix(launch_btn)
+            self.hw_row.set_activatable(True)
+            self.hw_row.connect("activated", lambda r: self._on_launch_hardinfo2(None))
+        else:
+            self.show_toast(f"Installation failed: {message}")
+            button.set_label("Install hardinfo2 (Recommended)")
+            button.set_sensitive(True)
     
     def create_module_group_from_registry(self, title: str, modules: list) -> Gtk.Widget:
         """

@@ -15,6 +15,7 @@ from . import desktop_enhancements
 from . import software_center
 from . import networking
 from . import setup_tools
+from . import developer_tools
 from . import iso_creator
 from . import tux_tunes
 from . import placeholders  # placeholder registrations (if any remain)

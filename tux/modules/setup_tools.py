@@ -2394,32 +2394,6 @@ class SetupToolsPage(Adw.NavigationPage):
             )
             content_box.append(group)
         
-        # Developer Tools section
-        dev_group = Adw.PreferencesGroup()
-        dev_group.set_title("Developer Tools")
-        dev_group.set_description("Tools for developers and power users")
-        content_box.append(dev_group)
-        
-        # Clone Git Repository
-        clone_row = Adw.ActionRow()
-        clone_row.set_title("Clone Git Repository")
-        clone_row.set_subtitle("Download a project from GitHub, GitLab, etc.")
-        clone_row.add_prefix(Gtk.Image.new_from_icon_name("folder-download-symbolic"))
-        clone_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
-        clone_row.set_activatable(True)
-        clone_row.connect("activated", self._on_clone_repo_clicked)
-        dev_group.add(clone_row)
-        
-        # Restore SSH Keys
-        ssh_row = Adw.ActionRow()
-        ssh_row.set_title("Restore SSH Keys")
-        ssh_row.set_subtitle("Drag & drop your backed up SSH keys to restore Git access")
-        ssh_row.add_prefix(Gtk.Image.new_from_icon_name("channel-secure-symbolic"))
-        ssh_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
-        ssh_row.set_activatable(True)
-        ssh_row.connect("activated", self._on_restore_ssh_clicked)
-        dev_group.add(ssh_row)
-        
         # Bottom action bar
         action_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         action_bar.set_halign(Gtk.Align.CENTER)
@@ -2672,16 +2646,6 @@ class SetupToolsPage(Adw.NavigationPage):
             # Open installation dialog
             install_dialog = InstallationDialog(self.window, tasks_to_install, self.distro.family)
             install_dialog.present()
-    
-    def _on_clone_repo_clicked(self, row):
-        """Show git clone dialog."""
-        dialog = GitCloneDialog(self.window, self.distro)
-        dialog.present(self.window)
-    
-    def _on_restore_ssh_clicked(self, row):
-        """Show SSH key restore dialog."""
-        dialog = SSHKeyRestoreDialog(self.window, self.distro)
-        dialog.present(self.window)
 
 
 class SSHKeyRestoreDialog(Adw.Dialog):

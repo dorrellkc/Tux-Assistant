@@ -5,6 +5,105 @@ All notable changes to Tux Assistant will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.7.2] - 2025-11-29
+
+### Added - Developer Kit & Improved Onboarding
+- **Developer Kit Export** - Save SSH keys, Git identity, and project list to USB/folder
+- **Developer Kit Import** - Restore dev setup on fresh installs with one click
+- **Improved empty state** - When no projects found, shows:
+  - Scanned directories status (✓/✗)
+  - "Clone a Repository" button
+  - "Create ~/Development Folder" button (if missing)
+  - "Import Developer Kit" button (if SSH keys missing)
+  - "Add Manually (Advanced)" option
+- Warning on export: "Keep this safe - contains your SSH keys!"
+- Skip existing keys on import (won't overwrite)
+
+### Changed
+- Empty state dynamically rebuilds based on current system state
+- Scan complete message improved for empty results
+
+### The Safe Workflow
+1. First machine: Set up git, export Developer Kit to USB
+2. Fresh install: Import Developer Kit from USB
+3. Clone your repos, push/pull with one click
+4. Keys stay on USB, not in the app or git history
+
+## [5.7.1] - 2025-11-29
+
+### Added - Git Manager 🚀
+- **One-click Pull/Push** - Manage git repos without touching the terminal
+- **Project scanning** - Auto-detect git repos in ~/Development, ~/Projects, etc.
+- **Manual project add** - For advanced users with repos in custom locations
+- **Prerequisites check** - Shows SSH key and Git identity status with setup buttons
+- **Project status display** - Shows branch, uncommitted changes, ahead/behind counts
+- **Commit message dialog** - Enter commit message before pushing changes
+- **Expandable project rows** - See path, remote URL, last commit
+- **Quick actions** - Open folder, open terminal, remove from list
+- **Git identity configuration** - Set name/email from the UI
+
+### Features
+- Scan button finds all git repos in common directories
+- Push button disabled when nothing to push (smart guardrails)
+- Pull/Push blocked if SSH keys not set up (with link to setup)
+- Project list persisted to config file
+
+## [5.7.0] - 2025-11-29
+
+### Added
+- **Hardware Information row** on front page showing CPU, RAM summary
+- **hardinfo2 integration** - Install with one click, launches detailed hardware viewer
+- **Smart pre-wiring** - Installing hardinfo2 on Arch sets up AUR helper (yay) automatically
+- **Developer Tools** promoted to front-page category (no longer buried in Setup Tools)
+- New `tux/core/hardware.py` module for hardware detection
+- New `tux/modules/developer_tools.py` as standalone module
+- `DEVELOPER` category added to ModuleCategory enum
+
+### Changed
+- Developer Tools (Git Clone, SSH Key Restore) now accessible from main menu
+- Hardware row shows "Install hardinfo2 (Recommended)" button for first-time users
+- After hardinfo2 install, button changes to launcher
+
+### Technical
+- Infrastructure prep: AUR helper installation benefits future AUR package installs
+- Graceful fallback: Basic hardware info from /proc when hardinfo2 unavailable
+
+## [5.6.4] - 2025-11-29
+
+### Added
+- Delete button (trash icon) for custom stations with confirmation dialog
+- Custom stations now show: Edit (pencil) | Delete (trash) | Play
+
+### Changed
+- Favorite star button hidden for custom stations (delete button replaces it)
+- Clearer UX: custom stations have distinct management controls
+
+## [5.6.3] - 2025-11-29
+
+### Added
+- Edit button for custom stations (pencil icon appears only on user-added stations)
+- EditStationDialog for modifying custom station name, URL, and genre
+- `update_favorite()` method in library for in-place station updates
+
+### Changed
+- Custom stations now clearly editable - users don't have to delete and re-add to fix URLs
+
+## [5.6.2] - 2025-11-29
+
+### Fixed
+- Fixed Add Custom Station dialog not opening (Adw.Dialog doesn't support emit("response"))
+- Changed dialog to use callback pattern for GTK4/libadwaita compatibility
+
+### Added
+- Auto-save recordings feature with first-run prompt
+- One-time dialog asks user preference: "Auto-Save" or "Ask Each Time"
+- Auto-saved recordings show brief 2-second confirmation toast
+- Preference accessible anytime in Preferences → Recording → Recording Mode
+
+### Changed
+- Recording mode option renamed from "Save all tracks" to "Auto-save all tracks"
+- Internal config uses 'auto' instead of 'all' for clarity
+
 ## [5.5.9] - 2025-11-29
 
 ### Fixed
