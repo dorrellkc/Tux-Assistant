@@ -5,6 +5,13 @@ All notable changes to Tux Assistant will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.12.2] - 2025-11-30
+
+### Fixed - Install Plan Format
+- Fixed package installation plan format in Networking module
+- Plans now use correct `tasks` format expected by tux-helper
+- Affects: speedtest-cli, OpenVPN plugin, WireGuard installs
+
 ## [5.12.1] - 2025-11-30
 
 ### Changed - Split Networking into Simple and Advanced

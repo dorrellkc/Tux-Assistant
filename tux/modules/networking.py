@@ -1389,7 +1389,12 @@ class SimpleNetworkingPage(Adw.NavigationPage):
     
     def _on_install_speedtest(self, dialog, response):
         if response == "install":
-            self._execute_plan({"packages": ["speedtest-cli"], "commands": []}, "Installing Speed Test")
+            plan = {
+                "tasks": [
+                    {"type": "install", "name": "Install speedtest-cli", "packages": ["speedtest-cli"]}
+                ]
+            }
+            self._execute_plan(plan, "Installing Speed Test")
     
     def _on_open_network_settings(self, row):
         tools = [['gnome-control-center', 'network'], ['nm-connection-editor'],
@@ -2221,8 +2226,9 @@ class NetworkingPage(Adw.NavigationPage):
             return
         
         plan = {
-            "packages": [pkg],
-            "commands": []
+            "tasks": [
+                {"type": "install", "name": "Install OpenVPN Plugin", "packages": [pkg]}
+            ]
         }
         self._execute_plan(plan, "Installing OpenVPN Plugin")
     
@@ -2293,8 +2299,9 @@ class NetworkingPage(Adw.NavigationPage):
         pkg = packages.get(self.distro.family, "wireguard-tools")
         
         plan = {
-            "packages": [pkg],
-            "commands": []
+            "tasks": [
+                {"type": "install", "name": "Install WireGuard", "packages": [pkg]}
+            ]
         }
         self._execute_plan(plan, "Installing WireGuard")
     
@@ -2463,8 +2470,9 @@ read'''
         pkg = packages.get(self.distro.family, "speedtest-cli")
         
         plan = {
-            "packages": [pkg],
-            "commands": []
+            "tasks": [
+                {"type": "install", "name": "Install speedtest-cli", "packages": [pkg]}
+            ]
         }
         self._execute_plan(plan, "Installing Speed Test")
     
