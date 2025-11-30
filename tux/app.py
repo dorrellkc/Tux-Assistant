@@ -366,6 +366,12 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         version_label.add_css_class("dim-label")
         header.pack_start(version_label)
         
+        # Getting Started button
+        getting_started_btn = Gtk.Button(label="Getting Started")
+        getting_started_btn.set_tooltip_text("Quick guide to using Tux Assistant")
+        getting_started_btn.connect("clicked", self._show_getting_started)
+        header.pack_start(getting_started_btn)
+        
         # Menu button on the right
         menu_button = Gtk.MenuButton()
         menu_button.set_icon_name("open-menu-symbolic")
@@ -392,6 +398,109 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         menu.append("About Tux Assistant", "app.about")
         menu.append("Quit", "app.quit")
         return menu
+    
+    def _show_getting_started(self, button):
+        """Show the Getting Started guide dialog."""
+        dialog = Adw.Dialog()
+        dialog.set_title("Getting Started")
+        dialog.set_content_width(550)
+        dialog.set_content_height(500)
+        
+        toolbar_view = Adw.ToolbarView()
+        dialog.set_child(toolbar_view)
+        
+        header = Adw.HeaderBar()
+        header.set_show_end_title_buttons(False)
+        header.set_show_start_title_buttons(False)
+        
+        close_btn = Gtk.Button(label="Got it!")
+        close_btn.add_css_class("suggested-action")
+        close_btn.connect("clicked", lambda b: dialog.close())
+        header.pack_end(close_btn)
+        
+        toolbar_view.add_top_bar(header)
+        
+        # Scrollable content
+        scrolled = Gtk.ScrolledWindow()
+        scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        toolbar_view.set_content(scrolled)
+        
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
+        content.set_margin_top(20)
+        content.set_margin_bottom(20)
+        content.set_margin_start(20)
+        content.set_margin_end(20)
+        scrolled.set_child(content)
+        
+        # Welcome
+        welcome = Gtk.Label()
+        welcome.set_markup(
+            "<b>Welcome to Tux Assistant</b>\n\n"
+            "A system configuration tool that handles the terminal stuff for you."
+        )
+        welcome.set_halign(Gtk.Align.START)
+        welcome.set_wrap(True)
+        content.append(welcome)
+        
+        # Main sections
+        sections = Gtk.Label()
+        sections.set_markup(
+            "<b>Main Sections</b>\n\n"
+            
+            "<b>System Information</b>\n"
+            "Shows your distro, desktop, and hardware. "
+            "Install hardinfo2 for detailed specs.\n\n"
+            
+            "<b>Setup Tools</b>\n"
+            "First-time setup: codecs, drivers, common apps. "
+            "Start here if you just installed Linux.\n\n"
+            
+            "<b>Software Center</b>\n"
+            "Install apps by category. Browsers, editors, games, etc.\n\n"
+            
+            "<b>Developer Tools</b>\n"
+            "Git management with push/pull buttons. SSH key setup. "
+            "Click 'How to Update' for the full workflow guide.\n\n"
+            
+            "<b>Networking</b>\n"
+            "File sharing, Samba, network discovery, Active Directory.\n\n"
+            
+            "<b>Server and Cloud</b>\n"
+            "Set up Nextcloud or media servers (Plex, Jellyfin, Emby).\n\n"
+            
+            "<b>Tux Tunes</b>\n"
+            "Internet radio player with smart song recording."
+        )
+        sections.set_halign(Gtk.Align.START)
+        sections.set_wrap(True)
+        content.append(sections)
+        
+        # How it works
+        how = Gtk.Label()
+        how.set_markup(
+            "<b>How Things Work</b>\n\n"
+            "• Click rows to expand or see options\n"
+            "• Buttons perform actions\n"
+            "• Toast notifications show status at the bottom\n"
+            "• Terminal windows open when you need to enter passwords\n\n"
+            "You always see what's happening. No hidden magic."
+        )
+        how.set_halign(Gtk.Align.START)
+        how.set_wrap(True)
+        content.append(how)
+        
+        # Docs link
+        docs = Gtk.Label()
+        docs.set_markup(
+            "<b>Full Documentation</b>\n\n"
+            "Check the <tt>docs/</tt> folder in the project, or visit:\n"
+            "https://github.com/dorrellkc/tux-assistant"
+        )
+        docs.set_halign(Gtk.Align.START)
+        docs.set_wrap(True)
+        content.append(docs)
+        
+        dialog.present(self)
     
     def create_main_page(self) -> Adw.NavigationPage:
         """Create the main navigation page with dynamically discovered modules."""
