@@ -1651,6 +1651,7 @@ class SimpleNetworkingPage(Adw.NavigationPage):
             self.window.show_toast(f"Error: {str(e)}")
     
     def _on_run_speedtest(self, row):
+        """Run internet speed test."""
         if subprocess.run(['which', 'speedtest-cli'], capture_output=True).returncode != 0:
             dialog = Adw.MessageDialog(transient_for=self.window, heading="Speed Test Required",
                                         body="speedtest-cli is needed.")
@@ -1660,7 +1661,10 @@ class SimpleNetworkingPage(Adw.NavigationPage):
             dialog.connect("response", self._on_install_speedtest)
             dialog.present()
             return
-        self._run_in_terminal('echo "Speed Test"; echo ""; speedtest-cli; echo ""; read -p "Press Enter..."')
+        
+        # Use bash script that keeps terminal open
+        script = 'echo "=== Internet Speed Test ===" && speedtest-cli; echo ""; read -p "Press Enter to close..."'
+        self._run_in_terminal(script)
     
     def _on_install_speedtest(self, dialog, response):
         if response == "install":
@@ -1684,13 +1688,29 @@ class SimpleNetworkingPage(Adw.NavigationPage):
         self.window.show_toast("Could not open network settings")
     
     def _run_in_terminal(self, script: str):
-        terminals = [('konsole', ['konsole', '-e', 'bash', '-c', script]),
-                     ('gnome-terminal', ['gnome-terminal', '--', 'bash', '-c', script]),
-                     ('xfce4-terminal', ['xfce4-terminal', '-e', f'bash -c \'{script}\''])]
-        for name, cmd in terminals:
-            if subprocess.run(['which', name], capture_output=True).returncode == 0:
-                subprocess.Popen(cmd)
-                return
+        """Run a script in a terminal window."""
+        # Try various terminals - ptyxis first for modern Fedora
+        terminals = [
+            ('ptyxis', ['ptyxis', '-e', 'bash', '-c', script]),
+            ('gnome-terminal', ['gnome-terminal', '--', 'bash', '-c', script]),
+            ('kgx', ['kgx', '-e', 'bash', '-c', script]),
+            ('konsole', ['konsole', '--hold', '-e', 'bash', '-c', script]),
+            ('xfce4-terminal', ['xfce4-terminal', '--hold', '-e', f'bash -c "{script}"']),
+            ('tilix', ['tilix', '-e', f'bash -c "{script}"']),
+            ('alacritty', ['alacritty', '--hold', '-e', 'bash', '-c', script]),
+            ('kitty', ['kitty', '--hold', 'bash', '-c', script]),
+            ('xterm', ['xterm', '-hold', '-e', f'bash -c "{script}"']),
+        ]
+        
+        for term_name, term_cmd in terminals:
+            try:
+                if subprocess.run(['which', term_name], capture_output=True).returncode == 0:
+                    subprocess.Popen(term_cmd, start_new_session=True)
+                    return
+            except Exception:
+                continue
+        
+        self.window.show_toast("Could not find a terminal emulator")
     
     def _execute_plan(self, plan: dict, title: str):
         dialog = PlanExecutionDialog(self.window, plan, title, self.distro)
@@ -2744,16 +2764,8 @@ class NetworkingPage(Adw.NavigationPage):
             dialog.present()
             return
         
-        # Run speed test in terminal
-        script = '''echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  Internet Speed Test"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo ""
-speedtest-cli
-echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "Press Enter to close..."
-read'''
+        # Run speed test in terminal - single line command works better
+        script = 'echo "=== Internet Speed Test ===" && echo "" && speedtest-cli && echo "" && echo "Press Enter to close..." && read'
         
         self._run_in_terminal(script)
     
@@ -2831,8 +2843,10 @@ sudo nano /etc/hosts'''
     def _run_in_terminal(self, script: str):
         """Run a script in a terminal window."""
         terminals = [
-            ('konsole', ['konsole', '-e', 'bash', '-c', script]),
+            ('ptyxis', ['ptyxis', '-e', 'bash', '-c', script]),
             ('gnome-terminal', ['gnome-terminal', '--', 'bash', '-c', script]),
+            ('kgx', ['kgx', '-e', 'bash', '-c', script]),
+            ('konsole', ['konsole', '-e', 'bash', '-c', script]),
             ('xfce4-terminal', ['xfce4-terminal', '-e', f'bash -c \'{script}\'']),
             ('tilix', ['tilix', '-e', f'bash -c "{script}"']),
             ('alacritty', ['alacritty', '-e', 'bash', '-c', script]),
@@ -2842,7 +2856,7 @@ sudo nano /etc/hosts'''
         for term_name, term_cmd in terminals:
             try:
                 if subprocess.run(['which', term_name], capture_output=True).returncode == 0:
-                    subprocess.Popen(term_cmd)
+                    subprocess.Popen(term_cmd, start_new_session=True)
                     return
             except Exception:
                 continue

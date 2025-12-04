@@ -2,6 +2,13 @@
 
 All notable changes to Tux Assistant will be documented in this file.
 
+## [0.9.74] - 2025-12-04
+
+### Fixed
+- **Speed Test now works on Fedora!** Added support for Ptyxis (Fedora 43's default terminal)
+- Terminal detection now prioritizes: ptyxis → kgx → gnome-terminal → konsole → xfce4-terminal
+- Fixed terminal launch across all modules (networking, developer tools)
+
 ## [0.9.73] - 2025-12-04
 
 ### Changed

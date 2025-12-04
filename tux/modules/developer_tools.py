@@ -866,8 +866,8 @@ read -p "Press Enter to close this window..."
         
         # Find and launch terminal
         terminals = [
-            ('kgx', ['kgx', '-e', 'bash', script_path]),  # GNOME Console (Fedora)
-            ('ptyxis', ['ptyxis', '-e', 'bash', script_path]),  # New GNOME Terminal
+            ('ptyxis', ['ptyxis', '-e', 'bash', script_path]),  # Fedora 43+ default
+            ('kgx', ['kgx', '-e', 'bash', script_path]),  # GNOME Console
             ('gnome-terminal', ['gnome-terminal', '--', 'bash', script_path]),
             ('konsole', ['konsole', '-e', 'bash', script_path]),
             ('xfce4-terminal', ['xfce4-terminal', '-e', f'bash {script_path}']),
@@ -1852,8 +1852,8 @@ read'''
         
         # Find available terminal
         terminals = [
-            ('kgx', ['kgx', '-e', 'bash', '-c', pull_script]),  # GNOME Console (Fedora)
-            ('ptyxis', ['ptyxis', '-e', 'bash', '-c', pull_script]),  # New GNOME Terminal
+            ('ptyxis', ['ptyxis', '-e', 'bash', '-c', pull_script]),  # Fedora 43+ default
+            ('kgx', ['kgx', '-e', 'bash', '-c', pull_script]),  # GNOME Console
             ('konsole', ['konsole', '-e', 'bash', '-c', pull_script]),
             ('gnome-terminal', ['gnome-terminal', '--', 'bash', '-c', pull_script]),
             ('xfce4-terminal', ['xfce4-terminal', '-e', f'bash -c \'{pull_script}\'']),
@@ -1954,8 +1954,8 @@ read'''
         
         # Find available terminal
         terminals = [
-            ('kgx', ['kgx', '-e', 'bash', '-c', push_script]),  # GNOME Console (Fedora)
-            ('ptyxis', ['ptyxis', '-e', 'bash', '-c', push_script]),  # New GNOME Terminal
+            ('ptyxis', ['ptyxis', '-e', 'bash', '-c', push_script]),  # Fedora 43+ default
+            ('kgx', ['kgx', '-e', 'bash', '-c', push_script]),  # GNOME Console
             ('konsole', ['konsole', '-e', 'bash', '-c', push_script]),
             ('gnome-terminal', ['gnome-terminal', '--', 'bash', '-c', push_script]),
             ('xfce4-terminal', ['xfce4-terminal', '-e', f'bash -c \'{push_script}\'']),
@@ -1994,7 +1994,7 @@ read'''
     
     def _open_terminal(self, path: str):
         """Open terminal in project folder."""
-        terminals = ['kgx', 'ptyxis', 'gnome-terminal', 'konsole', 'xfce4-terminal', 'tilix', 'alacritty', 'kitty', 'xterm']
+        terminals = ['ptyxis', 'kgx', 'gnome-terminal', 'konsole', 'xfce4-terminal', 'tilix', 'alacritty', 'kitty', 'xterm']
         
         for term in terminals:
             try:
