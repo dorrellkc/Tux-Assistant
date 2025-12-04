@@ -2,6 +2,29 @@
 
 All notable changes to Tux Assistant will be documented in this file.
 
+## [0.9.69] - 2025-12-04
+
+### Added
+- **Installed / Browse tabs** like Extension Manager app
+- **Popular extensions** load by default in Browse tab (in background)
+- Search box with results that replace the list
+- Spinner while loading popular extensions
+
+### Changed
+- UI now matches Extension Manager app style
+- Popular extensions load AFTER UI is visible (100ms delay)
+- Uses GLib.timeout_add to ensure UI renders first
+
+## [0.9.68] - 2025-12-04
+
+### Changed
+- **Complete rewrite of Extensions Browser** - Now uses filesystem instead of gnome-extensions command!
+- Reads extensions directly from `~/.local/share/gnome-shell/extensions/` and `/usr/share/gnome-shell/extensions/`
+- Parses `metadata.json` files for extension info (instant, no subprocess calls)
+- Single `gsettings` call for enabled status
+- Search only queries API when user explicitly searches (no pre-loading)
+- Simpler, faster, no freezing!
+
 ## [0.9.67] - 2025-12-04
 
 ### Fixed

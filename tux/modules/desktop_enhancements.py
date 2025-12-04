@@ -2908,7 +2908,7 @@ class ExtensionManager:
 
 
 # =============================================================================
-# GNOME Extensions Browser API (all async-safe)
+# GNOME Extensions Browser API (filesystem-based for speed)
 # =============================================================================
 
 EXTENSIONS_API_URL = "https://extensions.gnome.org/extension-query/"
@@ -2933,80 +2933,100 @@ def get_gnome_shell_version() -> Optional[str]:
     return None
 
 
-def get_installed_extensions_detailed() -> tuple[dict, dict]:
-    """Get installed extensions separated by user vs system.
+def get_installed_extensions_from_filesystem() -> tuple[dict, dict]:
+    """Get installed extensions by reading filesystem directly (fast!).
     
     Returns:
         (user_extensions, system_extensions)
     """
+    import os
+    import json
+    from pathlib import Path
+    
     user_extensions = {}
     system_extensions = {}
     
+    # Get enabled extensions list (one gsettings call)
+    enabled_uuids = set()
     try:
-        # Get user extensions (fast - single command)
-        user_result = subprocess.run(
-            ['gnome-extensions', 'list', '--user'],
+        result = subprocess.run(
+            ['gsettings', 'get', 'org.gnome.shell', 'enabled-extensions'],
             capture_output=True,
             text=True,
-            timeout=5
+            timeout=3
         )
-        user_uuids = set()
-        if user_result.returncode == 0:
-            user_uuids = set(u.strip() for u in user_result.stdout.strip().split('\n') if u.strip())
-        
-        # Get system extensions (fast - single command)
-        system_result = subprocess.run(
-            ['gnome-extensions', 'list', '--system'],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        system_uuids = set()
-        if system_result.returncode == 0:
-            system_uuids = set(u.strip() for u in system_result.stdout.strip().split('\n') if u.strip())
-        
-        # Get enabled extensions (fast - single command)
-        enabled_result = subprocess.run(
-            ['gnome-extensions', 'list', '--enabled'],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        enabled_uuids = set()
-        if enabled_result.returncode == 0:
-            enabled_uuids = set(u.strip() for u in enabled_result.stdout.strip().split('\n') if u.strip())
-        
-        # Build user extensions dict (no individual info calls!)
-        for uuid in user_uuids:
-            user_extensions[uuid] = {
-                'installed': True,
-                'enabled': uuid in enabled_uuids,
-                'is_user': True,
-                'name': uuid.split('@')[0].replace('-', ' ').title()
-            }
-        
-        # Build system extensions dict
-        for uuid in system_uuids:
-            system_extensions[uuid] = {
-                'installed': True,
-                'enabled': uuid in enabled_uuids,
-                'is_user': False,
-                'name': uuid.split('@')[0].replace('-', ' ').title()
-            }
+        if result.returncode == 0:
+            # Parse the array format: ['ext1@foo', 'ext2@bar']
+            raw = result.stdout.strip()
+            if raw.startswith('[') and raw.endswith(']'):
+                # Remove brackets and split
+                inner = raw[1:-1]
+                for item in inner.split(','):
+                    item = item.strip().strip("'\"")
+                    if item:
+                        enabled_uuids.add(item)
+    except:
+        pass
     
-    except Exception as e:
-        print(f"Error getting extensions: {e}")
+    def read_extensions_from_dir(base_path: str, is_user: bool) -> dict:
+        """Read all extensions from a directory."""
+        extensions = {}
+        base = Path(base_path).expanduser()
+        
+        if not base.exists():
+            return extensions
+        
+        for ext_dir in base.iterdir():
+            if not ext_dir.is_dir():
+                continue
+            
+            metadata_file = ext_dir / 'metadata.json'
+            if not metadata_file.exists():
+                continue
+            
+            try:
+                with open(metadata_file, 'r') as f:
+                    metadata = json.load(f)
+                
+                uuid = metadata.get('uuid', ext_dir.name)
+                name = metadata.get('name', uuid.split('@')[0].replace('-', ' ').title())
+                description = metadata.get('description', '')
+                
+                extensions[uuid] = {
+                    'installed': True,
+                    'enabled': uuid in enabled_uuids,
+                    'is_user': is_user,
+                    'name': name,
+                    'description': description[:100] if description else ''
+                }
+            except:
+                # If we can't read metadata, use folder name
+                uuid = ext_dir.name
+                extensions[uuid] = {
+                    'installed': True,
+                    'enabled': uuid in enabled_uuids,
+                    'is_user': is_user,
+                    'name': uuid.split('@')[0].replace('-', ' ').title(),
+                    'description': ''
+                }
+        
+        return extensions
+    
+    # Read user extensions
+    user_extensions = read_extensions_from_dir('~/.local/share/gnome-shell/extensions', is_user=True)
+    
+    # Read system extensions
+    system_extensions = read_extensions_from_dir('/usr/share/gnome-shell/extensions', is_user=False)
     
     return user_extensions, system_extensions
 
 
-def search_extensions_api(query: str, shell_version: str = None, page: int = 1) -> list:
+def search_extensions_api(query: str, shell_version: str = None) -> list:
     """Search for extensions on extensions.gnome.org."""
     try:
         params = {
             'search': query,
-            'page': page,
-            'n_per_page': 25,
+            'n_per_page': 20,
         }
         if shell_version:
             params['shell_version'] = shell_version
@@ -3080,19 +3100,6 @@ def install_extension_from_ego(pk: int, uuid: str, shell_version: str) -> tuple[
         return False, str(e)
 
 
-def uninstall_extension_by_uuid(uuid: str) -> bool:
-    """Uninstall an extension."""
-    try:
-        result = subprocess.run(
-            ['gnome-extensions', 'uninstall', uuid],
-            capture_output=True,
-            timeout=10
-        )
-        return result.returncode == 0
-    except:
-        return False
-
-
 def enable_extension_by_uuid(uuid: str) -> bool:
     """Enable an extension."""
     try:
@@ -3119,56 +3126,56 @@ def disable_extension_by_uuid(uuid: str) -> bool:
         return False
 
 
+def uninstall_extension_by_uuid(uuid: str) -> bool:
+    """Uninstall an extension."""
+    try:
+        result = subprocess.run(
+            ['gnome-extensions', 'uninstall', uuid],
+            capture_output=True,
+            timeout=10
+        )
+        return result.returncode == 0
+    except:
+        return False
+
+
 # =============================================================================
-# GNOME Extensions Browser Page (FULLY ASYNC)
+# GNOME Extensions Browser Page (With Tabs & Popular Extensions)
 # =============================================================================
 
 class GnomeExtensionsBrowserPage(Adw.NavigationPage):
-    """Full-featured GNOME Extensions browser - all loading is async."""
+    """GNOME Extensions browser with Installed/Browse tabs."""
     
     def __init__(self, window, distro):
         super().__init__(title="GNOME Extensions")
         
         self.window = window
         self.distro = distro
-        self.shell_version = None
+        self.shell_version = get_gnome_shell_version()
         self.user_extensions = {}
         self.system_extensions = {}
-        self.extensions_globally_enabled = True
         
-        # Build UI immediately (shows loading state)
+        # Load installed from filesystem (instant!)
+        self.user_extensions, self.system_extensions = get_installed_extensions_from_filesystem()
+        
+        # Build UI immediately
         self.build_ui()
         
-        # Load everything in background
-        self._start_loading()
+        # Load popular extensions in background AFTER UI is shown
+        GLib.timeout_add(100, self._start_loading_popular)
     
-    def _start_loading(self):
-        """Start loading all data in background threads."""
-        def load_all():
-            # Get shell version
-            self.shell_version = get_gnome_shell_version()
-            
-            # Get installed extensions
-            self.user_extensions, self.system_extensions = get_installed_extensions_detailed()
-            
-            # Check if extensions globally enabled
-            try:
-                result = subprocess.run(
-                    ['gsettings', 'get', 'org.gnome.shell', 'disable-user-extensions'],
-                    capture_output=True, text=True, timeout=5
-                )
-                self.extensions_globally_enabled = result.stdout.strip() == 'false'
-            except:
-                self.extensions_globally_enabled = True
-            
-            # Update UI on main thread
-            GLib.idle_add(self._on_installed_loaded)
+    def _start_loading_popular(self):
+        """Start loading popular extensions after UI is ready."""
+        def do_load():
+            results = search_extensions_api("", self.shell_version)
+            GLib.idle_add(self._populate_popular, results[:15])
         
-        thread = threading.Thread(target=load_all, daemon=True)
+        thread = threading.Thread(target=do_load, daemon=True)
         thread.start()
+        return False  # Don't repeat
     
     def build_ui(self):
-        """Build the UI with loading state."""
+        """Build the UI with tabs."""
         toolbar_view = Adw.ToolbarView()
         self.set_child(toolbar_view)
         
@@ -3178,14 +3185,13 @@ class GnomeExtensionsBrowserPage(Adw.NavigationPage):
         header.set_show_start_title_buttons(False)
         toolbar_view.add_top_bar(header)
         
-        # Main content box
+        # Main content
         main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         toolbar_view.set_content(main_box)
         
-        # View stack for tabs
+        # Tab bar (Installed / Browse)
         self.stack = Adw.ViewStack()
         
-        # View switcher (tab bar)
         switcher = Adw.ViewSwitcher()
         switcher.set_stack(self.stack)
         switcher.set_policy(Adw.ViewSwitcherPolicy.WIDE)
@@ -3193,200 +3199,31 @@ class GnomeExtensionsBrowserPage(Adw.NavigationPage):
         switcher.set_margin_bottom(8)
         main_box.append(switcher)
         
-        # Separator
-        separator = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
-        main_box.append(separator)
+        main_box.append(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
         
-        # Installed page (with loading state)
-        installed_page = self._create_installed_page()
-        self.stack.add_titled_with_icon(installed_page, "installed", "Installed", "starred-symbolic")
+        # Installed tab
+        installed_page = self._create_installed_tab()
+        self.stack.add_titled_with_icon(installed_page, "installed", "Installed", "emblem-default-symbolic")
         
-        # Browse page
-        browse_page = self._create_browse_page()
-        self.stack.add_titled_with_icon(browse_page, "browse", "Browse", "globe-symbolic")
+        # Browse tab
+        browse_page = self._create_browse_tab()
+        self.stack.add_titled_with_icon(browse_page, "browse", "Browse", "web-browser-symbolic")
         
         main_box.append(self.stack)
         
         # Status bar
-        self.status_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        self.status_bar.set_margin_start(16)
-        self.status_bar.set_margin_end(16)
-        self.status_bar.set_margin_top(8)
-        self.status_bar.set_margin_bottom(8)
-        
-        self.status_label = Gtk.Label(label="Loading...")
-        self.status_label.add_css_class("dim-label")
-        self.status_label.set_halign(Gtk.Align.START)
-        self.status_label.set_hexpand(True)
-        self.status_bar.append(self.status_label)
-        
-        main_box.append(self.status_bar)
-    
-    def _create_installed_page(self) -> Gtk.Widget:
-        """Create installed page with loading spinner."""
-        scrolled = Gtk.ScrolledWindow()
-        scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        scrolled.set_vexpand(True)
-        
-        clamp = Adw.Clamp()
-        clamp.set_maximum_size(800)
-        clamp.set_margin_top(16)
-        clamp.set_margin_bottom(16)
-        clamp.set_margin_start(16)
-        clamp.set_margin_end(16)
-        scrolled.set_child(clamp)
-        
-        self.installed_content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
-        clamp.set_child(self.installed_content)
-        
-        # Show loading spinner initially
-        self.installed_spinner = Gtk.Spinner()
-        self.installed_spinner.set_size_request(32, 32)
-        self.installed_spinner.start()
-        self.installed_spinner.set_halign(Gtk.Align.CENTER)
-        self.installed_spinner.set_valign(Gtk.Align.CENTER)
-        self.installed_spinner.set_vexpand(True)
-        self.installed_content.append(self.installed_spinner)
-        
-        loading_label = Gtk.Label(label="Loading extensions...")
-        loading_label.add_css_class("dim-label")
-        loading_label.set_halign(Gtk.Align.CENTER)
-        self.installed_content.append(loading_label)
-        
-        return scrolled
-    
-    def _on_installed_loaded(self):
-        """Called when installed extensions are loaded - update UI."""
-        # Clear loading state
-        while child := self.installed_content.get_first_child():
-            self.installed_content.remove(child)
-        
-        # Update status
         total = len(self.user_extensions) + len(self.system_extensions)
         version_text = f"GNOME {self.shell_version}" if self.shell_version else "GNOME"
-        self.status_label.set_text(f"{version_text} • {total} extension(s) installed")
         
-        # Build the installed list
-        self._populate_installed_list()
+        status_label = Gtk.Label()
+        status_label.set_markup(f"<small>{version_text} • {total} extension(s) installed</small>")
+        status_label.add_css_class("dim-label")
+        status_label.set_margin_top(8)
+        status_label.set_margin_bottom(8)
+        main_box.append(status_label)
     
-    def _populate_installed_list(self):
-        """Populate the installed extensions list."""
-        # Global extensions toggle
-        global_group = Adw.PreferencesGroup()
-        
-        global_row = Adw.SwitchRow()
-        global_row.set_title("Use Extensions")
-        global_row.set_subtitle("Extensions can cause performance and stability issues")
-        global_row.add_prefix(Gtk.Image.new_from_icon_name("puzzle-piece-symbolic"))
-        global_row.set_active(self.extensions_globally_enabled)
-        global_row.connect("notify::active", self._on_global_extensions_toggle)
-        global_group.add(global_row)
-        self.installed_content.append(global_group)
-        
-        # Refresh button
-        refresh_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
-        refresh_box.set_halign(Gtk.Align.END)
-        refresh_btn = Gtk.Button()
-        refresh_btn.set_icon_name("view-refresh-symbolic")
-        refresh_btn.set_tooltip_text("Refresh extension list")
-        refresh_btn.add_css_class("flat")
-        refresh_btn.connect("clicked", self._on_refresh_clicked)
-        refresh_box.append(refresh_btn)
-        self.installed_content.append(refresh_box)
-        
-        # User-Installed Extensions
-        if self.user_extensions:
-            user_group = Adw.PreferencesGroup()
-            user_group.set_title("User-Installed Extensions")
-            
-            for uuid, info in sorted(self.user_extensions.items(), key=lambda x: x[1].get('name', x[0]).lower()):
-                row = self._create_extension_row(uuid, info, is_user=True)
-                user_group.add(row)
-            
-            self.installed_content.append(user_group)
-        
-        # System Extensions
-        if self.system_extensions:
-            system_group = Adw.PreferencesGroup()
-            system_group.set_title("System Extensions")
-            
-            for uuid, info in sorted(self.system_extensions.items(), key=lambda x: x[1].get('name', x[0]).lower()):
-                row = self._create_extension_row(uuid, info, is_user=False)
-                system_group.add(row)
-            
-            self.installed_content.append(system_group)
-        
-        # Empty state
-        if not self.user_extensions and not self.system_extensions:
-            empty_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-            empty_box.set_valign(Gtk.Align.CENTER)
-            empty_box.set_vexpand(True)
-            
-            empty_icon = Gtk.Image.new_from_icon_name("puzzle-piece-symbolic")
-            empty_icon.set_pixel_size(64)
-            empty_icon.add_css_class("dim-label")
-            empty_box.append(empty_icon)
-            
-            empty_label = Gtk.Label(label="No Extensions Installed")
-            empty_label.add_css_class("title-2")
-            empty_box.append(empty_label)
-            
-            browse_btn = Gtk.Button(label="Browse Extensions")
-            browse_btn.add_css_class("suggested-action")
-            browse_btn.add_css_class("pill")
-            browse_btn.set_halign(Gtk.Align.CENTER)
-            browse_btn.connect("clicked", lambda b: self.stack.set_visible_child_name("browse"))
-            empty_box.append(browse_btn)
-            
-            self.installed_content.append(empty_box)
-    
-    def _create_extension_row(self, uuid: str, info: dict, is_user: bool) -> Adw.ExpanderRow:
-        """Create a row for an installed extension."""
-        name = info.get('name', uuid.split('@')[0].replace('-', ' ').title())
-        
-        row = Adw.ExpanderRow()
-        row.set_title(name)
-        row.set_subtitle(uuid)
-        
-        # Enable/disable switch
-        switch = Gtk.Switch()
-        switch.set_valign(Gtk.Align.CENTER)
-        switch.set_active(info.get('enabled', False))
-        switch.connect("state-set", self._on_extension_toggle, uuid)
-        row.add_suffix(switch)
-        
-        # Settings button
-        settings_btn = Gtk.Button()
-        settings_btn.set_icon_name("emblem-system-symbolic")
-        settings_btn.set_valign(Gtk.Align.CENTER)
-        settings_btn.add_css_class("flat")
-        settings_btn.set_tooltip_text("Extension Settings")
-        settings_btn.connect("clicked", self._on_extension_settings, uuid)
-        row.add_suffix(settings_btn)
-        
-        # Expanded content
-        if is_user:
-            action_row = Adw.ActionRow()
-            action_row.set_title("Uninstall Extension")
-            action_row.set_subtitle("Remove this extension from your system")
-            
-            uninstall_btn = Gtk.Button(label="Uninstall")
-            uninstall_btn.add_css_class("destructive-action")
-            uninstall_btn.set_valign(Gtk.Align.CENTER)
-            uninstall_btn.connect("clicked", self._on_uninstall_extension, uuid, name)
-            action_row.add_suffix(uninstall_btn)
-            
-            row.add_row(action_row)
-        else:
-            info_row = Adw.ActionRow()
-            info_row.set_title("System Extension")
-            info_row.set_subtitle("Installed by your distribution")
-            row.add_row(info_row)
-        
-        return row
-    
-    def _create_browse_page(self) -> Gtk.Widget:
-        """Create the browse/search page."""
+    def _create_installed_tab(self) -> Gtk.Widget:
+        """Create the Installed tab."""
         scrolled = Gtk.ScrolledWindow()
         scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         scrolled.set_vexpand(True)
@@ -3402,105 +3239,196 @@ class GnomeExtensionsBrowserPage(Adw.NavigationPage):
         content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
         clamp.set_child(content)
         
-        # Search box
-        search_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        # User extensions
+        if self.user_extensions:
+            user_group = Adw.PreferencesGroup()
+            user_group.set_title("User-Installed Extensions")
+            
+            for uuid, info in sorted(self.user_extensions.items(), key=lambda x: x[1].get('name', '').lower()):
+                row = self._create_installed_row(uuid, info, is_user=True)
+                user_group.add(row)
+            
+            content.append(user_group)
         
-        self.search_entry = Gtk.SearchEntry()
-        self.search_entry.set_placeholder_text("Search extensions.gnome.org...")
-        self.search_entry.set_hexpand(True)
-        self.search_entry.connect("activate", self._on_search)
-        search_box.append(self.search_entry)
+        # System extensions
+        if self.system_extensions:
+            system_group = Adw.PreferencesGroup()
+            system_group.set_title("System Extensions")
+            
+            for uuid, info in sorted(self.system_extensions.items(), key=lambda x: x[1].get('name', '').lower()):
+                row = self._create_installed_row(uuid, info, is_user=False)
+                system_group.add(row)
+            
+            content.append(system_group)
         
-        self.search_btn = Gtk.Button(label="Search")
-        self.search_btn.add_css_class("suggested-action")
-        self.search_btn.connect("clicked", self._on_search)
-        search_box.append(self.search_btn)
-        
-        content.append(search_box)
-        
-        # Search spinner
-        self.search_spinner = Gtk.Spinner()
-        self.search_spinner.set_visible(False)
-        content.append(self.search_spinner)
-        
-        # Results container
-        self.results_group = Adw.PreferencesGroup()
-        self.results_group.set_title("Search Results")
-        self.results_group.set_visible(False)
-        content.append(self.results_group)
-        
-        # Popular extensions
-        self.popular_group = Adw.PreferencesGroup()
-        self.popular_group.set_title("Popular Extensions")
-        self.popular_group.set_description("Loading...")
-        content.append(self.popular_group)
-        
-        # Load popular in background
-        self._load_popular_extensions()
+        # Empty state
+        if not self.user_extensions and not self.system_extensions:
+            empty_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+            empty_box.set_valign(Gtk.Align.CENTER)
+            empty_box.set_vexpand(True)
+            
+            empty_label = Gtk.Label(label="No Extensions Installed")
+            empty_label.add_css_class("title-2")
+            empty_box.append(empty_label)
+            
+            hint_label = Gtk.Label(label="Browse extensions to find new ones")
+            hint_label.add_css_class("dim-label")
+            empty_box.append(hint_label)
+            
+            content.append(empty_box)
         
         return scrolled
     
-    def _load_popular_extensions(self):
-        """Load popular extensions from API in background."""
-        def do_load():
-            # Wait for shell version to be loaded
-            while self.shell_version is None:
-                import time
-                time.sleep(0.1)
-            
-            results = search_extensions_api("", self.shell_version)
-            GLib.idle_add(self._populate_popular, results[:10])
+    def _create_browse_tab(self) -> Gtk.Widget:
+        """Create the Browse tab."""
+        scrolled = Gtk.ScrolledWindow()
+        scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scrolled.set_vexpand(True)
         
-        thread = threading.Thread(target=do_load, daemon=True)
-        thread.start()
+        clamp = Adw.Clamp()
+        clamp.set_maximum_size(800)
+        clamp.set_margin_top(16)
+        clamp.set_margin_bottom(16)
+        clamp.set_margin_start(16)
+        clamp.set_margin_end(16)
+        scrolled.set_child(clamp)
+        
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
+        clamp.set_child(content)
+        
+        # Header
+        header_label = Gtk.Label()
+        header_label.set_markup("<big><b>Search for Extensions</b></big>")
+        header_label.set_halign(Gtk.Align.CENTER)
+        content.append(header_label)
+        
+        desc_label = Gtk.Label(label="Enter a keyword to search 'extensions.gnome.org' for GNOME Shell Extensions")
+        desc_label.add_css_class("dim-label")
+        desc_label.set_halign(Gtk.Align.CENTER)
+        content.append(desc_label)
+        
+        # Search box
+        search_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        search_box.set_halign(Gtk.Align.CENTER)
+        search_box.set_margin_top(8)
+        search_box.set_margin_bottom(8)
+        
+        self.search_entry = Gtk.SearchEntry()
+        self.search_entry.set_placeholder_text("Search extensions...")
+        self.search_entry.set_size_request(400, -1)
+        self.search_entry.connect("activate", self._on_search)
+        search_box.append(self.search_entry)
+        
+        content.append(search_box)
+        
+        # Results/Popular list
+        self.browse_list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        content.append(self.browse_list)
+        
+        # Show loading spinner initially
+        self.browse_spinner = Gtk.Spinner()
+        self.browse_spinner.set_size_request(32, 32)
+        self.browse_spinner.start()
+        self.browse_spinner.set_halign(Gtk.Align.CENTER)
+        self.browse_spinner.set_margin_top(20)
+        self.browse_list.append(self.browse_spinner)
+        
+        loading_label = Gtk.Label(label="Loading popular extensions...")
+        loading_label.add_css_class("dim-label")
+        loading_label.set_halign(Gtk.Align.CENTER)
+        self.browse_list.append(loading_label)
+        
+        return scrolled
     
     def _populate_popular(self, extensions: list):
-        """Populate the popular extensions list."""
-        # Clear existing
-        while child := self.popular_group.get_first_child():
-            self.popular_group.remove(child)
-        
-        self.popular_group.set_description("Recommended extensions for GNOME")
+        """Populate with popular extensions."""
+        # Clear loading state
+        while child := self.browse_list.get_first_child():
+            self.browse_list.remove(child)
         
         if not extensions:
-            empty_row = Adw.ActionRow()
-            empty_row.set_title("Could not load popular extensions")
-            empty_row.set_subtitle("Check your internet connection")
-            self.popular_group.add(empty_row)
+            error_label = Gtk.Label(label="Could not load extensions. Check your internet connection.")
+            error_label.add_css_class("dim-label")
+            error_label.set_halign(Gtk.Align.CENTER)
+            self.browse_list.append(error_label)
             return
         
+        # Create list
+        self._populate_extension_list(extensions)
+    
+    def _populate_extension_list(self, extensions: list):
+        """Populate the browse list with extensions."""
         all_installed = {**self.user_extensions, **self.system_extensions}
+        
+        list_box = Gtk.ListBox()
+        list_box.set_selection_mode(Gtk.SelectionMode.NONE)
+        list_box.add_css_class("boxed-list")
         
         for ext in extensions:
             uuid = ext.get('uuid', '')
-            is_installed = uuid in all_installed
-            row = self._create_browse_row(ext, is_installed)
-            self.popular_group.add(row)
+            name = ext.get('name', uuid.split('@')[0])
+            creator = ext.get('creator', '')
+            desc = ext.get('description', '')[:60]
+            if len(ext.get('description', '')) > 60:
+                desc += '...'
+            
+            row = Adw.ActionRow()
+            row.set_title(name)
+            row.set_subtitle(f"{creator}\n{desc}" if creator else desc)
+            
+            # Chevron
+            chevron = Gtk.Image.new_from_icon_name("go-next-symbolic")
+            chevron.add_css_class("dim-label")
+            row.add_suffix(chevron)
+            
+            if uuid in all_installed:
+                # Installed badge
+                badge = Gtk.Label(label="Installed")
+                badge.add_css_class("dim-label")
+                badge.set_valign(Gtk.Align.CENTER)
+                badge.set_margin_end(8)
+                row.add_suffix(badge)
+            else:
+                # Install button
+                install_btn = Gtk.Button(label="Install")
+                install_btn.add_css_class("suggested-action")
+                install_btn.set_valign(Gtk.Align.CENTER)
+                install_btn.set_margin_end(8)
+                install_btn.connect("clicked", self._on_install, ext)
+                row.add_suffix(install_btn)
+            
+            list_box.append(row)
+        
+        self.browse_list.append(list_box)
     
-    def _create_browse_row(self, ext: dict, is_installed: bool) -> Adw.ActionRow:
-        """Create a row for a browsable extension."""
-        uuid = ext.get('uuid', '')
-        name = ext.get('name', uuid.split('@')[0])
-        description = ext.get('description', '')[:100]
-        if len(ext.get('description', '')) > 100:
-            description += '...'
+    def _create_installed_row(self, uuid: str, info: dict, is_user: bool) -> Adw.ActionRow:
+        """Create a row for an installed extension."""
+        name = info.get('name', uuid.split('@')[0])
         
         row = Adw.ActionRow()
         row.set_title(name)
-        row.set_subtitle(description)
-        row.set_tooltip_text(uuid)
+        row.set_subtitle(uuid)
         
-        if is_installed:
-            badge = Gtk.Label(label="Installed")
-            badge.add_css_class("dim-label")
-            badge.set_valign(Gtk.Align.CENTER)
-            row.add_suffix(badge)
-        else:
-            install_btn = Gtk.Button(label="Install")
-            install_btn.add_css_class("suggested-action")
-            install_btn.set_valign(Gtk.Align.CENTER)
-            install_btn.connect("clicked", self._on_install_extension, ext)
-            row.add_suffix(install_btn)
+        # Enable/disable switch
+        switch = Gtk.Switch()
+        switch.set_valign(Gtk.Align.CENTER)
+        switch.set_active(info.get('enabled', False))
+        switch.connect("state-set", self._on_toggle_extension, uuid)
+        row.add_suffix(switch)
+        
+        # Settings button
+        settings_btn = Gtk.Button()
+        settings_btn.set_icon_name("emblem-system-symbolic")
+        settings_btn.set_valign(Gtk.Align.CENTER)
+        settings_btn.add_css_class("flat")
+        settings_btn.set_tooltip_text("Settings")
+        settings_btn.connect("clicked", self._on_settings, uuid)
+        row.add_suffix(settings_btn)
+        
+        # Chevron
+        chevron = Gtk.Image.new_from_icon_name("go-down-symbolic")
+        chevron.add_css_class("dim-label")
+        row.add_suffix(chevron)
         
         return row
     
@@ -3510,10 +3438,16 @@ class GnomeExtensionsBrowserPage(Adw.NavigationPage):
         if not query:
             return
         
-        self.search_btn.set_sensitive(False)
-        self.search_spinner.set_visible(True)
-        self.search_spinner.start()
-        self.results_group.set_visible(False)
+        # Show loading
+        while child := self.browse_list.get_first_child():
+            self.browse_list.remove(child)
+        
+        spinner = Gtk.Spinner()
+        spinner.set_size_request(32, 32)
+        spinner.start()
+        spinner.set_halign(Gtk.Align.CENTER)
+        spinner.set_margin_top(20)
+        self.browse_list.append(spinner)
         
         def do_search():
             results = search_extensions_api(query, self.shell_version)
@@ -3524,82 +3458,38 @@ class GnomeExtensionsBrowserPage(Adw.NavigationPage):
     
     def _show_search_results(self, results: list):
         """Show search results."""
-        self.search_btn.set_sensitive(True)
-        self.search_spinner.stop()
-        self.search_spinner.set_visible(False)
-        
-        # Clear previous results
-        while child := self.results_group.get_first_child():
-            self.results_group.remove(child)
+        while child := self.browse_list.get_first_child():
+            self.browse_list.remove(child)
         
         if not results:
-            empty_row = Adw.ActionRow()
-            empty_row.set_title("No extensions found")
-            empty_row.set_subtitle("Try a different search term")
-            self.results_group.add(empty_row)
-            self.results_group.set_visible(True)
-            self.results_group.set_title("Search Results (0)")
+            empty_label = Gtk.Label(label="No extensions found")
+            empty_label.add_css_class("dim-label")
+            empty_label.set_halign(Gtk.Align.CENTER)
+            self.browse_list.append(empty_label)
             return
         
-        self.results_group.set_title(f"Search Results ({len(results)})")
-        
-        all_installed = {**self.user_extensions, **self.system_extensions}
-        
-        for ext in results:
-            uuid = ext.get('uuid', '')
-            is_installed = uuid in all_installed
-            row = self._create_browse_row(ext, is_installed)
-            self.results_group.add(row)
-        
-        self.results_group.set_visible(True)
-        self.popular_group.set_visible(False)
+        self._populate_extension_list(results)
     
-    def _on_global_extensions_toggle(self, switch, pspec):
-        """Handle global extensions toggle."""
-        enabled = switch.get_active()
-        
-        def do_toggle():
-            value = 'false' if enabled else 'true'
-            try:
-                subprocess.run(
-                    ['gsettings', 'set', 'org.gnome.shell', 'disable-user-extensions', value],
-                    check=True, timeout=5
-                )
-                status = "enabled" if enabled else "disabled"
-                GLib.idle_add(self.window.show_toast, f"Extensions {status}")
-            except:
-                GLib.idle_add(self.window.show_toast, "Failed to toggle extensions")
-                GLib.idle_add(switch.set_active, not enabled)
-        
-        thread = threading.Thread(target=do_toggle, daemon=True)
-        thread.start()
-    
-    def _on_extension_toggle(self, switch, state, uuid: str):
-        """Handle extension enable/disable toggle."""
+    def _on_toggle_extension(self, switch, state, uuid: str):
+        """Toggle extension on/off."""
         def do_toggle():
             if state:
                 success = enable_extension_by_uuid(uuid)
-                action = "Enabled"
             else:
                 success = disable_extension_by_uuid(uuid)
-                action = "Disabled"
             
             if success:
-                if uuid in self.user_extensions:
-                    self.user_extensions[uuid]['enabled'] = state
-                elif uuid in self.system_extensions:
-                    self.system_extensions[uuid]['enabled'] = state
-                
                 name = uuid.split('@')[0].replace('-', ' ').title()
-                GLib.idle_add(self.window.show_toast, f"{action} {name}")
+                msg = f"{'Enabled' if state else 'Disabled'} {name}"
             else:
-                GLib.idle_add(self.window.show_toast, "Failed to toggle extension")
+                msg = "Failed to toggle extension"
+            GLib.idle_add(self.window.show_toast, msg)
         
         thread = threading.Thread(target=do_toggle, daemon=True)
         thread.start()
         return False
     
-    def _on_extension_settings(self, button, uuid: str):
+    def _on_settings(self, button, uuid: str):
         """Open extension settings."""
         try:
             subprocess.Popen(
@@ -3608,63 +3498,16 @@ class GnomeExtensionsBrowserPage(Adw.NavigationPage):
                 stderr=subprocess.DEVNULL
             )
         except:
-            self.window.show_toast("Could not open extension preferences")
+            self.window.show_toast("Could not open settings")
     
-    def _on_uninstall_extension(self, button, uuid: str, name: str):
-        """Uninstall an extension."""
-        dialog = Adw.AlertDialog()
-        dialog.set_heading("Uninstall Extension?")
-        dialog.set_body(f"This will remove \"{name}\" from your system.")
-        dialog.add_response("cancel", "Cancel")
-        dialog.add_response("uninstall", "Uninstall")
-        dialog.set_response_appearance("uninstall", Adw.ResponseAppearance.DESTRUCTIVE)
-        dialog.set_default_response("cancel")
-        dialog.set_close_response("cancel")
-        
-        def on_response(dialog, response):
-            if response == "uninstall":
-                def do_uninstall():
-                    if uninstall_extension_by_uuid(uuid):
-                        GLib.idle_add(self._on_uninstall_complete, uuid, name, True)
-                    else:
-                        GLib.idle_add(self._on_uninstall_complete, uuid, name, False)
-                
-                thread = threading.Thread(target=do_uninstall, daemon=True)
-                thread.start()
-        
-        dialog.connect("response", on_response)
-        dialog.present(self.window)
-    
-    def _on_uninstall_complete(self, uuid: str, name: str, success: bool):
-        """Handle uninstall completion."""
-        if success:
-            self.window.show_toast(f"Uninstalled {name}")
-            if uuid in self.user_extensions:
-                del self.user_extensions[uuid]
-            
-            # Refresh UI
-            while child := self.installed_content.get_first_child():
-                self.installed_content.remove(child)
-            self._populate_installed_list()
-            
-            total = len(self.user_extensions) + len(self.system_extensions)
-            version_text = f"GNOME {self.shell_version}" if self.shell_version else "GNOME"
-            self.status_label.set_text(f"{version_text} • {total} extension(s) installed")
-        else:
-            self.window.show_toast(f"Failed to uninstall {name}")
-    
-    def _on_install_extension(self, button, ext: dict):
-        """Install an extension."""
+    def _on_install(self, button, ext: dict):
+        """Install extension."""
         uuid = ext.get('uuid', '')
         name = ext.get('name', uuid)
         pk = ext.get('pk', 0)
         
-        if not pk:
-            self.window.show_toast("Cannot install this extension")
-            return
-        
-        if not self.shell_version:
-            self.window.show_toast("Could not detect GNOME Shell version")
+        if not pk or not self.shell_version:
+            self.window.show_toast("Cannot install")
             return
         
         button.set_sensitive(False)
@@ -3672,59 +3515,21 @@ class GnomeExtensionsBrowserPage(Adw.NavigationPage):
         
         def do_install():
             success, message = install_extension_from_ego(pk, uuid, self.shell_version)
-            GLib.idle_add(self._on_install_complete, button, uuid, name, success, message)
+            GLib.idle_add(self._on_install_complete, button, name, success, message)
         
         thread = threading.Thread(target=do_install, daemon=True)
         thread.start()
     
-    def _on_install_complete(self, button, uuid: str, name: str, success: bool, message: str):
+    def _on_install_complete(self, button, name: str, success: bool, message: str):
         """Handle install completion."""
         if success:
             button.set_label("Installed")
             button.remove_css_class("suggested-action")
             self.window.show_toast(f"Installed {name}!")
-            
-            # Add to installed list
-            self.user_extensions[uuid] = {
-                'installed': True,
-                'enabled': True,
-                'is_user': True,
-                'name': name
-            }
-            
-            # Refresh installed UI
-            while child := self.installed_content.get_first_child():
-                self.installed_content.remove(child)
-            self._populate_installed_list()
-            
-            total = len(self.user_extensions) + len(self.system_extensions)
-            version_text = f"GNOME {self.shell_version}" if self.shell_version else "GNOME"
-            self.status_label.set_text(f"{version_text} • {total} extension(s) installed")
         else:
             button.set_sensitive(True)
             button.set_label("Install")
             self.window.show_toast(f"Failed: {message}")
-    
-    def _on_refresh_clicked(self, button):
-        """Refresh the installed extensions list."""
-        # Show loading
-        while child := self.installed_content.get_first_child():
-            self.installed_content.remove(child)
-        
-        spinner = Gtk.Spinner()
-        spinner.set_size_request(32, 32)
-        spinner.start()
-        spinner.set_halign(Gtk.Align.CENTER)
-        spinner.set_valign(Gtk.Align.CENTER)
-        spinner.set_vexpand(True)
-        self.installed_content.append(spinner)
-        
-        def do_refresh():
-            self.user_extensions, self.system_extensions = get_installed_extensions_detailed()
-            GLib.idle_add(self._on_installed_loaded)
-        
-        thread = threading.Thread(target=do_refresh, daemon=True)
-        thread.start()
 
 
 # =============================================================================
@@ -4063,7 +3868,7 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         presets_row.set_title("Theme Presets")
         presets_row.set_subtitle(f"{len(THEME_PRESETS)} complete looks (macOS, Nordic, Dracula...)")
         presets_row.set_activatable(True)
-        presets_row.add_prefix(Gtk.Image.new_from_icon_name("starred-symbolic"))
+        presets_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-default-symbolic"))
         presets_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
         presets_row.connect("activated", self.on_theme_presets)
         group.add(presets_row)
@@ -4081,7 +3886,7 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         browser_row.set_title("Browse & Manage Extensions")
         browser_row.set_subtitle("Search, install, and manage GNOME extensions")
         browser_row.set_activatable(True)
-        browser_row.add_prefix(Gtk.Image.new_from_icon_name("globe-symbolic"))
+        browser_row.add_prefix(Gtk.Image.new_from_icon_name("web-browser-symbolic"))
         browser_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
         browser_row.connect("activated", self.on_gnome_extensions_browser)
         group.add(browser_row)
