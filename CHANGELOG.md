@@ -2,6 +2,21 @@
 
 All notable changes to Tux Assistant will be documented in this file.
 
+## [0.9.73] - 2025-12-04
+
+### Changed
+- **Simplified Developer Tools** - Reduced from 8 rows to 4 rows
+- **New "Install from ZIP" button** - One click to extract, copy, and install from Claude's ZIP
+- **New "Publish Release" button** - One click for full workflow: commit → push → build .run → create GitHub release
+- Status row now shows version, branch, and SSH status in one compact line
+- Updated help guide to match new 2-button workflow
+
+### Removed
+- Separate Pull/Push buttons (integrated into Publish)
+- Separate "Build .run Only" and "Build & Push to Main" buttons (merged into Publish)
+- Separate "Create GitHub Release" button (merged into Publish)
+- Separate Refresh Status row (now an icon button)
+
 ## [0.9.72] - 2025-12-04
 
 ### Changed

@@ -348,7 +348,7 @@ class DeveloperToolsPage(Adw.NavigationPage):
             # Note: The button and icon will remain but that's OK for now
     
     def _build_tux_assistant_dev_section(self, content_box):
-        """Build the Tux Assistant development section (only if in TA repo)."""
+        """Build the simplified Tux Assistant development section."""
         # Check if we're in the Tux Assistant repo
         ta_repo_path = self._find_tux_assistant_repo()
         if not ta_repo_path:
@@ -356,131 +356,346 @@ class DeveloperToolsPage(Adw.NavigationPage):
         
         self.ta_repo_path = ta_repo_path
         
+        # Get current status
+        version = self._get_ta_version()
+        branch = self._get_ta_branch()
+        ssh_status = self._check_ssh_agent_status()
+        ssh_ok = "Unlocked" in ssh_status
+        
         # Create the section
         ta_group = Adw.PreferencesGroup()
         ta_group.set_title("🐧 Tux Assistant Development")
-        ta_group.set_description(f"Repo: {ta_repo_path}")
         content_box.append(ta_group)
         
-        # SSH Key unlock row (FIRST - do this before any git operations)
-        ssh_row = Adw.ActionRow()
-        ssh_row.set_title("SSH Key")
+        # Status row - shows version, branch, SSH
+        status_row = Adw.ActionRow()
+        status_row.set_title(f"Version {version}")
         
-        # Check if SSH agent is running and key is loaded
-        ssh_status = self._check_ssh_agent_status()
-        ssh_row.set_subtitle(ssh_status)
+        status_parts = [f"Branch: {branch}"]
+        status_parts.append(f"SSH: {'✓ Ready' if ssh_ok else '🔒 Locked'}")
+        status_row.set_subtitle(" • ".join(status_parts))
         
-        if "Unlocked" in ssh_status:
-            ssh_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
+        if ssh_ok:
+            status_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
         else:
-            ssh_row.add_prefix(Gtk.Image.new_from_icon_name("dialog-password-symbolic"))
+            status_row.add_prefix(Gtk.Image.new_from_icon_name("dialog-password-symbolic"))
         
-        unlock_btn = Gtk.Button(label="Unlock SSH Key")
-        unlock_btn.add_css_class("suggested-action")
-        unlock_btn.set_tooltip_text("Opens terminal to enter your SSH passphrase")
-        unlock_btn.set_valign(Gtk.Align.CENTER)
-        unlock_btn.connect("clicked", self._on_unlock_ssh_key)
-        ssh_row.add_suffix(unlock_btn)
-        
-        ta_group.add(ssh_row)
-        self.ta_ssh_row = ssh_row
-        
-        # Current branch status
-        branch_row = Adw.ActionRow()
-        branch_row.set_title("Current Branch")
-        branch = self._get_ta_branch()
-        has_changes = self._ta_has_changes()
-        
-        status_text = branch
-        if has_changes:
-            status_text += " (has uncommitted changes)"
-        branch_row.set_subtitle(status_text)
-        
-        if branch == "main":
-            branch_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
-        else:
-            branch_row.add_prefix(Gtk.Image.new_from_icon_name("dialog-warning-symbolic"))
-        
-        ta_group.add(branch_row)
-        self.ta_branch_row = branch_row
-        
-        # Main branch operations
-        dev_row = Adw.ActionRow()
-        dev_row.set_title("Main Branch")
-        dev_row.set_subtitle("Pull latest changes or push your work")
-        
-        pull_dev_btn = Gtk.Button(label="Pull")
-        pull_dev_btn.set_tooltip_text("git pull origin main")
-        pull_dev_btn.set_valign(Gtk.Align.CENTER)
-        pull_dev_btn.connect("clicked", self._on_ta_pull_dev)
-        dev_row.add_suffix(pull_dev_btn)
-        
-        push_dev_btn = Gtk.Button(label="Push")
-        push_dev_btn.add_css_class("suggested-action")
-        push_dev_btn.set_tooltip_text("Commit and push changes to main branch")
-        push_dev_btn.set_valign(Gtk.Align.CENTER)
-        push_dev_btn.connect("clicked", self._on_ta_push_dev)
-        dev_row.add_suffix(push_dev_btn)
-        
-        ta_group.add(dev_row)
-        
-        # Build and release row
-        release_row = Adw.ActionRow()
-        release_row.set_title("Build &amp; Release")
-        release_row.set_subtitle("Build .run file and push to main branch")
-        
-        build_btn = Gtk.Button(label="Build .run Only")
-        build_btn.set_tooltip_text("Run build-run.sh to create .run file")
-        build_btn.set_valign(Gtk.Align.CENTER)
-        build_btn.connect("clicked", self._on_ta_build_run)
-        release_row.add_suffix(build_btn)
-        
-        release_btn = Gtk.Button(label="Build & Push to Main")
-        release_btn.add_css_class("destructive-action")
-        release_btn.set_tooltip_text("Build .run, copy to releases/, push to main")
-        release_btn.set_valign(Gtk.Align.CENTER)
-        release_btn.connect("clicked", self._on_ta_release)
-        release_row.add_suffix(release_btn)
-        
-        ta_group.add(release_row)
-        
-        # GitHub Release row
-        gh_release_row = Adw.ActionRow()
-        gh_release_row.set_title("Create GitHub Release")
-        gh_release_row.set_subtitle("Publish release to GitHub with .run file")
-        gh_release_row.add_prefix(Gtk.Image.new_from_icon_name("send-to-symbolic"))
-        
-        gh_release_btn = Gtk.Button(label="Publish Release")
-        gh_release_btn.add_css_class("suggested-action")
-        gh_release_btn.set_tooltip_text("Create GitHub release with current version")
-        gh_release_btn.set_valign(Gtk.Align.CENTER)
-        gh_release_btn.connect("clicked", self._on_github_release)
-        gh_release_row.add_suffix(gh_release_btn)
-        
-        ta_group.add(gh_release_row)
+        # Unlock SSH button (only show if locked)
+        if not ssh_ok:
+            unlock_btn = Gtk.Button(label="Unlock SSH")
+            unlock_btn.add_css_class("suggested-action")
+            unlock_btn.set_tooltip_text("Required before publishing")
+            unlock_btn.set_valign(Gtk.Align.CENTER)
+            unlock_btn.connect("clicked", self._on_unlock_ssh_key)
+            status_row.add_suffix(unlock_btn)
         
         # Refresh button
-        refresh_row = Adw.ActionRow()
-        refresh_row.set_title("Refresh Status")
-        refresh_row.set_subtitle("Check branch and changes status")
-        
-        refresh_btn = Gtk.Button(label="Refresh")
+        refresh_btn = Gtk.Button()
+        refresh_btn.set_icon_name("view-refresh-symbolic")
+        refresh_btn.set_tooltip_text("Refresh status")
+        refresh_btn.add_css_class("flat")
         refresh_btn.set_valign(Gtk.Align.CENTER)
         refresh_btn.connect("clicked", self._on_ta_refresh_status)
-        refresh_row.add_suffix(refresh_btn)
+        status_row.add_suffix(refresh_btn)
         
-        ta_group.add(refresh_row)
+        ta_group.add(status_row)
+        self.ta_status_row = status_row
+        self.ta_ssh_row = status_row  # For compatibility with refresh
+        self.ta_branch_row = status_row  # For compatibility with refresh
         
-        # Setup &amp; Help row
+        # Install from ZIP row
+        install_row = Adw.ActionRow()
+        install_row.set_title("📥 Install from ZIP")
+        install_row.set_subtitle("Extract source from Claude and install locally")
+        install_row.add_prefix(Gtk.Image.new_from_icon_name("package-x-generic-symbolic"))
+        
+        install_btn = Gtk.Button(label="Choose ZIP & Install")
+        install_btn.add_css_class("suggested-action")
+        install_btn.set_tooltip_text("Select ZIP file, extract, and run install.sh")
+        install_btn.set_valign(Gtk.Align.CENTER)
+        install_btn.connect("clicked", self._on_install_from_zip)
+        install_row.add_suffix(install_btn)
+        
+        ta_group.add(install_row)
+        
+        # Publish Release row
+        publish_row = Adw.ActionRow()
+        publish_row.set_title("🚀 Publish Release")
+        publish_row.set_subtitle("Commit → Push → Build .run → Create GitHub Release")
+        publish_row.add_prefix(Gtk.Image.new_from_icon_name("send-to-symbolic"))
+        
+        publish_btn = Gtk.Button(label=f"Publish v{version}")
+        publish_btn.add_css_class("destructive-action")
+        publish_btn.set_tooltip_text("Full release workflow in one click")
+        publish_btn.set_valign(Gtk.Align.CENTER)
+        publish_btn.connect("clicked", self._on_full_publish_release)
+        publish_row.add_suffix(publish_btn)
+        
+        ta_group.add(publish_row)
+        
+        # Help link (small, at bottom)
         help_row = Adw.ActionRow()
-        help_row.set_title("Setup &amp; Help")
-        help_row.set_subtitle("Learn how to use the Git workflow")
+        help_row.set_title("Need help?")
+        help_row.set_subtitle("View the Git workflow guide")
         help_row.add_prefix(Gtk.Image.new_from_icon_name("help-about-symbolic"))
+        help_row.set_activatable(True)
+        help_row.connect("activated", self._on_show_git_help)
         
-        help_btn = Gtk.Button(label="Open Guide")
-        help_btn.set_valign(Gtk.Align.CENTER)
-        help_btn.connect("clicked", self._on_show_git_help)
-        help_row.add_suffix(help_btn)
+        chevron = Gtk.Image.new_from_icon_name("go-next-symbolic")
+        chevron.add_css_class("dim-label")
+        help_row.add_suffix(chevron)
+        
+        ta_group.add(help_row)
+    
+    def _get_ta_version(self) -> str:
+        """Get current version from VERSION file."""
+        try:
+            version_file = os.path.join(self.ta_repo_path, 'VERSION')
+            with open(version_file, 'r') as f:
+                return f.read().strip()
+        except:
+            return "unknown"
+    
+    def _on_install_from_zip(self, button):
+        """Open file picker and install from ZIP."""
+        dialog = Gtk.FileDialog()
+        dialog.set_title("Select Tux Assistant Source ZIP")
+        
+        # Filter for ZIP files
+        filter_zip = Gtk.FileFilter()
+        filter_zip.set_name("ZIP files")
+        filter_zip.add_pattern("*.zip")
+        filter_zip.add_pattern("tux-assistant*.zip")
+        
+        filters = Gio.ListStore.new(Gtk.FileFilter)
+        filters.append(filter_zip)
+        dialog.set_filters(filters)
+        dialog.set_default_filter(filter_zip)
+        
+        # Start in Downloads folder
+        downloads = os.path.expanduser("~/Downloads")
+        if os.path.exists(downloads):
+            dialog.set_initial_folder(Gio.File.new_for_path(downloads))
+        
+        dialog.open(self.window, None, self._on_zip_selected)
+    
+    def _on_zip_selected(self, dialog, result):
+        """Handle ZIP file selection."""
+        try:
+            file = dialog.open_finish(result)
+            if file:
+                zip_path = file.get_path()
+                self._do_install_from_zip(zip_path)
+        except GLib.Error as e:
+            if e.code != Gtk.DialogError.DISMISSED:
+                self.window.show_toast(f"Error: {e.message}")
+    
+    def _do_install_from_zip(self, zip_path: str):
+        """Extract ZIP and install."""
+        self.window.show_toast("Installing from ZIP...")
+        
+        def do_install():
+            try:
+                import zipfile
+                import shutil
+                
+                # 1. Clean /tmp/tux-assistant
+                tmp_dir = "/tmp/tux-assistant"
+                if os.path.exists(tmp_dir):
+                    shutil.rmtree(tmp_dir)
+                
+                # 2. Extract ZIP to /tmp
+                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                    zip_ref.extractall("/tmp")
+                
+                # Check if extraction created the folder
+                if not os.path.exists(tmp_dir):
+                    GLib.idle_add(self.window.show_toast, "ZIP doesn't contain tux-assistant folder")
+                    return
+                
+                # 3. Copy to repo
+                for item in os.listdir(tmp_dir):
+                    src = os.path.join(tmp_dir, item)
+                    dst = os.path.join(self.ta_repo_path, item)
+                    if os.path.isdir(src):
+                        if os.path.exists(dst):
+                            shutil.rmtree(dst)
+                        shutil.copytree(src, dst)
+                    else:
+                        shutil.copy2(src, dst)
+                
+                # 4. Run install.sh
+                install_script = os.path.join(self.ta_repo_path, 'install.sh')
+                if os.path.exists(install_script):
+                    result = subprocess.run(
+                        ['pkexec', 'bash', install_script],
+                        cwd=self.ta_repo_path,
+                        capture_output=True,
+                        text=True,
+                        timeout=120
+                    )
+                    
+                    if result.returncode == 0:
+                        # Get new version
+                        version = self._get_ta_version()
+                        GLib.idle_add(self.window.show_toast, f"✅ Installed v{version}!")
+                        GLib.idle_add(self._on_ta_refresh_status, None)
+                    else:
+                        GLib.idle_add(self.window.show_toast, "Install failed - check terminal")
+                else:
+                    GLib.idle_add(self.window.show_toast, "install.sh not found")
+                    
+            except Exception as e:
+                GLib.idle_add(self.window.show_toast, f"Error: {str(e)[:50]}")
+        
+        threading.Thread(target=do_install, daemon=True).start()
+    
+    def _on_full_publish_release(self, button):
+        """Full publish workflow: commit, push, build, gh release."""
+        # Check SSH first
+        ssh_status = self._check_ssh_agent_status()
+        if "Unlocked" not in ssh_status:
+            self.window.show_toast("Please unlock SSH key first")
+            return
+        
+        # Check if gh is installed
+        gh_check = subprocess.run(['which', 'gh'], capture_output=True)
+        if gh_check.returncode != 0:
+            dialog = Adw.AlertDialog()
+            dialog.set_heading("GitHub CLI Required")
+            dialog.set_body(
+                "Install 'gh' to publish releases:\n\n"
+                "Fedora: sudo dnf install gh\n"
+                "Arch: sudo pacman -S github-cli\n"
+                "Ubuntu: sudo apt install gh\n\n"
+                "Then run: gh auth login"
+            )
+            dialog.add_response("ok", "OK")
+            dialog.present(self.window)
+            return
+        
+        # Get version
+        version = self._get_ta_version()
+        
+        # Prompt for commit message
+        dialog = Adw.AlertDialog()
+        dialog.set_heading(f"Publish v{version} to GitHub?")
+        dialog.set_body("This will:\n• Commit all changes\n• Push to GitHub\n• Build .run installer\n• Create GitHub Release")
+        
+        # Add entry for commit message
+        entry = Gtk.Entry()
+        entry.set_text(f"v{version}")
+        entry.set_placeholder_text("Commit message")
+        entry.set_margin_top(12)
+        entry.set_margin_start(12)
+        entry.set_margin_end(12)
+        dialog.set_extra_child(entry)
+        
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("publish", "Publish")
+        dialog.set_response_appearance("publish", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_default_response("publish")
+        
+        dialog.connect("response", self._do_full_publish, entry, version)
+        dialog.present(self.window)
+    
+    def _do_full_publish(self, dialog, response, entry, version):
+        """Execute the full publish workflow."""
+        if response != "publish":
+            return
+        
+        commit_msg = entry.get_text().strip() or f"v{version}"
+        self.window.show_toast("Publishing release...")
+        
+        def do_publish():
+            try:
+                ssh_env = self._get_ssh_env()
+                
+                # 1. Git add and commit
+                subprocess.run(['git', 'add', '.'], cwd=self.ta_repo_path, timeout=30)
+                
+                commit_result = subprocess.run(
+                    ['git', 'commit', '-m', commit_msg],
+                    cwd=self.ta_repo_path,
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+                
+                # Check if there was nothing to commit (that's OK)
+                if commit_result.returncode != 0 and "nothing to commit" not in commit_result.stdout:
+                    if "nothing to commit" not in commit_result.stderr:
+                        GLib.idle_add(self.window.show_toast, "Commit failed")
+                        return
+                
+                # 2. Git push
+                GLib.idle_add(self.window.show_toast, "Pushing to GitHub...")
+                push_result = subprocess.run(
+                    ['git', 'push', 'origin', 'main'],
+                    cwd=self.ta_repo_path,
+                    env=ssh_env,
+                    capture_output=True,
+                    text=True,
+                    timeout=60
+                )
+                
+                if push_result.returncode != 0:
+                    error = push_result.stderr[:50] if push_result.stderr else "Unknown error"
+                    GLib.idle_add(self.window.show_toast, f"Push failed: {error}")
+                    return
+                
+                # 3. Build .run
+                GLib.idle_add(self.window.show_toast, "Building .run installer...")
+                build_script = os.path.join(self.ta_repo_path, 'scripts', 'build-run.sh')
+                
+                # Make sure it's executable
+                os.chmod(build_script, 0o755)
+                
+                build_result = subprocess.run(
+                    ['bash', build_script],
+                    cwd=self.ta_repo_path,
+                    capture_output=True,
+                    text=True,
+                    timeout=180
+                )
+                
+                if build_result.returncode != 0:
+                    GLib.idle_add(self.window.show_toast, "Build failed")
+                    return
+                
+                # 4. Find the .run file
+                run_file = os.path.join(self.ta_repo_path, 'dist', f'Tux-Assistant-v{version}.run')
+                if not os.path.exists(run_file):
+                    GLib.idle_add(self.window.show_toast, f".run file not found: {run_file}")
+                    return
+                
+                # 5. Create GitHub release
+                GLib.idle_add(self.window.show_toast, "Creating GitHub release...")
+                release_result = subprocess.run(
+                    [
+                        'gh', 'release', 'create', f'v{version}',
+                        run_file,
+                        '--title', f'Tux Assistant v{version}',
+                        '--notes', f'{commit_msg}\n\nDownload the .run file and run:\nchmod +x Tux-Assistant-v{version}.run && ./Tux-Assistant-v{version}.run'
+                    ],
+                    cwd=self.ta_repo_path,
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                    env=ssh_env
+                )
+                
+                if release_result.returncode == 0:
+                    GLib.idle_add(self.window.show_toast, f"🎉 Published v{version} to GitHub!")
+                    GLib.idle_add(self._on_ta_refresh_status, None)
+                else:
+                    error = release_result.stderr[:50] if release_result.stderr else "Unknown error"
+                    GLib.idle_add(self.window.show_toast, f"Release failed: {error}")
+                    
+            except Exception as e:
+                GLib.idle_add(self.window.show_toast, f"Error: {str(e)[:50]}")
+        
+        threading.Thread(target=do_publish, daemon=True).start()
         
         ta_group.add(help_row)
     
@@ -699,81 +914,93 @@ read -p "Press Enter to close this window..."
     
     def _on_ta_refresh_status(self, button):
         """Refresh the Tux Assistant status display."""
+        if not hasattr(self, 'ta_status_row'):
+            return
+        
+        version = self._get_ta_version()
         branch = self._get_ta_branch()
-        has_changes = self._ta_has_changes()
+        ssh_status = self._check_ssh_agent_status()
+        ssh_ok = "Unlocked" in ssh_status
         
-        status_text = branch
-        if has_changes:
-            status_text += " (has uncommitted changes)"
+        # Update title with version
+        self.ta_status_row.set_title(f"Version {version}")
         
-        self.ta_branch_row.set_subtitle(status_text)
+        # Update subtitle with status
+        status_parts = [f"Branch: {branch}"]
+        status_parts.append(f"SSH: {'✓ Ready' if ssh_ok else '🔒 Locked'}")
+        self.ta_status_row.set_subtitle(" • ".join(status_parts))
         
         # Update icon
-        # Remove old prefix
-        child = self.ta_branch_row.get_first_child()
+        child = self.ta_status_row.get_first_child()
         while child:
             if isinstance(child, Gtk.Image):
-                self.ta_branch_row.remove(child)
+                self.ta_status_row.remove(child)
                 break
             child = child.get_next_sibling()
         
-        if branch == "main":
-            self.ta_branch_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
+        if ssh_ok:
+            self.ta_status_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
         else:
-            self.ta_branch_row.add_prefix(Gtk.Image.new_from_icon_name("dialog-warning-symbolic"))
+            self.ta_status_row.add_prefix(Gtk.Image.new_from_icon_name("dialog-password-symbolic"))
         
-        # Also refresh SSH status
-        self._refresh_ssh_status()
-        
-        self.window.show_toast("Status refreshed")
+        if button:  # Only show toast if manually refreshed
+            self.window.show_toast("Status refreshed")
     
     def _on_show_git_help(self, button):
         """Show the Git workflow help dialog."""
-        help_text = """<b>🚀 Quick Start - Update Workflow</b>
+        help_text = """<b>🚀 Quick Start - 2 Button Workflow</b>
 
-1. Download the new .zip file to ~/Downloads/
-2. Open Tux Assistant → Developer Tools
-3. Click <b>Unlock SSH Key</b> → enter passphrase
-4. Go to <b>Other Git Tools</b> → <b>Update Project from ZIP</b>
-5. Click <b>Push</b> button
-6. Click <b>Build &amp; Push to Main</b>
+<b>Step 1: Install from ZIP</b>
+• Download .zip from Claude to ~/Downloads/
+• Click <b>Choose ZIP &amp; Install</b>
+• Select the ZIP file
+• Wait for installation to complete
 
-Done! Everything is now on the main branch.
+<b>Step 2: Publish Release</b>
+• Click <b>Unlock SSH</b> (if locked)
+• Click <b>Publish vX.X.X</b>
+• Enter commit message (or use default)
+• Wait for GitHub release to complete
+
+That's it! 🎉
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 <b>🔧 Troubleshooting</b>
 
 <b>Push failed / ssh_askpass error:</b>
-• Did you click "Unlock SSH Key" first?
-• If it still fails, run this in terminal:
+• Click "Unlock SSH" button first
+• If it still fails, run in terminal:
   <tt>eval $(ssh-agent) &amp;&amp; ssh-add</tt>
-• Then try Push again
 
-<b>"No changes to commit" error:</b>
-• This is OK! It means ZIP update already committed
-• Just click Push, then Build &amp; Push to Main
+<b>"gh: command not found":</b>
+• Install GitHub CLI:
+  Fedora: <tt>sudo dnf install gh</tt>
+  Arch: <tt>sudo pacman -S github-cli</tt>
+  Ubuntu: <tt>sudo apt install gh</tt>
+• Then run: <tt>gh auth login</tt>
 
-<b>Build fails or .run not found:</b>
-• Make sure you're on the main branch
-• Click Refresh Status to check
+<b>Build fails:</b>
+• Check you have all dependencies
+• Try running manually in terminal
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 <b>💻 Manual Terminal Commands</b>
 
-If GUI isn't working, use this full command:
-
-<tt>cd ~/Development/Tux-Assistant &amp;&amp; \\
-rm -rf /tmp/tux-assistant &amp;&amp; \\
+<b>Install from ZIP:</b>
+<tt>rm -rf /tmp/tux-assistant &amp;&amp; \\
 unzip ~/Downloads/tux-assistant-vX.X.X-source.zip -d /tmp/ &amp;&amp; \\
+cd ~/Development/Tux-Assistant &amp;&amp; \\
 cp -r /tmp/tux-assistant/* . &amp;&amp; \\
+sudo ./install.sh</tt>
+
+<b>Publish Release:</b>
+<tt>cd ~/Development/Tux-Assistant &amp;&amp; \\
 git add . &amp;&amp; git commit -m "vX.X.X" &amp;&amp; git push &amp;&amp; \\
-chmod +x scripts/build-run.sh &amp;&amp; \\
 ./scripts/build-run.sh &amp;&amp; \\
-mv dist/Tux-Assistant-vX.X.X.run releases/ &amp;&amp; \\
-git add . &amp;&amp; git commit -m "Release vX.X.X" &amp;&amp; \\
-git push</tt>
+gh release create vX.X.X dist/Tux-Assistant-vX.X.X.run \\
+--title "Tux Assistant vX.X.X" --notes "Release notes"</tt>
 
 Replace X.X.X with your version number."""
 
