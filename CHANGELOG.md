@@ -2,6 +2,13 @@
 
 All notable changes to Tux Assistant will be documented in this file.
 
+## [0.9.67] - 2025-12-04
+
+### Fixed
+- **Extensions browser no longer freezes!** Replaced slow per-extension info calls with fast bulk queries
+- Now uses `--user` and `--system` flags instead of calling `gnome-extensions info` for each extension
+- Loading time reduced from 10+ seconds to under 1 second
+
 ## [0.9.66] - 2025-12-04
 
 ### Added
@@ -9,17 +16,18 @@ All notable changes to Tux Assistant will be documented in this file.
   - Browse extensions directly from extensions.gnome.org
   - Search functionality with instant results
   - One-click install with GNOME version compatibility checking
-  - View installed extensions (User + System separated)
+  - View installed extensions (User vs System separated)
   - Enable/disable toggles for each extension
   - Uninstall user extensions
   - Global "Use Extensions" toggle
   - Extension settings access
   - Popular extensions shown by default
 - New "Browse & Manage Extensions" option in Desktop Enhancements → GNOME Extensions
-- Reorganized GNOME Extensions section with three options:
-  - Browse & Manage (new built-in browser)
-  - Install Extension Manager App (external tool)
-  - Install from Repos (distro packages)
+
+### Fixed
+- **All loading is now async** - No more "Not Responding" dialogs!
+- Page loads instantly with a spinner while data loads in background
+- All subprocess calls run in background threads
 
 ## [0.9.65] - 2025-12-03
 
