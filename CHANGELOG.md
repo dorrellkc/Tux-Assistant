@@ -2,6 +2,13 @@
 
 All notable changes to Tux Assistant will be documented in this file.
 
+## [0.9.72] - 2025-12-04
+
+### Changed
+- **Extensions now install AND enable immediately!** Uses DBus `InstallRemoteExtension` like Extension Manager
+- No more "log out and back in" - extensions are ready to use right away
+- Falls back to manual download method if DBus fails
+
 ## [0.9.71] - 2025-12-04
 
 ### Added

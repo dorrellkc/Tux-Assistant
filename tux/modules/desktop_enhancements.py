@@ -3060,7 +3060,50 @@ def get_extension_info(pk: int, shell_version: str) -> Optional[dict]:
 
 
 def install_extension_from_ego(pk: int, uuid: str, shell_version: str) -> tuple[bool, str]:
-    """Install extension from extensions.gnome.org."""
+    """Install extension from extensions.gnome.org using DBus.
+    
+    Uses GNOME Shell's DBus interface to download and install the extension,
+    which makes it available immediately without requiring a logout.
+    """
+    try:
+        # Use DBus InstallRemoteExtension - this is what Extension Manager uses
+        # It downloads AND loads the extension immediately
+        result = subprocess.run(
+            [
+                'gdbus', 'call', '--session',
+                '--dest', 'org.gnome.Shell.Extensions',
+                '--object-path', '/org/gnome/Shell/Extensions',
+                '--method', 'org.gnome.Shell.Extensions.InstallRemoteExtension',
+                uuid
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+        
+        # Check result - DBus returns "()" on success or "('successful',)" etc
+        output = result.stdout.strip()
+        stderr = result.stderr.strip()
+        
+        if result.returncode == 0:
+            # Try to enable it
+            subprocess.run(
+                ['gnome-extensions', 'enable', uuid],
+                capture_output=True,
+                timeout=10
+            )
+            return True, "Installed and enabled!"
+        else:
+            # DBus call failed - try the old method as fallback
+            return _install_extension_fallback(pk, uuid, shell_version)
+    
+    except Exception as e:
+        # Fallback to manual download method
+        return _install_extension_fallback(pk, uuid, shell_version)
+
+
+def _install_extension_fallback(pk: int, uuid: str, shell_version: str) -> tuple[bool, str]:
+    """Fallback installation method using manual download."""
     try:
         info = get_extension_info(pk, shell_version)
         if not info:
@@ -3091,8 +3134,7 @@ def install_extension_from_ego(pk: int, uuid: str, shell_version: str) -> tuple[
         os.unlink(tmp_path)
         
         if result.returncode == 0:
-            subprocess.run(['gnome-extensions', 'enable', uuid], capture_output=True, timeout=5)
-            return True, "Installed! You may need to log out for changes to take effect."
+            return True, "Installed! Log out and back in to enable."
         else:
             return False, result.stderr or "Installation failed"
     
@@ -3525,7 +3567,7 @@ class GnomeExtensionsBrowserPage(Adw.NavigationPage):
         if success:
             button.set_label("Installed")
             button.remove_css_class("suggested-action")
-            self.window.show_toast(f"Installed {name}!")
+            self.window.show_toast(f"{name}: {message}")
         else:
             button.set_sensitive(True)
             button.set_label("Install")
