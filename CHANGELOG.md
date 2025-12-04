@@ -8,6 +8,10 @@ All notable changes to Tux Assistant will be documented in this file.
 - External links in embedded browser now open in default system browser!
 - Links that try to open new windows (target="_blank") open in Firefox/Chrome
 - Claude panel external links also open in default browser
+- **GitHub Releases integration!** No more committing .run files to repo
+  - Setup Token: Store your GitHub PAT securely
+  - Create GitHub Release: Builds .run and uploads to GitHub Releases
+  - Proper release workflow without bloating repo history
 
 ## [0.9.64] - 2025-12-03
 
