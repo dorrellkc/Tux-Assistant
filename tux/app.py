@@ -814,6 +814,12 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             "(KHTML, like Gecko) Version/17.0 Safari/605.1.15"
         )
         
+        # Handle external links - open in default browser
+        self.claude_webview.connect("decide-policy", self._on_webview_decide_policy)
+        
+        # Handle links that try to open new windows
+        self.claude_webview.connect("create", self._on_browser_create_window)
+        
         # Frame around webview
         webview_frame = Gtk.Frame()
         webview_frame.set_margin_start(12)
@@ -861,6 +867,33 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
                 self.claude_window = None
             
             self.claude_panel_visible = False
+    
+    def _on_webview_decide_policy(self, webview, decision, decision_type):
+        """Handle navigation policy - open external links in default browser."""
+        if decision_type == WebKit.PolicyDecisionType.NAVIGATION_ACTION:
+            nav_action = decision.get_navigation_action()
+            request = nav_action.get_request()
+            uri = request.get_uri()
+            
+            if uri:
+                # Allow claude.ai navigation within webview
+                if 'claude.ai' in uri or uri.startswith('about:'):
+                    decision.use()
+                    return False
+                
+                # Open external links in default browser
+                try:
+                    import subprocess
+                    subprocess.Popen(['xdg-open', uri])
+                    decision.ignore()
+                    return True
+                except Exception as e:
+                    print(f"Failed to open external link: {e}")
+                    decision.use()
+                    return False
+        
+        decision.use()
+        return False
     
     def _show_claude_docked(self):
         """Show Claude in the docked panel."""
@@ -1063,6 +1096,9 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             "(KHTML, like Gecko) Version/17.0 Safari/605.1.15"
         )
         
+        # Handle links that try to open new windows - open in default browser
+        self.browser_webview.connect("create", self._on_browser_create_window)
+        
         # Frame around webview
         webview_frame = Gtk.Frame()
         webview_frame.set_margin_start(12)
@@ -1192,6 +1228,20 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             uri = webview.get_uri()
             if uri and hasattr(self, 'browser_url_entry'):
                 self.browser_url_entry.set_text(uri)
+    
+    def _on_browser_create_window(self, webview, navigation_action):
+        """Handle links that try to open new windows - open in default browser."""
+        request = navigation_action.get_request()
+        uri = request.get_uri()
+        
+        if uri:
+            try:
+                import subprocess
+                subprocess.Popen(['xdg-open', uri])
+            except Exception as e:
+                print(f"Failed to open link: {e}")
+        
+        return None  # Don't create new window in webview
     
     def _on_browser_download_started(self, session_or_context, download):
         """Handle download from browser."""

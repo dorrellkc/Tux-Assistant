@@ -2,6 +2,13 @@
 
 All notable changes to Tux Assistant will be documented in this file.
 
+## [0.9.65] - 2025-12-03
+
+### Added
+- External links in embedded browser now open in default system browser!
+- Links that try to open new windows (target="_blank") open in Firefox/Chrome
+- Claude panel external links also open in default browser
+
 ## [0.9.64] - 2025-12-03
 
 ### Fixed
