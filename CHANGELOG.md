@@ -2,6 +2,19 @@
 
 All notable changes to Tux Assistant will be documented in this file.
 
+## [0.9.71] - 2025-12-04
+
+### Added
+- **GitHub Release button** in Developer Tools → Tux Assistant Development
+- Creates proper GitHub release with tag and uploads .run file
+- Checks for `gh` CLI and shows install instructions if missing
+- Confirmation dialog before publishing
+
+## [0.9.70] - 2025-12-04
+
+### Fixed
+- Fixed missing icons in Extensions Browser tabs (globe → web-browser, starred → emblem-default)
+
 ## [0.9.69] - 2025-12-04
 
 ### Added

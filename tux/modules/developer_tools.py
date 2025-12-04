@@ -444,6 +444,21 @@ class DeveloperToolsPage(Adw.NavigationPage):
         
         ta_group.add(release_row)
         
+        # GitHub Release row
+        gh_release_row = Adw.ActionRow()
+        gh_release_row.set_title("Create GitHub Release")
+        gh_release_row.set_subtitle("Publish release to GitHub with .run file")
+        gh_release_row.add_prefix(Gtk.Image.new_from_icon_name("send-to-symbolic"))
+        
+        gh_release_btn = Gtk.Button(label="Publish Release")
+        gh_release_btn.add_css_class("suggested-action")
+        gh_release_btn.set_tooltip_text("Create GitHub release with current version")
+        gh_release_btn.set_valign(Gtk.Align.CENTER)
+        gh_release_btn.connect("clicked", self._on_github_release)
+        gh_release_row.add_suffix(gh_release_btn)
+        
+        ta_group.add(gh_release_row)
+        
         # Refresh button
         refresh_row = Adw.ActionRow()
         refresh_row.set_title("Refresh Status")
@@ -1018,6 +1033,95 @@ Replace X.X.X with your version number."""
         
         threading.Thread(target=do_release, daemon=True).start()
         self.window.show_toast("Starting release process...")
+    
+    def _on_github_release(self, button):
+        """Create a GitHub release with the current version."""
+        if not self.ta_repo_path:
+            self.window.show_toast("Tux Assistant repo not found")
+            return
+        
+        # Check if gh is installed
+        gh_check = subprocess.run(['which', 'gh'], capture_output=True)
+        if gh_check.returncode != 0:
+            dialog = Adw.AlertDialog()
+            dialog.set_heading("GitHub CLI Not Installed")
+            dialog.set_body(
+                "The 'gh' command is required for GitHub releases.\n\n"
+                "Install it with:\n"
+                "• Fedora: sudo dnf install gh\n"
+                "• Arch: sudo pacman -S github-cli\n"
+                "• Ubuntu: sudo apt install gh\n\n"
+                "Then run: gh auth login"
+            )
+            dialog.add_response("ok", "OK")
+            dialog.present(self.window)
+            return
+        
+        # Get version
+        try:
+            version_file = os.path.join(self.ta_repo_path, 'VERSION')
+            with open(version_file, 'r') as f:
+                version = f.read().strip()
+        except:
+            self.window.show_toast("Could not read VERSION file")
+            return
+        
+        run_file = os.path.join(self.ta_repo_path, 'releases', f'Tux-Assistant-v{version}.run')
+        
+        if not os.path.exists(run_file):
+            self.window.show_toast(f"Release file not found: Tux-Assistant-v{version}.run")
+            return
+        
+        # Confirm dialog
+        dialog = Adw.AlertDialog()
+        dialog.set_heading(f"Create GitHub Release v{version}?")
+        dialog.set_body(
+            f"This will:\n"
+            f"• Create tag v{version}\n"
+            f"• Upload Tux-Assistant-v{version}.run\n"
+            f"• Publish as latest release"
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("release", "Publish")
+        dialog.set_response_appearance("release", Adw.ResponseAppearance.SUGGESTED)
+        dialog.connect("response", self._do_github_release, version, run_file)
+        dialog.present(self.window)
+    
+    def _do_github_release(self, dialog, response, version: str, run_file: str):
+        """Execute the GitHub release."""
+        if response != "release":
+            return
+        
+        def do_release():
+            try:
+                ssh_env = self._get_ssh_env()
+                
+                # Create the release
+                result = subprocess.run(
+                    [
+                        'gh', 'release', 'create', f'v{version}',
+                        run_file,
+                        '--title', f'Tux Assistant v{version}',
+                        '--notes', f'Tux Assistant v{version} release.\n\nDownload the .run file and run: chmod +x Tux-Assistant-v{version}.run && ./Tux-Assistant-v{version}.run'
+                    ],
+                    cwd=self.ta_repo_path,
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                    env=ssh_env
+                )
+                
+                if result.returncode == 0:
+                    GLib.idle_add(self.window.show_toast, f"GitHub Release v{version} created! 🎉")
+                else:
+                    error = result.stderr[:100] if result.stderr else "Unknown error"
+                    GLib.idle_add(self.window.show_toast, f"Release failed: {error}")
+                    
+            except Exception as e:
+                GLib.idle_add(self.window.show_toast, f"Error: {str(e)[:50]}")
+        
+        threading.Thread(target=do_release, daemon=True).start()
+        self.window.show_toast("Creating GitHub release...")
     
     def _build_git_projects_section(self, content_box):
         """Build the git projects management section."""
