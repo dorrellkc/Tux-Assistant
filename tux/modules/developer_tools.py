@@ -427,7 +427,7 @@ class DeveloperToolsPage(Adw.NavigationPage):
         # Build and release row
         release_row = Adw.ActionRow()
         release_row.set_title("Build &amp; Release")
-        release_row.set_subtitle("Build .run file and create GitHub Release")
+        release_row.set_subtitle("Build .run file and push to main branch")
         
         build_btn = Gtk.Button(label="Build .run Only")
         build_btn.set_tooltip_text("Run build-run.sh to create .run file")
@@ -435,36 +435,14 @@ class DeveloperToolsPage(Adw.NavigationPage):
         build_btn.connect("clicked", self._on_ta_build_run)
         release_row.add_suffix(build_btn)
         
-        release_btn = Gtk.Button(label="Create GitHub Release")
-        release_btn.add_css_class("suggested-action")
-        release_btn.set_tooltip_text("Build .run and upload to GitHub Releases")
+        release_btn = Gtk.Button(label="Build & Push to Main")
+        release_btn.add_css_class("destructive-action")
+        release_btn.set_tooltip_text("Build .run, copy to releases/, push to main")
         release_btn.set_valign(Gtk.Align.CENTER)
-        release_btn.connect("clicked", self._on_github_release)
+        release_btn.connect("clicked", self._on_ta_release)
         release_row.add_suffix(release_btn)
         
         ta_group.add(release_row)
-        
-        # GitHub PAT setup row
-        pat_row = Adw.ActionRow()
-        pat_row.set_title("GitHub Token")
-        
-        # Check if PAT is stored
-        pat_status = "Configured ✓" if self._get_github_pat() else "Not set"
-        pat_row.set_subtitle(pat_status)
-        
-        if self._get_github_pat():
-            pat_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
-        else:
-            pat_row.add_prefix(Gtk.Image.new_from_icon_name("dialog-password-symbolic"))
-        
-        setup_pat_btn = Gtk.Button(label="Setup Token")
-        setup_pat_btn.set_tooltip_text("Configure GitHub Personal Access Token")
-        setup_pat_btn.set_valign(Gtk.Align.CENTER)
-        setup_pat_btn.connect("clicked", self._on_setup_github_pat)
-        pat_row.add_suffix(setup_pat_btn)
-        
-        ta_group.add(pat_row)
-        self.pat_row = pat_row
         
         # Refresh button
         refresh_row = Adw.ActionRow()
@@ -743,21 +721,9 @@ read -p "Press Enter to close this window..."
 3. Click <b>Unlock SSH Key</b> → enter passphrase
 4. Go to <b>Other Git Tools</b> → <b>Update Project from ZIP</b>
 5. Click <b>Push</b> button
-6. Click <b>Create GitHub Release</b>
+6. Click <b>Build &amp; Push to Main</b>
 
-Done! Release is now on GitHub Releases page (not in repo).
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-<b>🔑 First-Time Setup</b>
-
-<b>GitHub Token (required for releases):</b>
-1. Go to github.com/settings/tokens
-2. Generate new token (classic)
-3. Check "repo" scope
-4. Copy the token
-5. Click "Setup Token" in Tux Assistant
-6. Paste and save
+Done! Everything is now on the main branch.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -769,13 +735,13 @@ Done! Release is now on GitHub Releases page (not in repo).
   <tt>eval $(ssh-agent) &amp;&amp; ssh-add</tt>
 • Then try Push again
 
-<b>"Release already exists" error:</b>
-• Bump the VERSION file first
-• Or delete the existing release on GitHub
+<b>"No changes to commit" error:</b>
+• This is OK! It means ZIP update already committed
+• Just click Push, then Build &amp; Push to Main
 
-<b>GitHub API error 401:</b>
-• Token expired or invalid
-• Generate a new token and update it
+<b>Build fails or .run not found:</b>
+• Make sure you're on the main branch
+• Click Refresh Status to check
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -787,9 +753,14 @@ If GUI isn't working, use this full command:
 rm -rf /tmp/tux-assistant &amp;&amp; \\
 unzip ~/Downloads/tux-assistant-vX.X.X-source.zip -d /tmp/ &amp;&amp; \\
 cp -r /tmp/tux-assistant/* . &amp;&amp; \\
-git add . &amp;&amp; git commit -m "vX.X.X" &amp;&amp; git push</tt>
+git add . &amp;&amp; git commit -m "vX.X.X" &amp;&amp; git push &amp;&amp; \\
+chmod +x scripts/build-run.sh &amp;&amp; \\
+./scripts/build-run.sh &amp;&amp; \\
+mv dist/Tux-Assistant-vX.X.X.run releases/ &amp;&amp; \\
+git add . &amp;&amp; git commit -m "Release vX.X.X" &amp;&amp; \\
+git push</tt>
 
-Then use the Create GitHub Release button, or manually via gh CLI."""
+Replace X.X.X with your version number."""
 
         dialog = Adw.MessageDialog(
             transient_for=self.window,
@@ -1047,215 +1018,6 @@ Then use the Create GitHub Release button, or manually via gh CLI."""
         
         threading.Thread(target=do_release, daemon=True).start()
         self.window.show_toast("Starting release process...")
-    
-    def _get_github_pat(self):
-        """Get GitHub PAT from config file."""
-        pat_file = os.path.join(CONFIG_DIR, '.github_pat')
-        if os.path.exists(pat_file):
-            try:
-                with open(pat_file, 'r') as f:
-                    return f.read().strip()
-            except:
-                pass
-        return None
-    
-    def _save_github_pat(self, pat):
-        """Save GitHub PAT to config file."""
-        os.makedirs(CONFIG_DIR, exist_ok=True)
-        pat_file = os.path.join(CONFIG_DIR, '.github_pat')
-        with open(pat_file, 'w') as f:
-            f.write(pat)
-        os.chmod(pat_file, 0o600)  # Read/write only for owner
-    
-    def _on_setup_github_pat(self, button):
-        """Show dialog to setup GitHub PAT."""
-        dialog = Adw.AlertDialog()
-        dialog.set_heading("GitHub Personal Access Token")
-        dialog.set_body(
-            "Enter your GitHub PAT with 'repo' scope.\n\n"
-            "Create one at: github.com/settings/tokens\n"
-            "Required scope: repo (Full control)"
-        )
-        
-        # Entry for PAT
-        entry = Gtk.Entry()
-        entry.set_visibility(False)  # Hide like password
-        entry.set_placeholder_text("ghp_xxxxxxxxxxxxxxxxxxxx")
-        current_pat = self._get_github_pat()
-        if current_pat:
-            entry.set_text(current_pat)
-        entry.set_margin_top(12)
-        entry.set_margin_start(12)
-        entry.set_margin_end(12)
-        dialog.set_extra_child(entry)
-        
-        dialog.add_response("cancel", "Cancel")
-        dialog.add_response("save", "Save Token")
-        dialog.set_response_appearance("save", Adw.ResponseAppearance.SUGGESTED)
-        
-        def on_response(d, response):
-            if response == "save":
-                pat = entry.get_text().strip()
-                if pat:
-                    self._save_github_pat(pat)
-                    self.window.show_toast("GitHub token saved!")
-                    # Update UI
-                    if hasattr(self, 'pat_row'):
-                        self.pat_row.set_subtitle("Configured ✓")
-        
-        dialog.connect("response", on_response)
-        dialog.present(self.window)
-    
-    def _on_github_release(self, button):
-        """Create a GitHub Release with the .run file."""
-        pat = self._get_github_pat()
-        if not pat:
-            self.window.show_toast("Set up GitHub Token first!")
-            return
-        
-        # Confirm dialog
-        dialog = Adw.AlertDialog()
-        dialog.set_heading("Create GitHub Release")
-        
-        # Get version
-        version_file = os.path.join(self.ta_repo_path, 'VERSION')
-        with open(version_file, 'r') as f:
-            version = f.read().strip()
-        
-        dialog.set_body(f"This will:\n\n1. Build Tux-Assistant-v{version}.run\n2. Create GitHub Release v{version}\n3. Upload .run as release asset\n\nContinue?")
-        
-        dialog.add_response("cancel", "Cancel")
-        dialog.add_response("release", "Create Release")
-        dialog.set_response_appearance("release", Adw.ResponseAppearance.SUGGESTED)
-        
-        dialog.connect("response", self._do_github_release)
-        dialog.present(self.window)
-    
-    def _do_github_release(self, dialog, response):
-        """Execute GitHub Release creation."""
-        if response != "release":
-            return
-        
-        def do_release():
-            try:
-                import urllib.request
-                import urllib.error
-                
-                pat = self._get_github_pat()
-                
-                # 1. Build
-                GLib.idle_add(self.window.show_toast, "Building .run file...")
-                build_script = os.path.join(self.ta_repo_path, 'scripts', 'build-run.sh')
-                result = subprocess.run(
-                    ['bash', build_script],
-                    cwd=self.ta_repo_path,
-                    capture_output=True, text=True, timeout=120
-                )
-                
-                if result.returncode != 0:
-                    GLib.idle_add(self.window.show_toast, "Build failed!")
-                    return
-                
-                # Get version
-                version_file = os.path.join(self.ta_repo_path, 'VERSION')
-                with open(version_file, 'r') as f:
-                    version = f.read().strip()
-                
-                run_file = os.path.join(self.ta_repo_path, 'dist', f'Tux-Assistant-v{version}.run')
-                
-                if not os.path.exists(run_file):
-                    GLib.idle_add(self.window.show_toast, ".run file not found!")
-                    return
-                
-                # 2. Create GitHub Release
-                GLib.idle_add(self.window.show_toast, "Creating GitHub release...")
-                
-                # Get repo info from remote
-                result = subprocess.run(
-                    ['git', 'remote', 'get-url', 'origin'],
-                    cwd=self.ta_repo_path,
-                    capture_output=True, text=True
-                )
-                remote_url = result.stdout.strip()
-                
-                # Parse owner/repo from URL
-                # Handle: git@github.com:owner/repo.git or https://github.com/owner/repo.git
-                if 'github.com:' in remote_url:
-                    repo_path = remote_url.split('github.com:')[1].replace('.git', '')
-                elif 'github.com/' in remote_url:
-                    repo_path = remote_url.split('github.com/')[1].replace('.git', '')
-                else:
-                    GLib.idle_add(self.window.show_toast, "Could not parse GitHub repo URL")
-                    return
-                
-                owner, repo = repo_path.split('/')
-                
-                # Create release via API
-                release_data = json.dumps({
-                    "tag_name": f"v{version}",
-                    "name": f"Tux Assistant v{version}",
-                    "body": f"## Tux Assistant v{version}\n\nDownload `Tux-Assistant-v{version}.run` below and run:\n```bash\nchmod +x Tux-Assistant-v{version}.run\n./Tux-Assistant-v{version}.run\n```",
-                    "draft": False,
-                    "prerelease": False
-                }).encode('utf-8')
-                
-                req = urllib.request.Request(
-                    f"https://api.github.com/repos/{owner}/{repo}/releases",
-                    data=release_data,
-                    headers={
-                        'Authorization': f'Bearer {pat}',
-                        'Accept': 'application/vnd.github+json',
-                        'Content-Type': 'application/json',
-                        'X-GitHub-Api-Version': '2022-11-28'
-                    },
-                    method='POST'
-                )
-                
-                try:
-                    with urllib.request.urlopen(req) as resp:
-                        release_info = json.loads(resp.read().decode('utf-8'))
-                        upload_url = release_info['upload_url'].replace('{?name,label}', '')
-                except urllib.error.HTTPError as e:
-                    error_body = e.read().decode('utf-8')
-                    if 'already_exists' in error_body:
-                        GLib.idle_add(self.window.show_toast, f"Release v{version} already exists!")
-                    else:
-                        GLib.idle_add(self.window.show_toast, f"GitHub API error: {e.code}")
-                    return
-                
-                # 3. Upload .run file as asset
-                GLib.idle_add(self.window.show_toast, "Uploading .run file...")
-                
-                filename = f'Tux-Assistant-v{version}.run'
-                with open(run_file, 'rb') as f:
-                    file_data = f.read()
-                
-                upload_req = urllib.request.Request(
-                    f"{upload_url}?name={filename}",
-                    data=file_data,
-                    headers={
-                        'Authorization': f'Bearer {pat}',
-                        'Accept': 'application/vnd.github+json',
-                        'Content-Type': 'application/octet-stream',
-                        'X-GitHub-Api-Version': '2022-11-28'
-                    },
-                    method='POST'
-                )
-                
-                try:
-                    with urllib.request.urlopen(upload_req) as resp:
-                        pass  # Success
-                except urllib.error.HTTPError as e:
-                    GLib.idle_add(self.window.show_toast, f"Upload failed: {e.code}")
-                    return
-                
-                GLib.idle_add(self.window.show_toast, f"🎉 Released v{version} to GitHub!")
-                
-            except Exception as e:
-                GLib.idle_add(self.window.show_toast, f"Release error: {str(e)[:50]}")
-        
-        threading.Thread(target=do_release, daemon=True).start()
-        self.window.show_toast("Starting GitHub release...")
     
     def _build_git_projects_section(self, content_box):
         """Build the git projects management section."""

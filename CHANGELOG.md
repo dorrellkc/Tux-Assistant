@@ -2,16 +2,31 @@
 
 All notable changes to Tux Assistant will be documented in this file.
 
+## [0.9.66] - 2025-12-04
+
+### Added
+- **GNOME Extensions Browser** - Full-featured extension manager built into Tux Assistant!
+  - Browse extensions directly from extensions.gnome.org
+  - Search functionality with instant results
+  - One-click install with GNOME version compatibility checking
+  - View installed extensions (User + System separated)
+  - Enable/disable toggles for each extension
+  - Uninstall user extensions
+  - Global "Use Extensions" toggle
+  - Extension settings access
+  - Popular extensions shown by default
+- New "Browse & Manage Extensions" option in Desktop Enhancements → GNOME Extensions
+- Reorganized GNOME Extensions section with three options:
+  - Browse & Manage (new built-in browser)
+  - Install Extension Manager App (external tool)
+  - Install from Repos (distro packages)
+
 ## [0.9.65] - 2025-12-03
 
 ### Added
 - External links in embedded browser now open in default system browser!
 - Links that try to open new windows (target="_blank") open in Firefox/Chrome
 - Claude panel external links also open in default browser
-- **GitHub Releases integration!** No more committing .run files to repo
-  - Setup Token: Store your GitHub PAT securely
-  - Create GitHub Release: Builds .run and uploads to GitHub Releases
-  - Proper release workflow without bloating repo history
 
 ## [0.9.64] - 2025-12-03
 
