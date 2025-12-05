@@ -2,6 +2,30 @@
 
 All notable changes to Tux Assistant will be documented in this file.
 
+## [0.9.77] - 2025-12-05
+
+### Added
+- **Complete README overhaul** with all 10 screenshots
+- Added screenshots folder with properly named images
+- AUR installation instructions in README
+- Feature highlights table
+
+### Changed
+- README now showcases: Main, Setup Tools, Software Center, Gaming, Desktop Enhancements, Networking, Media Server, Hardware Manager, System Maintenance, and Tux Tunes
+
+## [0.9.76] - 2025-12-05
+
+### Fixed
+- Fixed AUR publish button - `gh release view` now runs from correct directory
+
+## [0.9.75] - 2025-12-05
+
+### Added
+- **"Publish to AUR" button** - One click to push to Arch User Repository
+- Generates PKGBUILD and .SRCINFO automatically (works from any distro!)
+- Downloads tarball, calculates sha256sum, pushes to AUR
+- Tux Assistant is now available on AUR: `yay -S tux-assistant`
+
 ## [0.9.74] - 2025-12-04
 
 ### Fixed

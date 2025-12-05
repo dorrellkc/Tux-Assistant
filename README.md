@@ -5,74 +5,136 @@
 </p>
 
 <p align="center">
-  <strong>Your friendly Linux post-installation companion</strong>
+  <strong>Your friendly Linux post-installation companion</strong><br>
+  <em>38,000+ lines of Python • GTK4/Libadwaita • Multi-distro support</em>
 </p>
 
 <p align="center">
   <a href="#features">Features</a> •
+  <a href="#screenshots">Screenshots</a> •
   <a href="#installation">Installation</a> •
   <a href="#included-apps">Apps</a> •
-  <a href="#supported-distributions">Distros</a> •
-  <a href="#license">License</a>
+  <a href="#supported-distributions">Distros</a>
+</p>
+
+<p align="center">
+  <img src="screenshots/main.png" width="700" alt="Tux Assistant Main Window">
 </p>
 
 ---
 
 ## What is Tux Assistant?
 
-Tux Assistant is a GTK4/Libadwaita application that simplifies Linux post-installation setup. Instead of hunting through wikis and running dozens of terminal commands, Tux Assistant provides a friendly GUI to configure your system, install software, and set up services.
+Tux Assistant is a **GTK4/Libadwaita application** that simplifies Linux post-installation setup. Instead of hunting through wikis and running dozens of terminal commands, Tux Assistant provides a friendly GUI to configure your system, install software, and set up services.
 
 **Built for humans, not just power users.**
 
+---
+
 ## Features
 
-- 🖥️ **Desktop Enhancements** - Install themes, icons, fonts, extensions
-- 📦 **Software Center** - One-click install of popular applications
-- 🌐 **Network Setup** - Configure Samba shares, Active Directory, SSH
-- 🎬 **Media Servers** - Set up Plex, Jellyfin, Emby with ease
-- ☁️ **Nextcloud** - Deploy your own private cloud
-- 💿 **ISO Creator** - Build custom live system snapshots
-- 🎵 **Tux Tunes** - Internet radio player with smart recording
+| Category | What You Get |
+|----------|--------------|
+| 🛠️ **Setup Tools** | Codecs, drivers, fonts, essential system configuration |
+| 📦 **Software Center** | One-click install of popular applications |
+| 🎮 **Gaming** | Steam, Lutris, Wine, Proton, MangoHud, and more |
+| 🖥️ **Desktop Enhancements** | Themes, icons, fonts, GNOME extensions browser |
+| 🌐 **Networking** | Samba shares, SSH, VPN, Speed Test, firewall |
+| 🎬 **Media Servers** | Plex, Jellyfin, Emby setup wizards |
+| 🔧 **Hardware Manager** | GPU drivers, Bluetooth, printers, system info |
+| 🧹 **System Maintenance** | Updates, cleanup, logs, services management |
+| ☁️ **Nextcloud** | Deploy your own private cloud |
+| 🎵 **Tux Tunes** | Internet radio with 50,000+ stations |
+
+---
 
 ## Screenshots
 
 <p align="center">
-  <img src="screenshots/main.png" width="600" alt="Tux Assistant Main Window">
-</p>
-<p align="center"><em>Main Window - Your starting point for system setup</em></p>
-
-<p align="center">
-  <img src="screenshots/setup-tools.png" width="600" alt="Setup Tools">
+  <img src="screenshots/setup-tools.png" width="700" alt="Setup Tools">
 </p>
 <p align="center"><em>Setup Tools - Codecs, drivers, and essential configuration</em></p>
 
 <p align="center">
-  <img src="screenshots/gaming.png" width="600" alt="Gaming">
+  <img src="screenshots/software-center.png" width="700" alt="Software Center">
 </p>
-<p align="center"><em>Gaming - Steam, Lutris, and gaming utilities</em></p>
+<p align="center"><em>Software Center - One-click install of popular applications</em></p>
 
 <p align="center">
-  <img src="screenshots/media-server.png" width="600" alt="Media Server">
+  <img src="screenshots/gaming.png" width="700" alt="Gaming">
+</p>
+<p align="center"><em>Gaming - Steam, Lutris, Wine, Proton, and gaming utilities</em></p>
+
+<p align="center">
+  <img src="screenshots/desktop-enhancements.png" width="700" alt="Desktop Enhancements">
+</p>
+<p align="center"><em>Desktop Enhancements - Themes, icons, fonts, GNOME extensions</em></p>
+
+<p align="center">
+  <img src="screenshots/networking.png" width="700" alt="Networking">
+</p>
+<p align="center"><em>Networking - Samba, SSH, VPN, Speed Test, firewall configuration</em></p>
+
+<p align="center">
+  <img src="screenshots/media-server.png" width="700" alt="Media Server">
 </p>
 <p align="center"><em>Media Server - Plex, Jellyfin, and Emby setup</em></p>
+
+<p align="center">
+  <img src="screenshots/hardware-manager.png" width="700" alt="Hardware Manager">
+</p>
+<p align="center"><em>Hardware Manager - GPU drivers, Bluetooth, printers, system info</em></p>
+
+<p align="center">
+  <img src="screenshots/system-maintenance.png" width="700" alt="System Maintenance">
+</p>
+<p align="center"><em>System Maintenance - Updates, cleanup, logs, services</em></p>
+
+---
 
 ## Included Apps
 
 ### Tux Tunes 🎵
 
 <p align="center">
-  <img src="assets/tux-tunes.svg" width="64" height="64" alt="Tux Tunes">
+  <img src="screenshots/tux-tunes.png" width="700" alt="Tux Tunes">
 </p>
 
-Internet radio player with access to 50,000+ stations via radio-browser.info.
+Internet radio player with access to **50,000+ stations** via radio-browser.info.
 
 **Features:**
-- Search and browse stations by genre
+- Search and browse stations by genre, country, language
 - Save favorites and custom stations
 - Smart recording with automatic song detection
 - Pre-buffering to capture complete songs
+- Beautiful GTK4/Libadwaita interface
+
+---
 
 ## Installation
+
+### Arch Linux (AUR) - Recommended
+
+```bash
+yay -S tux-assistant
+```
+
+### Other Distributions - Download .run Installer
+
+Download the latest `.run` file from [Releases](https://github.com/dorrellkc/Tux-Assistant/releases):
+
+```bash
+chmod +x Tux-Assistant-v*.run
+./Tux-Assistant-v*.run
+```
+
+### From Source
+
+```bash
+git clone https://github.com/dorrellkc/tux-assistant.git
+cd tux-assistant
+sudo ./install.sh
+```
 
 ### Requirements
 
@@ -81,47 +143,29 @@ Internet radio player with access to 50,000+ stations via radio-browser.info.
 - Libadwaita 1.0+
 - GStreamer 1.0+ (for Tux Tunes)
 
-### Quick Install
-
-```bash
-git clone https://github.com/dorrellkc/tux-assistant.git
-cd tux-assistant
-sudo ./install.sh
-```
-
-### Manual Install
-
-```bash
-# Clone the repo
-git clone https://github.com/dorrellkc/tux-assistant.git
-cd tux-assistant
-
-# Copy to /opt
-sudo cp -r . /opt/tux-assistant
-
-# Run install script for icons and desktop entries
-sudo ./install.sh
-```
-
 ### Launch
 
 After installation:
 - **Tux Assistant** - Find in your app menu or run `tux-assistant`
 - **Tux Tunes** - Find in your app menu or run `tux-tunes`
 
+---
+
 ## Supported Distributions
 
-| Distribution | Status |
-|-------------|--------|
-| Arch Linux | ✅ Full Support |
-| CachyOS | ✅ Full Support |
-| Manjaro | ✅ Full Support |
-| EndeavourOS | ✅ Full Support |
-| Debian | ✅ Full Support |
-| Ubuntu | ✅ Full Support |
-| Linux Mint | ✅ Full Support |
-| Fedora | ✅ Full Support |
-| openSUSE | ✅ Full Support |
+| Distribution | Status | Notes |
+|-------------|--------|-------|
+| Arch Linux | ✅ Full Support | Available on AUR |
+| EndeavourOS | ✅ Full Support | Primary dev platform |
+| CachyOS | ✅ Full Support | |
+| Manjaro | ✅ Full Support | |
+| Fedora | ✅ Full Support | Tested on F43 |
+| openSUSE | ✅ Full Support | Leap & Tumbleweed |
+| Ubuntu | ✅ Full Support | 22.04+ |
+| Linux Mint | ✅ Full Support | 21+ |
+| Debian | ⚠️ Partial | Needs libadwaita 1.4+ |
+
+---
 
 ## Project Structure
 
@@ -130,55 +174,44 @@ tux-assistant/
 ├── tux/
 │   ├── apps/           # Standalone applications
 │   │   └── tux_tunes/  # Internet radio player
-│   ├── modules/        # Tux Assistant feature modules
+│   ├── modules/        # Feature modules (each page)
 │   ├── core/           # Shared libraries (distro detection, packages)
-│   └── ui/             # UI components
-├── assets/             # Icons and images
+│   └── ui/             # UI components (GNOME extensions, etc.)
+├── assets/             # Icons (SVG)
+├── screenshots/        # README screenshots
 ├── data/               # Desktop entries, polkit policies
+├── scripts/            # Build scripts
 ├── install.sh          # Installation script
 └── tux-assistant.py    # Main entry point
 ```
 
-## Development
-
-### Running from source
-
-```bash
-# Clone
-git clone https://github.com/dorrellkc/tux-assistant.git
-cd tux-assistant
-
-# Run Tux Assistant
-python3 tux-assistant.py
-
-# Run Tux Tunes
-python3 tux/apps/tux_tunes/tux-tunes.py
-```
-
-### Architecture
-
-Tux Assistant uses a modular architecture where each feature is a self-contained module that registers itself with the main application. This makes it easy to add new features without modifying core code.
-
-Apps like Tux Tunes are designed to work both as integrated modules and as standalone applications.
+---
 
 ## Contributing
 
 Contributions are welcome! Please feel free to submit issues and pull requests.
 
+---
+
 ## License
 
 Copyright © 2025 Christopher Dorrell. Licensed under GPL-3.0.
 
-This software is proprietary. See [LICENSE](LICENSE) for details.
+---
 
 ## Acknowledgments
 
 - [radio-browser.info](https://www.radio-browser.info/) - Free internet radio station database
 - [GNOME](https://www.gnome.org/) - GTK and Libadwaita
-- [Arch Linux](https://archlinux.org/) - Primary development platform
+- The Linux community for testing and feedback
 
 ---
 
 <p align="center">
   Made with 🐧 by Christopher Dorrell
+</p>
+
+<p align="center">
+  <a href="https://github.com/dorrellkc/Tux-Assistant">GitHub</a> •
+  <a href="https://aur.archlinux.org/packages/tux-assistant">AUR</a>
 </p>
