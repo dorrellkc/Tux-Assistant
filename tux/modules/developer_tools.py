@@ -945,17 +945,18 @@ pkgname = tux-assistant
         
         def do_aur_publish():
             try:
+                import shutil
                 ssh_env = self._get_ssh_env()
-                aur_dir = os.path.expanduser("~/.cache/tux-assistant/aur")
-                aur_repo = os.path.join(aur_dir, "tux-assistant")
+                cache_dir = os.path.expanduser("~/.cache/tux-assistant")
+                aur_repo = os.path.join(cache_dir, "aur-repo")
                 
                 # Create cache dir
-                os.makedirs(aur_dir, exist_ok=True)
+                os.makedirs(cache_dir, exist_ok=True)
                 
                 # 1. Download source tarball and calculate sha256
                 GLib.idle_add(self.window.show_toast, "Downloading source tarball...")
                 tarball_url = f"https://github.com/dorrellkc/Tux-Assistant/archive/refs/tags/v{version}.tar.gz"
-                tarball_path = os.path.join(aur_dir, f"tux-assistant-{version}.tar.gz")
+                tarball_path = os.path.join(cache_dir, f"tux-assistant-{version}.tar.gz")
                 
                 # Download with curl
                 dl_result = subprocess.run(
@@ -985,34 +986,39 @@ pkgname = tux-assistant
                 if os.path.isdir(aur_repo) and os.path.isdir(os.path.join(aur_repo, '.git')):
                     # Pull existing repo - ensure we're on master branch (AUR uses master)
                     subprocess.run(['git', 'checkout', 'master'], cwd=aur_repo, capture_output=True, timeout=10)
+                    # Reset any local changes and pull fresh
+                    subprocess.run(['git', 'reset', '--hard', 'HEAD'], cwd=aur_repo, capture_output=True, timeout=10)
                     pull_result = subprocess.run(
-                        ['git', 'pull', 'origin', 'master'],
+                        ['git', 'pull', '--rebase', 'origin', 'master'],
                         cwd=aur_repo,
                         env=ssh_env,
                         capture_output=True, text=True, timeout=60
                     )
+                    if pull_result.returncode != 0:
+                        # Pull failed - delete and re-clone
+                        shutil.rmtree(aur_repo)
+                        subprocess.run(
+                            ['git', 'clone', 'ssh://aur@aur.archlinux.org/tux-assistant.git', 'aur-repo'],
+                            cwd=cache_dir,
+                            env=ssh_env,
+                            capture_output=True, text=True, timeout=60
+                        )
                 else:
                     # Remove any broken repo dir
                     if os.path.exists(aur_repo):
-                        import shutil
                         shutil.rmtree(aur_repo)
                     
                     # Clone fresh
                     clone_result = subprocess.run(
-                        ['git', 'clone', 'ssh://aur@aur.archlinux.org/tux-assistant.git', 'tux-assistant'],
-                        cwd=aur_dir,
+                        ['git', 'clone', 'ssh://aur@aur.archlinux.org/tux-assistant.git', 'aur-repo'],
+                        cwd=cache_dir,
                         env=ssh_env,
                         capture_output=True, text=True, timeout=60
                     )
                     
                     if clone_result.returncode != 0:
-                        # Repo might not exist yet on AUR - create empty dir and init
-                        os.makedirs(aur_repo, exist_ok=True)
-                        subprocess.run(['git', 'init', '-b', 'master'], cwd=aur_repo, timeout=10)
-                        subprocess.run(
-                            ['git', 'remote', 'add', 'origin', 'ssh://aur@aur.archlinux.org/tux-assistant.git'],
-                            cwd=aur_repo, timeout=10
-                        )
+                        GLib.idle_add(self.window.show_toast, f"Clone failed: {clone_result.stderr[:60]}")
+                        return
                 
                 # 3. Generate PKGBUILD and .SRCINFO
                 GLib.idle_add(self.window.show_toast, "Generating PKGBUILD...")

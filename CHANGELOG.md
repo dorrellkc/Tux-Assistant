@@ -2,6 +2,16 @@
 
 All notable changes to Tux Assistant will be documented in this file.
 
+## [0.9.98] - 2025-12-05
+
+### Fixed
+- **AUR publish button now works reliably**
+  - Fixed path mismatch: was using `~/.cache/tux-assistant/aur/tux-assistant`, now uses `~/.cache/tux-assistant/aur-repo`
+  - Added `git reset --hard` before pull to handle local changes
+  - Added `--rebase` to pull to handle diverged branches
+  - If pull fails, automatically re-clones fresh
+  - Better error messages showing actual failure reason
+
 ## [0.9.97] - 2025-12-05
 
 ### Fixed
