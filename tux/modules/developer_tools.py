@@ -747,6 +747,7 @@ class DeveloperToolsPage(Adw.NavigationPage):
         # Check if GitHub release exists (we need the tarball)
         check_result = subprocess.run(
             ['gh', 'release', 'view', f'v{version}'],
+            cwd=self.ta_repo_path,
             capture_output=True, text=True, timeout=30
         )
         
