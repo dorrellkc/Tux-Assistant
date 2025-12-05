@@ -2,6 +2,24 @@
 
 All notable changes to Tux Assistant will be documented in this file.
 
+## [0.9.96] - 2025-12-05
+
+### Fixed
+- **Software Center: Fixed dnf5 package parsing** on Fedora 43+
+  - Package names were including arch suffix and description in install command
+  - Improved parsing to handle tab, multiple spaces, or single space separators
+  - Added safety sanitization to strip .x86_64/.noarch suffix and descriptions
+  - Package names are now properly cleaned before installation
+
+## [0.9.95] - 2025-12-05
+
+### Fixed
+- **Codec detection now checks if packages are INSTALLED first** before checking repo availability
+  - Fixes bug where already-installed packages showed as "unavailable" 
+  - Fixes Fedora ffmpeg detection when installed from RPM Fusion
+- Added binary existence fallback for ffmpeg detection (handles package name variations)
+- Packages that are already installed will now correctly show as installed regardless of repo state
+
 ## [0.9.94] - 2025-12-05
 
 ### Fixed

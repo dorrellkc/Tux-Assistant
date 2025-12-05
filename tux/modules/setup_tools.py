@@ -186,13 +186,23 @@ def check_package_installed(package: str, family: str) -> bool:
                 ['rpm', '-q', package],
                 capture_output=True, text=True, timeout=10
             )
-            return result.returncode == 0
+            if result.returncode == 0:
+                return True
+            # Fallback: check if binary exists (handles package name variations)
+            if package in ['ffmpeg', 'ffmpeg-free', 'ffmpeg-libs']:
+                return os.path.exists('/usr/bin/ffmpeg')
+            return False
         elif family == 'opensuse':
             result = subprocess.run(
                 ['rpm', '-q', package],
                 capture_output=True, text=True, timeout=10
             )
-            return result.returncode == 0
+            if result.returncode == 0:
+                return True
+            # Fallback for common packages
+            if package in ['ffmpeg']:
+                return os.path.exists('/usr/bin/ffmpeg')
+            return False
         else:
             return False
     except Exception:
@@ -997,12 +1007,15 @@ class TaskDetailPage(Adw.NavigationPage):
                 # Update progress on UI thread
                 GLib.idle_add(self._update_check_progress, i, total, pkg)
                 
-                if check_package_available(pkg, family_str):
+                if check_package_installed(pkg, family_str):
+                    # Package is already installed - always show as available AND installed
                     available.append(pkg)
-                    # Also check if installed
-                    if check_package_installed(pkg, family_str):
-                        installed.append(pkg)
+                    installed.append(pkg)
+                elif check_package_available(pkg, family_str):
+                    # Package not installed but available in repos
+                    available.append(pkg)
                 else:
+                    # Package neither installed nor available
                     unavailable.append(pkg)
             
             # Update UI on main thread

@@ -1863,16 +1863,27 @@ class SearchResultsPage(Adw.NavigationPage):
             if line.startswith('='):
                 continue
             
-            # dnf5 format: " package.arch   Description here"
-            # Starts with space, has .arch suffix, multiple spaces before description
+            # dnf5 format: " package.arch   Description here" or " package.arch\tDescription here"
+            # Starts with space, has .arch suffix, multiple spaces OR tab before description
             if line.startswith(' '):
                 line = line.strip()
                 
-                # Split on multiple spaces (2 or more) to separate name from description
+                # Split on tabs first (dnf5 may use tabs), then fall back to multiple spaces
                 import re
-                parts = re.split(r'\s{2,}', line, maxsplit=1)
+                # Match: package.arch followed by (tab OR 2+ spaces OR single space) then description
+                # Try tab first, then 2+ spaces, then single space as last resort
+                parts = None
+                if '\t' in line:
+                    parts = line.split('\t', 1)
+                elif '  ' in line:
+                    parts = re.split(r'\s{2,}', line, maxsplit=1)
+                else:
+                    # Single space separator - find first space after package.arch
+                    match = re.match(r'^(\S+)\s+(.*)$', line)
+                    if match:
+                        parts = [match.group(1), match.group(2)]
                 
-                if len(parts) >= 1:
+                if parts and len(parts) >= 1:
                     name_arch = parts[0].strip()
                     desc = parts[1].strip() if len(parts) > 1 else ""
                     
@@ -1882,6 +1893,12 @@ class SearchResultsPage(Adw.NavigationPage):
                         if name.endswith(suffix):
                             name = name[:-len(suffix)]
                             break
+                    
+                    # SAFETY: If name still has tab or description attached, strip it
+                    if '\t' in name:
+                        name = name.split('\t')[0]
+                    # Also strip any remaining whitespace/description
+                    name = name.split()[0] if ' ' in name else name
                     
                     if name:  # Only add if we got a valid name
                         results.append({
@@ -2304,13 +2321,30 @@ class SearchResultsPage(Adw.NavigationPage):
         if response != "install":
             return
         
+        def sanitize_package_name(name: str) -> str:
+            """Clean package name - remove arch suffix, description, and whitespace."""
+            if not name:
+                return name
+            # Remove any tab-separated description
+            if '\t' in name:
+                name = name.split('\t')[0]
+            # Remove any space-separated description  
+            if ' ' in name:
+                name = name.split()[0]
+            # Remove arch suffix
+            for suffix in ['.x86_64', '.noarch', '.i686', '.aarch64', '.armv7hl']:
+                if name.endswith(suffix):
+                    name = name[:-len(suffix)]
+                    break
+            return name.strip()
+        
         # Install native packages via tux-helper
         if native_packages:
             apps = [App(
-                id=pkg['name'],
-                name=pkg['name'],
-                description=f"Package: {pkg['name']}",
-                packages={self.distro.family.value: [pkg['name']]}
+                id=sanitize_package_name(pkg['name']),
+                name=sanitize_package_name(pkg['name']),
+                description=f"Package: {sanitize_package_name(pkg['name'])}",
+                packages={self.distro.family.value: [sanitize_package_name(pkg['name'])]}
             ) for pkg in native_packages]
             
             install_dialog = AppInstallDialog(self.window, apps, self.distro, self._clear_selection_after_install)
