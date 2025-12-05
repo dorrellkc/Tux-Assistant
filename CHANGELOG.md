@@ -2,6 +2,18 @@
 
 All notable changes to Tux Assistant will be documented in this file.
 
+## [0.9.78] - 2025-12-05
+
+### Fixed
+- **Fedora codec detection fix** - Added `ffmpeg-free` (Fedora native) to codec list
+- Codecs now properly detected on Fedora without RPM Fusion enabled
+- Native Fedora packages listed first, RPM Fusion packages as extras
+
+### Added
+- **RPM Fusion Enable button** - One-click enable RPM Fusion repos on Fedora
+- **Show locked packages** - RPM Fusion packages now shown with lock icon and "Enable Repos" button
+- Page auto-refreshes after enabling repos to show newly available packages
+
 ## [0.9.77] - 2025-12-05
 
 ### Added

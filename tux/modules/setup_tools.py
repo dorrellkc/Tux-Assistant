@@ -77,6 +77,51 @@ import json as json_module
 _package_availability_cache: dict[str, bool] = {}
 _cache_initialized: bool = False
 
+# RPM Fusion packages - these require RPM Fusion repos on Fedora
+FEDORA_RPMFUSION_PACKAGES = {
+    'ffmpeg', 'ffmpeg-libs', 'libdvdcss',
+    'gstreamer1-plugins-bad-freeworld', 'gstreamer1-plugins-ugly',
+    'gstreamer1-libav', 'vlc', 'x264', 'x265',
+    'akmod-nvidia', 'xorg-x11-drv-nvidia',
+    'steam', 'lutris', 'handbrake', 'handbrake-gui',
+}
+
+
+def check_rpmfusion_enabled() -> dict:
+    """Check if RPM Fusion repositories are enabled on Fedora."""
+    result = {'free': False, 'nonfree': False}
+    try:
+        proc = subprocess.run(
+            ['dnf', 'repolist', '--enabled'],
+            capture_output=True, text=True, timeout=30
+        )
+        output = proc.stdout.lower()
+        result['free'] = 'rpmfusion-free' in output
+        result['nonfree'] = 'rpmfusion-nonfree' in output
+    except:
+        pass
+    return result
+
+
+def is_rpmfusion_package(package: str) -> bool:
+    """Check if a package requires RPM Fusion."""
+    if package in FEDORA_RPMFUSION_PACKAGES:
+        return True
+    # Also check prefixes
+    rpmfusion_prefixes = ['ffmpeg', 'libdvdcss', 'gstreamer1-plugins-ugly', 
+                          'gstreamer1-plugins-bad-freeworld', 'gstreamer1-libav',
+                          'akmod-nvidia', 'xorg-x11-drv-nvidia']
+    return any(package.startswith(p) for p in rpmfusion_prefixes)
+
+
+def get_fedora_version() -> str:
+    """Get Fedora version number."""
+    try:
+        result = subprocess.run(['rpm', '-E', '%fedora'], capture_output=True, text=True)
+        return result.stdout.strip()
+    except:
+        return '40'
+
 
 def check_package_available(package: str, family: str) -> bool:
     """Check if a single package is available in the system's repos."""
@@ -196,13 +241,16 @@ MULTIMEDIA_CODECS = SetupTask(
             "libdvd-pkg", "libdvdread8", "libdvdnav4"
         ],
         DistroFamily.FEDORA: [
-            # Full codec support - requires RPM Fusion repos
-            "ffmpeg", "ffmpeg-libs",
+            # Fedora native packages (no RPM Fusion needed)
+            "ffmpeg-free",
             "gstreamer1-plugins-base", "gstreamer1-plugins-good",
             "gstreamer1-plugins-good-extras",
-            "gstreamer1-plugins-bad-free", "gstreamer1-plugins-bad-freeworld",
-            "gstreamer1-plugins-ugly",
+            "gstreamer1-plugins-bad-free",
             "gstreamer1-plugin-openh264", "mozilla-openh264",
+            # RPM Fusion packages (available after repos enabled)
+            "ffmpeg", "ffmpeg-libs",
+            "gstreamer1-plugins-bad-freeworld",
+            "gstreamer1-plugins-ugly",
             "gstreamer1-libav",
             "libdvdcss"
         ],
@@ -925,6 +973,8 @@ class TaskDetailPage(Adw.NavigationPage):
         self.spinner_row = None  # Reference to spinner row for removal
         self.alt_sources_group = None  # Group for alternative sources
         self.content_box = None  # Reference to content box for adding alt sources
+        self.rpmfusion_group = None  # RPM Fusion packages group (Fedora)
+        self.rpmfusion_enable_btn = None  # Enable RPM Fusion button
         
         self._build_ui()
         
@@ -976,11 +1026,24 @@ class TaskDetailPage(Adw.NavigationPage):
         self.installed_packages = installed
         family_str = self.distro_family.value if hasattr(self.distro_family, 'value') else str(self.distro_family)
         
+        # Clean up existing RPM Fusion group if present (for refresh)
+        if self.rpmfusion_group and self.content_box:
+            self.content_box.remove(self.rpmfusion_group)
+            self.rpmfusion_group = None
+        
         if self.pkg_group:
             # Remove spinner row explicitly
             if self.spinner_row:
                 self.pkg_group.remove(self.spinner_row)
                 self.spinner_row = None
+            
+            # Remove existing package rows (for refresh after enabling repos)
+            child = self.pkg_group.get_first_child()
+            while child:
+                next_child = child.get_next_sibling()
+                if isinstance(child, Adw.ActionRow):
+                    self.pkg_group.remove(child)
+                child = next_child
             
             # Calculate totals for summary (based on AVAILABLE packages, not wishlist)
             available_count = len(available)
@@ -1044,8 +1107,19 @@ class TaskDetailPage(Adw.NavigationPage):
             # We'll show ones with alternatives in a separate section
             pkgs_with_alternatives = []
             pkgs_without_alternatives = []
+            rpmfusion_packages = []  # Fedora packages that need RPM Fusion
+            
+            # Check if we're on Fedora and if RPM Fusion is enabled
+            is_fedora = family_str == 'fedora'
+            rpmfusion_status = check_rpmfusion_enabled() if is_fedora else {'free': True, 'nonfree': True}
+            rpmfusion_enabled = rpmfusion_status['free'] and rpmfusion_status['nonfree']
             
             for pkg in unavailable:
+                # On Fedora, check if this is an RPM Fusion package
+                if is_fedora and is_rpmfusion_package(pkg) and not rpmfusion_enabled:
+                    rpmfusion_packages.append(pkg)
+                    continue
+                    
                 # Use get_preferred_source to respect user preferences
                 alt_source = get_preferred_source(pkg, family_str)
                 if alt_source:
@@ -1054,6 +1128,40 @@ class TaskDetailPage(Adw.NavigationPage):
                     pkgs_with_alternatives.append((pkg, alt_source, all_sources))
                 else:
                     pkgs_without_alternatives.append(pkg)
+            
+            # Show RPM Fusion packages section if on Fedora and repos not enabled
+            if rpmfusion_packages and is_fedora and not rpmfusion_enabled:
+                rpmfusion_group = Adw.PreferencesGroup()
+                rpmfusion_group.set_title("🔓 RPM Fusion Packages")
+                rpmfusion_group.set_description("These packages require RPM Fusion repositories")
+                self.content_box.append(rpmfusion_group)
+                
+                # Add enable button row
+                enable_row = Adw.ActionRow()
+                enable_row.set_title("Enable RPM Fusion")
+                enable_row.set_subtitle("Adds Free and Nonfree repos for additional packages")
+                enable_row.add_prefix(Gtk.Image.new_from_icon_name("list-add-symbolic"))
+                
+                enable_btn = Gtk.Button(label="Enable Repos")
+                enable_btn.add_css_class("suggested-action")
+                enable_btn.set_valign(Gtk.Align.CENTER)
+                enable_btn.connect("clicked", self._on_enable_rpmfusion)
+                enable_row.add_suffix(enable_btn)
+                self.rpmfusion_enable_btn = enable_btn  # Store reference
+                rpmfusion_group.add(enable_row)
+                
+                # Show the packages that will become available
+                for pkg in rpmfusion_packages:
+                    pkg_row = Adw.ActionRow()
+                    pkg_row.set_title(pkg)
+                    pkg_row.set_subtitle("Available after enabling RPM Fusion")
+                    pkg_row.add_css_class("dim-label")
+                    pkg_row.add_prefix(Gtk.Image.new_from_icon_name("package-x-generic-symbolic"))
+                    lock_icon = Gtk.Image.new_from_icon_name("changes-prevent-symbolic")
+                    pkg_row.add_suffix(lock_icon)
+                    rpmfusion_group.add(pkg_row)
+                
+                self.rpmfusion_group = rpmfusion_group  # Store reference for refresh
             
             # Show packages without any alternative
             for pkg in pkgs_without_alternatives:
@@ -1127,6 +1235,54 @@ class TaskDetailPage(Adw.NavigationPage):
             
             if self.window:
                 self.window.show_toast(f"Failed to install {package}")
+        
+        return False
+    
+    def _on_enable_rpmfusion(self, button):
+        """Handle click on Enable RPM Fusion button."""
+        button.set_sensitive(False)
+        button.set_label("Enabling...")
+        
+        def do_enable():
+            success = False
+            try:
+                version = get_fedora_version()
+                # Enable both Free and Nonfree repos
+                repos = [
+                    f"https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-{version}.noarch.rpm",
+                    f"https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-{version}.noarch.rpm"
+                ]
+                result = subprocess.run(
+                    ['pkexec', 'dnf', 'install', '-y'] + repos,
+                    capture_output=True, text=True, timeout=120
+                )
+                success = result.returncode == 0 or 'already installed' in result.stdout.lower()
+            except Exception as e:
+                success = False
+            
+            GLib.idle_add(self._on_rpmfusion_enabled, button, success)
+        
+        threading.Thread(target=do_enable, daemon=True).start()
+    
+    def _on_rpmfusion_enabled(self, button, success: bool):
+        """Handle completion of RPM Fusion enable."""
+        if success:
+            button.set_label("✓ Enabled")
+            button.add_css_class("success")
+            
+            if self.window:
+                self.window.show_toast("RPM Fusion enabled! Refreshing packages...")
+            
+            # Clear cache and refresh the entire page
+            clear_package_cache()
+            self._check_packages_async()
+        else:
+            button.set_sensitive(True)
+            button.set_label("Retry")
+            button.add_css_class("error")
+            
+            if self.window:
+                self.window.show_toast("Failed to enable RPM Fusion")
         
         return False
     
