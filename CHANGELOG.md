@@ -2,6 +2,84 @@
 
 All notable changes to Tux Assistant will be documented in this file.
 
+## [0.9.93] - 2025-12-05
+
+### Fixed
+- Fixed zypper command syntax (`--non-interactive` instead of `-y`)
+- Added fallback package names if distro not recognized
+- Ensures rpm-build is properly installed for Fedora/openSUSE RPM builds
+
+## [0.9.92] - 2025-12-05
+
+### Added
+- **Auto-dependency installation** for package building:
+  - Detects distro (Arch, Fedora, openSUSE, Debian/Ubuntu)
+  - Auto-installs `ruby` if missing
+  - Auto-installs `binutils` (provides `ar`) for .deb builds
+  - Auto-installs `rpm-build` for .rpm builds
+  - Shows helpful dialog if auto-install fails with manual command
+- Support for EndeavourOS, Manjaro, Rocky Linux, CentOS, Mint, Pop!_OS detection
+
+## [0.9.91] - 2025-12-05
+
+### Fixed
+- fpm detection now checks `gems/fpm-*/bin/fpm` path (user-install location)
+- Uses glob to find fpm regardless of version number in path
+- Should now correctly find fpm after `gem install --user-install fpm`
+
+## [0.9.90] - 2025-12-05
+
+### Fixed
+- Simplified fpm detection - removed execute permission check that was failing
+- Now just checks if file exists (Ruby scripts don't always have +x)
+- Added more gem path locations to search
+
+## [0.9.89] - 2025-12-05
+
+### Fixed
+- fpm path detection now USES the found path instead of asking user to update PATH
+- Added Ruby 3.4.0 to fallback paths
+- Should now work without requiring PATH modification
+
+## [0.9.88] - 2025-12-05
+
+### Improved
+- fpm PATH errors now show a dialog instead of a toast
+- Dialog includes exact commands to add fpm to PATH
+- Dialog stays visible until dismissed
+
+## [0.9.87] - 2025-12-05
+
+### Fixed
+- fpm detection now uses Ruby to dynamically find gem bin path
+- Checks `Gem.user_dir` and `gem environment gempath` for correct locations
+- Shows actual path to add to PATH if fpm still not found
+
+## [0.9.86] - 2025-12-05
+
+### Fixed
+- Package builder now properly finds fpm in common gem paths
+- Removed problematic --after-install flag from fpm command
+- Better error reporting when files are missing
+- Added path verification before package build
+
+## [0.9.85] - 2025-12-05
+
+### Fixed
+- Fixed Developer Tools not loading (was using wrong container method)
+
+## [0.9.84] - 2025-12-05
+
+### Added
+- **DEB/RPM Package Builder** in Developer Tools:
+  - Build .deb packages for Debian/Ubuntu/Mint/Pop!_OS
+  - Build .rpm packages for Fedora/RHEL/CentOS/Rocky
+  - Build .rpm packages for openSUSE Tumbleweed/Leap
+  - Auto-installs fpm (Ruby gem) if not present
+  - Output to ~/Tux-Assistant-Packages/ folder
+  - Auto-opens folder after successful build
+  - Proper dependency lists for each distribution family
+
 ## [0.9.83] - 2025-12-05
 
 ### Added

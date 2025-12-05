@@ -448,6 +448,63 @@ class DeveloperToolsPage(Adw.NavigationPage):
         
         ta_group.add(aur_row)
         
+        # ═══ Build for Debian/Ubuntu ═══
+        deb_group = Adw.PreferencesGroup()
+        deb_group.set_title("📦 Build for Debian/Ubuntu")
+        deb_group.set_description("Create .deb package for apt-based distributions")
+        content_box.append(deb_group)
+        
+        deb_row = Adw.ActionRow()
+        deb_row.set_title("Debian Package (.deb)")
+        deb_row.set_subtitle("Works with: Debian, Ubuntu, Linux Mint, Pop!_OS")
+        deb_row.add_prefix(Gtk.Image.new_from_icon_name("package-x-generic-symbolic"))
+        
+        deb_btn = Gtk.Button(label=f"Build v{version} .deb")
+        deb_btn.add_css_class("suggested-action")
+        deb_btn.set_valign(Gtk.Align.CENTER)
+        deb_btn.connect("clicked", lambda b: self._on_build_package("deb"))
+        deb_row.add_suffix(deb_btn)
+        
+        deb_group.add(deb_row)
+        
+        # ═══ Build for Fedora ═══
+        fedora_group = Adw.PreferencesGroup()
+        fedora_group.set_title("📦 Build for Fedora")
+        fedora_group.set_description("Create .rpm package for Fedora")
+        content_box.append(fedora_group)
+        
+        fedora_row = Adw.ActionRow()
+        fedora_row.set_title("Fedora Package (.rpm)")
+        fedora_row.set_subtitle("Works with: Fedora, RHEL, CentOS, Rocky Linux")
+        fedora_row.add_prefix(Gtk.Image.new_from_icon_name("package-x-generic-symbolic"))
+        
+        fedora_btn = Gtk.Button(label=f"Build v{version} .rpm")
+        fedora_btn.add_css_class("suggested-action")
+        fedora_btn.set_valign(Gtk.Align.CENTER)
+        fedora_btn.connect("clicked", lambda b: self._on_build_package("fedora"))
+        fedora_row.add_suffix(fedora_btn)
+        
+        fedora_group.add(fedora_row)
+        
+        # ═══ Build for openSUSE ═══
+        suse_group = Adw.PreferencesGroup()
+        suse_group.set_title("📦 Build for openSUSE")
+        suse_group.set_description("Create .rpm package for openSUSE")
+        content_box.append(suse_group)
+        
+        suse_row = Adw.ActionRow()
+        suse_row.set_title("openSUSE Package (.rpm)")
+        suse_row.set_subtitle("Works with: openSUSE Tumbleweed, Leap")
+        suse_row.add_prefix(Gtk.Image.new_from_icon_name("package-x-generic-symbolic"))
+        
+        suse_btn = Gtk.Button(label=f"Build v{version} .rpm")
+        suse_btn.add_css_class("suggested-action")
+        suse_btn.set_valign(Gtk.Align.CENTER)
+        suse_btn.connect("clicked", lambda b: self._on_build_package("suse"))
+        suse_row.add_suffix(suse_btn)
+        
+        suse_group.add(suse_row)
+        
         # Help link (small, at bottom)
         help_row = Adw.ActionRow()
         help_row.set_title("Need help?")
@@ -990,6 +1047,491 @@ pkgname = tux-assistant
                 GLib.idle_add(self.window.show_toast, f"Error: {str(e)[:50]}")
         
         threading.Thread(target=do_aur_publish, daemon=True).start()
+    
+    def _on_build_package(self, pkg_type: str):
+        """Handle package build button click."""
+        version = self._get_ta_version()
+        
+        # Determine package info based on type
+        pkg_info = {
+            "deb": {
+                "name": "Debian/Ubuntu",
+                "ext": "deb",
+                "filename": f"tux-assistant_{version}_amd64.deb",
+                "deps": "python3, python3-gi, gir1.2-gtk-4.0, libadwaita-1-0, gir1.2-adw-1, gstreamer1.0-tools, gir1.2-gst-plugins-base-1.0, gstreamer1.0-plugins-good"
+            },
+            "fedora": {
+                "name": "Fedora",
+                "ext": "rpm",
+                "filename": f"tux-assistant-{version}-1.fc.x86_64.rpm",
+                "deps": "python3, python3-gobject, gtk4, libadwaita, gstreamer1, gstreamer1-plugins-base, gstreamer1-plugins-good"
+            },
+            "suse": {
+                "name": "openSUSE",
+                "ext": "rpm",
+                "filename": f"tux-assistant-{version}-1.suse.x86_64.rpm",
+                "deps": "python3, python3-gobject, gtk4, typelib-1_0-Gtk-4_0, libadwaita, typelib-1_0-Adw-1, gstreamer, gstreamer-plugins-base, gstreamer-plugins-good"
+            }
+        }
+        
+        info = pkg_info.get(pkg_type)
+        if not info:
+            self.window.show_toast("Unknown package type")
+            return
+        
+        # Show confirmation dialog
+        dialog = Adw.AlertDialog()
+        dialog.set_heading(f"Build {info['name']} Package?")
+        dialog.set_body(
+            f"This will create:\n"
+            f"  • {info['filename']}\n\n"
+            f"Output folder:\n"
+            f"  ~/Tux-Assistant-Packages/\n\n"
+            f"Requires: fpm (Ruby gem)\n"
+            f"Will be installed automatically if missing."
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("build", f"Build .{info['ext']}")
+        dialog.set_response_appearance("build", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("build")
+        dialog.set_close_response("cancel")
+        dialog.connect("response", self._do_build_package, pkg_type, info, version)
+        dialog.present(self.window)
+    
+    def _do_build_package(self, dialog, response, pkg_type: str, info: dict, version: str):
+        """Execute package build."""
+        if response != "build":
+            return
+        
+        self.window.show_toast(f"Building {info['name']} package...")
+        
+        def do_build():
+            try:
+                import shutil
+                import glob
+                
+                # Output directory
+                output_dir = os.path.expanduser("~/Tux-Assistant-Packages")
+                os.makedirs(output_dir, exist_ok=True)
+                
+                # Staging directory
+                staging_dir = "/tmp/tux-assistant-pkg-staging"
+                if os.path.exists(staging_dir):
+                    shutil.rmtree(staging_dir)
+                os.makedirs(staging_dir)
+                
+                # ===== STEP 1: Detect distro and install system dependencies =====
+                GLib.idle_add(self.window.show_toast, "Checking system dependencies...")
+                
+                def detect_distro():
+                    """Detect the Linux distribution."""
+                    try:
+                        with open("/etc/os-release") as f:
+                            content = f.read().lower()
+                            if "arch" in content or "endeavour" in content or "manjaro" in content:
+                                return "arch"
+                            elif "fedora" in content or "rhel" in content or "centos" in content or "rocky" in content:
+                                return "fedora"
+                            elif "opensuse" in content or "suse" in content:
+                                return "suse"
+                            elif "ubuntu" in content or "debian" in content or "mint" in content or "pop" in content:
+                                return "debian"
+                    except:
+                        pass
+                    # Fallback: check for package managers
+                    if os.path.exists("/usr/bin/pacman"):
+                        return "arch"
+                    elif os.path.exists("/usr/bin/dnf"):
+                        return "fedora"
+                    elif os.path.exists("/usr/bin/zypper"):
+                        return "suse"
+                    elif os.path.exists("/usr/bin/apt"):
+                        return "debian"
+                    return "unknown"
+                
+                distro = detect_distro()
+                
+                # Define required packages per distro
+                # For deb: need ar (binutils)
+                # For rpm: need rpmbuild (rpm-build)
+                required_packages = {
+                    "arch": {
+                        "ruby": "ruby",
+                        "ar": "binutils",
+                        "rpmbuild": "rpm-tools",
+                    },
+                    "fedora": {
+                        "ruby": "ruby",
+                        "ar": "binutils",
+                        "rpmbuild": "rpm-build",
+                    },
+                    "suse": {
+                        "ruby": "ruby",
+                        "ar": "binutils",
+                        "rpmbuild": "rpm-build",
+                    },
+                    "debian": {
+                        "ruby": "ruby",
+                        "ar": "binutils",
+                        "rpmbuild": "rpm",
+                    },
+                }
+                
+                pkg_install_cmds = {
+                    "arch": ["sudo", "pacman", "-S", "--noconfirm", "--needed"],
+                    "fedora": ["sudo", "dnf", "install", "-y"],
+                    "suse": ["sudo", "zypper", "--non-interactive", "install"],
+                    "debian": ["sudo", "apt", "install", "-y"],
+                }
+                
+                # Determine which tools we need based on package type
+                tools_needed = ["ruby"]  # Always need ruby for fpm
+                if info["ext"] == "deb":
+                    tools_needed.append("ar")
+                elif info["ext"] == "rpm":
+                    tools_needed.append("rpmbuild")
+                
+                # Check which tools are missing
+                missing_packages = []
+                for tool in tools_needed:
+                    result = subprocess.run(["which", tool], capture_output=True)
+                    if result.returncode != 0:
+                        if distro in required_packages and tool in required_packages[distro]:
+                            missing_packages.append(required_packages[distro][tool])
+                        else:
+                            # Fallback package names
+                            fallback = {"ruby": "ruby", "ar": "binutils", "rpmbuild": "rpm-build"}
+                            if tool in fallback:
+                                missing_packages.append(fallback[tool])
+                
+                # Install missing system packages
+                if missing_packages and distro != "unknown":
+                    GLib.idle_add(self.window.show_toast, f"Installing: {', '.join(missing_packages)}...")
+                    install_cmd = pkg_install_cmds[distro] + missing_packages
+                    result = subprocess.run(install_cmd, capture_output=True, text=True, timeout=300)
+                    if result.returncode != 0:
+                        GLib.idle_add(self._show_pkg_install_error, missing_packages, distro)
+                        return
+                elif missing_packages and distro == "unknown":
+                    GLib.idle_add(self.window.show_toast, f"Please install: {', '.join(missing_packages)}")
+                    return
+                
+                # ===== STEP 2: Find or install fpm =====
+                GLib.idle_add(self.window.show_toast, "Checking for fpm...")
+                
+                def find_fpm():
+                    """Find fpm executable."""
+                    # Method 1: Check if fpm is in PATH
+                    try:
+                        result = subprocess.run(["which", "fpm"], capture_output=True, text=True, timeout=5)
+                        if result.returncode == 0 and result.stdout.strip():
+                            return result.stdout.strip()
+                    except:
+                        pass
+                    
+                    # Method 2: Ask Ruby directly where gems are installed
+                    try:
+                        gem_user = subprocess.run(
+                            ["ruby", "-e", "puts Gem.user_dir"],
+                            capture_output=True, text=True, timeout=10
+                        )
+                        if gem_user.returncode == 0 and gem_user.stdout.strip():
+                            gem_dir = gem_user.stdout.strip()
+                            # Check direct bin path
+                            fpm_candidate = os.path.join(gem_dir, "bin", "fpm")
+                            if os.path.isfile(fpm_candidate):
+                                return fpm_candidate
+                            # Check inside gems/fpm-*/bin/ (user install pattern)
+                            import glob
+                            fpm_glob = os.path.join(gem_dir, "gems", "fpm-*", "bin", "fpm")
+                            matches = glob.glob(fpm_glob)
+                            if matches:
+                                return matches[0]
+                    except:
+                        pass
+                    
+                    # Method 3: Check gem environment gempath
+                    try:
+                        gem_env = subprocess.run(
+                            ["gem", "environment", "gempath"],
+                            capture_output=True, text=True, timeout=10
+                        )
+                        if gem_env.returncode == 0 and gem_env.stdout.strip():
+                            import glob
+                            for path in gem_env.stdout.strip().split(":"):
+                                # Direct bin
+                                candidate = os.path.join(path, "bin", "fpm")
+                                if os.path.isfile(candidate):
+                                    return candidate
+                                # Inside gems folder
+                                fpm_glob = os.path.join(path, "gems", "fpm-*", "bin", "fpm")
+                                matches = glob.glob(fpm_glob)
+                                if matches:
+                                    return matches[0]
+                    except:
+                        pass
+                    
+                    # Method 4: Brute force check common locations
+                    import glob
+                    home = os.path.expanduser("~")
+                    for ruby_ver in ["3.4.0", "3.3.0", "3.2.0", "3.1.0", "3.0.0", "2.7.0"]:
+                        for base in [".local/share/gem/ruby", ".gem/ruby", ".gems/ruby"]:
+                            # Direct bin path
+                            candidate = os.path.join(home, base, ruby_ver, "bin", "fpm")
+                            if os.path.isfile(candidate):
+                                return candidate
+                            # Inside gems subfolder
+                            fpm_glob = os.path.join(home, base, ruby_ver, "gems", "fpm-*", "bin", "fpm")
+                            matches = glob.glob(fpm_glob)
+                            if matches:
+                                return matches[0]
+                    
+                    return None
+                
+                fpm_path = find_fpm()
+                
+                if not fpm_path:
+                    GLib.idle_add(self.window.show_toast, "Installing fpm (this may take a minute)...")
+                    # Check for ruby
+                    ruby_check = subprocess.run(["which", "ruby"], capture_output=True)
+                    if ruby_check.returncode != 0:
+                        GLib.idle_add(self.window.show_toast, "Error: Ruby not installed. Install with: sudo pacman -S ruby")
+                        return
+                    # Install fpm gem
+                    result = subprocess.run(
+                        ["gem", "install", "--user-install", "fpm"],
+                        capture_output=True, text=True, timeout=300
+                    )
+                    if result.returncode != 0:
+                        GLib.idle_add(self.window.show_toast, f"Failed to install fpm: {result.stderr[:50]}")
+                        return
+                    # Find fpm after install
+                    fpm_path = find_fpm()
+                    if not fpm_path:
+                        # Last resort - get the path directly from gem and USE it
+                        try:
+                            import glob
+                            gem_user = subprocess.run(
+                                ["ruby", "-e", "puts Gem.user_dir"],
+                                capture_output=True, text=True, timeout=10
+                            )
+                            gem_dir = gem_user.stdout.strip()
+                            # Try direct bin
+                            fpm_candidate = os.path.join(gem_dir, "bin", "fpm")
+                            if os.path.isfile(fpm_candidate):
+                                fpm_path = fpm_candidate
+                            else:
+                                # Try gems/fpm-*/bin/fpm
+                                fpm_glob = os.path.join(gem_dir, "gems", "fpm-*", "bin", "fpm")
+                                matches = glob.glob(fpm_glob)
+                                if matches:
+                                    fpm_path = matches[0]
+                                else:
+                                    GLib.idle_add(self._show_fpm_path_dialog, gem_dir)
+                                    return
+                        except:
+                            GLib.idle_add(self._show_fpm_error_dialog)
+                            return
+                
+                GLib.idle_add(self.window.show_toast, "Preparing package structure...")
+                
+                # Create directory structure
+                opt_dir = os.path.join(staging_dir, "opt", "tux-assistant")
+                bin_dir = os.path.join(staging_dir, "usr", "local", "bin")
+                helper_dir = os.path.join(staging_dir, "usr", "bin")
+                desktop_dir = os.path.join(staging_dir, "usr", "share", "applications")
+                polkit_dir = os.path.join(staging_dir, "usr", "share", "polkit-1", "actions")
+                icon_base = os.path.join(staging_dir, "usr", "share", "icons", "hicolor")
+                
+                for d in [opt_dir, bin_dir, helper_dir, desktop_dir, polkit_dir]:
+                    os.makedirs(d, exist_ok=True)
+                
+                # Copy application files to /opt/tux-assistant
+                src_dir = self.ta_repo_path
+                
+                # Verify source files exist
+                required_files = [
+                    os.path.join(src_dir, "tux"),
+                    os.path.join(src_dir, "assets"),
+                    os.path.join(src_dir, "tux-assistant.py"),
+                    os.path.join(src_dir, "tux-helper"),
+                    os.path.join(src_dir, "VERSION"),
+                    os.path.join(src_dir, "data", "com.tuxassistant.app.desktop"),
+                ]
+                for rf in required_files:
+                    if not os.path.exists(rf):
+                        GLib.idle_add(self.window.show_toast, f"Missing: {os.path.basename(rf)}")
+                        return
+                
+                shutil.copytree(os.path.join(src_dir, "tux"), os.path.join(opt_dir, "tux"))
+                shutil.copytree(os.path.join(src_dir, "assets"), os.path.join(opt_dir, "assets"))
+                shutil.copy2(os.path.join(src_dir, "tux-assistant.py"), opt_dir)
+                shutil.copy2(os.path.join(src_dir, "tux-helper"), opt_dir)
+                shutil.copy2(os.path.join(src_dir, "VERSION"), opt_dir)
+                
+                # Create launcher scripts
+                tux_launcher = os.path.join(bin_dir, "tux-assistant")
+                with open(tux_launcher, "w") as f:
+                    f.write("#!/bin/bash\npython3 /opt/tux-assistant/tux-assistant.py \"$@\"\n")
+                os.chmod(tux_launcher, 0o755)
+                
+                tunes_launcher = os.path.join(bin_dir, "tux-tunes")
+                with open(tunes_launcher, "w") as f:
+                    f.write("#!/bin/bash\npython3 /opt/tux-assistant/tux/apps/tux_tunes/tux-tunes.py \"$@\"\n")
+                os.chmod(tunes_launcher, 0o755)
+                
+                # Create helper symlink target (will be /usr/bin/tux-helper -> /opt/tux-assistant/tux-helper)
+                helper_link = os.path.join(helper_dir, "tux-helper")
+                # Create a wrapper script instead of symlink for packaging
+                with open(helper_link, "w") as f:
+                    f.write("#!/bin/bash\nexec /opt/tux-assistant/tux-helper \"$@\"\n")
+                os.chmod(helper_link, 0o755)
+                
+                # Copy desktop files
+                shutil.copy2(os.path.join(src_dir, "data", "com.tuxassistant.app.desktop"), desktop_dir)
+                shutil.copy2(os.path.join(src_dir, "data", "com.tuxassistant.tuxtunes.desktop"), desktop_dir)
+                
+                # Copy polkit policy
+                shutil.copy2(os.path.join(src_dir, "data", "com.tuxassistant.helper.policy"), polkit_dir)
+                
+                # Install icons at multiple sizes
+                icon_svg = os.path.join(src_dir, "assets", "icon.svg")
+                tunes_svg = os.path.join(src_dir, "assets", "tux-tunes.svg")
+                
+                for size in ["16x16", "24x24", "32x32", "48x48", "64x64", "128x128", "256x256", "scalable"]:
+                    if size == "scalable":
+                        icon_dir = os.path.join(icon_base, size, "apps")
+                    else:
+                        icon_dir = os.path.join(icon_base, size, "apps")
+                    os.makedirs(icon_dir, exist_ok=True)
+                    shutil.copy2(icon_svg, os.path.join(icon_dir, "tux-assistant.svg"))
+                    shutil.copy2(tunes_svg, os.path.join(icon_dir, "tux-tunes.svg"))
+                
+                GLib.idle_add(self.window.show_toast, f"Running fpm for {info['name']}...")
+                
+                # Build fpm command
+                output_file = os.path.join(output_dir, info["filename"])
+                
+                # Remove existing file if present
+                if os.path.exists(output_file):
+                    os.remove(output_file)
+                
+                fpm_cmd = [
+                    fpm_path,
+                    "-s", "dir",
+                    "-t", info["ext"],
+                    "-n", "tux-assistant",
+                    "-v", version,
+                    "--description", "GTK4/Libadwaita Linux system configuration tool",
+                    "--url", "https://github.com/dorrellkc/Tux-Assistant",
+                    "--maintainer", "Christopher Dorrell <dorrellkc@gmail.com>",
+                    "--license", "All Rights Reserved",
+                    "-a", "x86_64",
+                    "-p", output_file,
+                    "-C", staging_dir,
+                ]
+                
+                # Add dependencies
+                for dep in info["deps"].split(", "):
+                    fpm_cmd.extend(["-d", dep.strip()])
+                
+                # Add iteration/release for RPM
+                if info["ext"] == "rpm":
+                    if pkg_type == "fedora":
+                        fpm_cmd.extend(["--iteration", "1.fc"])
+                    else:
+                        fpm_cmd.extend(["--iteration", "1.suse"])
+                
+                # Add the content
+                fpm_cmd.append(".")
+                
+                result = subprocess.run(
+                    fpm_cmd,
+                    capture_output=True, text=True, timeout=120
+                )
+                
+                if result.returncode != 0:
+                    error_msg = result.stderr[:100] if result.stderr else result.stdout[:100]
+                    GLib.idle_add(self.window.show_toast, f"fpm error: {error_msg}")
+                    return
+                
+                # Verify the file was created
+                if os.path.exists(output_file):
+                    GLib.idle_add(self.window.show_toast, f"🎉 Built {info['filename']}!")
+                    # Open file manager to output directory
+                    GLib.idle_add(self._open_package_folder, output_dir)
+                else:
+                    GLib.idle_add(self.window.show_toast, "Package file not found after build")
+                
+                # Cleanup staging
+                shutil.rmtree(staging_dir, ignore_errors=True)
+                
+            except FileNotFoundError as e:
+                GLib.idle_add(self.window.show_toast, f"File not found: {e.filename}")
+            except Exception as e:
+                import traceback
+                print(f"Package build error: {traceback.format_exc()}")
+                GLib.idle_add(self.window.show_toast, f"Error: {type(e).__name__}: {str(e)[:40]}")
+        
+        threading.Thread(target=do_build, daemon=True).start()
+    
+    def _open_package_folder(self, folder_path: str):
+        """Open file manager to the package folder."""
+        try:
+            subprocess.Popen(["xdg-open", folder_path])
+        except Exception:
+            pass  # Silently fail if can't open folder
+    
+    def _show_fpm_path_dialog(self, gem_bin_dir: str):
+        """Show dialog with fpm PATH instructions."""
+        dialog = Adw.AlertDialog()
+        dialog.set_heading("fpm Not in PATH")
+        dialog.set_body(
+            f"fpm was installed but isn't in your PATH.\n\n"
+            f"Add this to your ~/.bashrc or ~/.zshrc:\n\n"
+            f"export PATH=\"{gem_bin_dir}:$PATH\"\n\n"
+            f"Then restart your terminal or run:\n"
+            f"source ~/.bashrc"
+        )
+        dialog.add_response("ok", "OK")
+        dialog.set_default_response("ok")
+        dialog.present(self.window)
+    
+    def _show_fpm_error_dialog(self):
+        """Show dialog when fpm can't be found."""
+        dialog = Adw.AlertDialog()
+        dialog.set_heading("fpm Not Found")
+        dialog.set_body(
+            "fpm was installed but couldn't be located.\n\n"
+            "Try running in terminal:\n"
+            "  gem environment\n\n"
+            "Look for 'EXECUTABLE DIRECTORY' and add it to your PATH."
+        )
+        dialog.add_response("ok", "OK")
+        dialog.set_default_response("ok")
+        dialog.present(self.window)
+    
+    def _show_pkg_install_error(self, packages: list, distro: str):
+        """Show dialog when system package installation fails."""
+        install_cmds = {
+            "arch": f"sudo pacman -S {' '.join(packages)}",
+            "fedora": f"sudo dnf install {' '.join(packages)}",
+            "suse": f"sudo zypper install {' '.join(packages)}",
+            "debian": f"sudo apt install {' '.join(packages)}",
+        }
+        cmd = install_cmds.get(distro, f"Install: {', '.join(packages)}")
+        
+        dialog = Adw.AlertDialog()
+        dialog.set_heading("Dependencies Required")
+        dialog.set_body(
+            f"Failed to install required packages.\n\n"
+            f"Please run manually in terminal:\n\n"
+            f"{cmd}\n\n"
+            f"Then try building again."
+        )
+        dialog.add_response("ok", "OK")
+        dialog.set_default_response("ok")
+        dialog.present(self.window)
     
     def _find_tux_assistant_repo(self) -> Optional[str]:
         """Find the Tux Assistant repo on the system."""
