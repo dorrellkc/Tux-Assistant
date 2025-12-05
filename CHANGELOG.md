@@ -2,6 +2,60 @@
 
 All notable changes to Tux Assistant will be documented in this file.
 
+## [0.9.83] - 2025-12-05
+
+### Added
+- **Expanded content type support** for native theme installer:
+  - More icon variations: gnome-icons, xfce-icons, cinnamon-icons, mate-icons
+  - More cursor variations: x11-cursors, mouse-cursors, xcursor
+  - More wallpaper types: backgrounds, wallpapers-uhd, wallpapers-4k
+  - SDDM login themes → ~/.local/share/sddm/themes
+  - Latte Dock layouts → ~/.config/latte
+  - Rofi themes → ~/.config/rofi/themes
+  - Font variations: ttf-fonts, otf-fonts
+
+## [0.9.82] - 2025-12-05
+
+### Added
+- **Multi-DE theme support** - Native installer now handles all desktop environments:
+  - GNOME, XFCE, Cinnamon, MATE (GTK themes → ~/.themes)
+  - KDE Plasma themes → ~/.local/share/plasma/desktoptheme
+  - KDE Look-and-Feel → ~/.local/share/plasma/look-and-feel
+  - Aurorae window decorations → ~/.local/share/aurorae/themes
+  - Kvantum themes → ~/.config/Kvantum
+  - KDE color schemes → ~/.local/share/color-schemes
+  - Konsole themes, Yakuake skins
+  - Conky configs, Plank dock themes
+- **More theme sites allowed** in browser:
+  - xfce-look.org, cinnamon-look.org, mate-look.org
+  - enlightenment-themes.org, linux-apps.com
+
+## [0.9.81] - 2025-12-05
+
+### Fixed
+- Added missing `pathlib` import for native theme installer
+
+## [0.9.80] - 2025-12-05
+
+### Changed
+- **Native theme installer** - Replaced abandoned ocs-url with built-in handler
+- Downloads themes directly from gnome-look.org without third-party tools
+- Extracts to correct location based on type (~/.themes, ~/.icons, etc.)
+- Supports tar.xz, tar.gz, tar.bz2, and zip archives
+
+### Removed
+- Removed all ocs-url installation code (tool is abandoned since 2017)
+- Removed terminal popup for ocs-url installation
+
+## [0.9.79] - 2025-12-05
+
+### Added
+- **Theme Preview & Install** - Embedded browser for gnome-look.org themes
+- **ocs-url integration** - One-click theme installation via ocs:// links
+- Auto-installs ocs-url helper when needed (AUR on Arch, manual on others)
+- Themes not in repos now show "Preview & Install" instead of just external link
+- Intercepts ocs:// links in WebKit browser and handles installation
+
 ## [0.9.78] - 2025-12-05
 
 ### Fixed

@@ -13,6 +13,8 @@ import urllib.request
 import urllib.parse
 import tempfile
 import os
+import shutil
+from pathlib import Path
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional, Callable
@@ -21,6 +23,19 @@ import gi
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
 from gi.repository import Gtk, Adw, GLib, Gio
+
+# Try to import WebKit for theme preview browser
+try:
+    gi.require_version('WebKit', '6.0')
+    from gi.repository import WebKit
+    HAS_WEBKIT = True
+except:
+    try:
+        gi.require_version('WebKit2', '5.0')
+        from gi.repository import WebKit2 as WebKit
+        HAS_WEBKIT = True
+    except:
+        HAS_WEBKIT = False
 
 from ..core import get_distro, get_desktop, DesktopEnv, DistroFamily
 from .registry import register_module, ModuleCategory
@@ -4513,7 +4528,8 @@ class ThemeDetailPage(Adw.NavigationPage):
     """Detail page showing theme information."""
     
     def __init__(self, window, theme: Theme, distro, theme_manager: ThemeManager,
-                 theme_type: ThemeType, is_queued: bool, has_packages: bool, on_queue_changed):
+                 theme_type: ThemeType, is_queued: bool, has_packages: bool, on_queue_changed,
+                 nav_view=None):
         super().__init__(title=theme.name)
         
         self.window = window
@@ -4524,6 +4540,7 @@ class ThemeDetailPage(Adw.NavigationPage):
         self.is_queued = is_queued
         self.has_packages = has_packages
         self.on_queue_changed = on_queue_changed
+        self.nav_view = nav_view or (window.navigation_view if hasattr(window, 'navigation_view') else None)
         
         self._build_ui()
     
@@ -4604,7 +4621,20 @@ class ThemeDetailPage(Adw.NavigationPage):
             alt_group.set_description("This theme is not available in your distribution's repositories")
             content_box.append(alt_group)
             
-            if self.theme.gnome_look_url:
+            if self.theme.gnome_look_url and HAS_WEBKIT:
+                # Preview & Install via ocs-url (in-app browser)
+                gnome_row = Adw.ActionRow()
+                gnome_row.set_title("🎨 Preview && Install")
+                gnome_row.set_subtitle("Browse and install from gnome-look.org")
+                gnome_row.add_prefix(Gtk.Image.new_from_icon_name("applications-graphics-symbolic"))
+                gnome_row.set_activatable(True)
+                gnome_row.connect("activated", self._on_preview_install)
+                
+                install_icon = Gtk.Image.new_from_icon_name("go-next-symbolic")
+                gnome_row.add_suffix(install_icon)
+                alt_group.add(gnome_row)
+            elif self.theme.gnome_look_url:
+                # Fallback to external browser
                 gnome_row = Adw.ActionRow()
                 gnome_row.set_title("GNOME Look")
                 gnome_row.set_subtitle("Download from gnome-look.org")
@@ -4690,6 +4720,22 @@ class ThemeDetailPage(Adw.NavigationPage):
             subprocess.Popen(['xdg-open', url])
         except Exception as e:
             self.window.show_toast(f"Could not open URL: {e}")
+    
+    def _on_preview_install(self, row):
+        """Open theme preview page for one-click install via ocs-url."""
+        if not self.nav_view:
+            # Fallback to external browser
+            self._on_open_url(row, self.theme.gnome_look_url)
+            return
+        
+        preview_page = ThemePreviewPage(
+            window=self.window,
+            distro=self.distro,
+            theme=self.theme,
+            theme_type=self.theme_type,
+            nav_view=self.nav_view
+        )
+        self.nav_view.push(preview_page)
     
     def _on_apply_clicked(self, button):
         """Apply the theme."""
@@ -5195,6 +5241,429 @@ class ThemeDownloadDialog(Adw.Dialog):
             self.window.show_toast("Download the openSUSE RPM and install with: sudo zypper install ./ocs-url*.rpm")
         else:
             self.on_open_url(button, "https://www.gnome-look.org/p/1136805/")
+
+
+# =============================================================================
+# Theme Preview Page (with ocs-url integration)
+# =============================================================================
+
+class ThemePreviewPage(Adw.NavigationPage):
+    """Preview and install themes from gnome-look.org via ocs-url."""
+    
+    def __init__(self, window, distro, theme: Theme, theme_type: ThemeType, nav_view):
+        super().__init__(title=f"Preview: {theme.name}")
+        
+        self.window = window
+        self.distro = distro
+        self.theme = theme
+        self.theme_type = theme_type
+        self.nav_view = nav_view
+        self.webview = None
+        self.ocs_installing = False
+        
+        self.build_ui()
+    
+    def build_ui(self):
+        """Build the preview page UI."""
+        toolbar_view = Adw.ToolbarView()
+        self.set_child(toolbar_view)
+        
+        # Header bar
+        header = Adw.HeaderBar()
+        toolbar_view.add_top_bar(header)
+        
+        # Main content box
+        main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        toolbar_view.set_content(main_box)
+        
+        if not HAS_WEBKIT:
+            # WebKit not available - show fallback
+            self._show_no_webkit_fallback(main_box)
+            return
+        
+        # Info bar at top
+        info_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        info_bar.set_margin_start(16)
+        info_bar.set_margin_end(16)
+        info_bar.set_margin_top(8)
+        info_bar.set_margin_bottom(8)
+        info_bar.add_css_class("card")
+        
+        info_icon = Gtk.Image.new_from_icon_name("dialog-information-symbolic")
+        info_bar.append(info_icon)
+        
+        info_label = Gtk.Label()
+        info_label.set_markup(
+            "<small>Click the <b>Install</b> button on the website to install the theme. "
+            "Choose your preferred variant.</small>"
+        )
+        info_label.set_wrap(True)
+        info_label.set_xalign(0)
+        info_label.set_hexpand(True)
+        info_bar.append(info_label)
+        
+        main_box.append(info_bar)
+        
+        # WebView for gnome-look.org
+        self.webview = WebKit.WebView()
+        self.webview.set_vexpand(True)
+        self.webview.set_hexpand(True)
+        
+        # Connect to decide-policy to intercept ocs:// links
+        self.webview.connect("decide-policy", self._on_decide_policy)
+        
+        # Configure settings
+        settings = self.webview.get_settings()
+        settings.set_enable_javascript(True)
+        settings.set_enable_javascript_markup(True)
+        
+        # Load the gnome-look page
+        url = self.theme.gnome_look_url or self.theme.kde_store_url
+        if url:
+            self.webview.load_uri(url)
+        
+        main_box.append(self.webview)
+        
+        # Status bar at bottom
+        status_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        status_bar.set_margin_start(16)
+        status_bar.set_margin_end(16)
+        status_bar.set_margin_top(8)
+        status_bar.set_margin_bottom(8)
+        
+        self.status_label = Gtk.Label(label="Browse the theme and click Install when ready")
+        self.status_label.add_css_class("dim-label")
+        self.status_label.set_hexpand(True)
+        self.status_label.set_xalign(0)
+        status_bar.append(self.status_label)
+        
+        # Manual open button
+        open_btn = Gtk.Button(label="Open in Browser")
+        open_btn.add_css_class("flat")
+        open_btn.connect("clicked", self._on_open_external)
+        status_bar.append(open_btn)
+        
+        main_box.append(status_bar)
+    
+    def _show_no_webkit_fallback(self, container):
+        """Show fallback when WebKit is not available."""
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
+        box.set_valign(Gtk.Align.CENTER)
+        box.set_vexpand(True)
+        box.set_margin_start(32)
+        box.set_margin_end(32)
+        
+        icon = Gtk.Image.new_from_icon_name("web-browser-symbolic")
+        icon.set_pixel_size(64)
+        icon.add_css_class("dim-label")
+        box.append(icon)
+        
+        title = Gtk.Label(label="WebKit Not Available")
+        title.add_css_class("title-2")
+        box.append(title)
+        
+        desc = Gtk.Label(label="Install webkit2gtk to enable in-app preview")
+        desc.add_css_class("dim-label")
+        box.append(desc)
+        
+        # Open in browser button
+        open_btn = Gtk.Button(label="Open in External Browser")
+        open_btn.add_css_class("suggested-action")
+        open_btn.connect("clicked", self._on_open_external)
+        box.append(open_btn)
+        
+        container.append(box)
+    
+    def _on_decide_policy(self, webview, decision, decision_type):
+        """Handle navigation - intercept ocs:// links."""
+        if decision_type == WebKit.PolicyDecisionType.NAVIGATION_ACTION:
+            nav_action = decision.get_navigation_action()
+            request = nav_action.get_request()
+            uri = request.get_uri()
+            
+            if uri:
+                # Check for ocs:// links
+                if uri.startswith("ocs://"):
+                    decision.ignore()
+                    self._handle_ocs_url(uri)
+                    return True
+                
+                # Allow navigation within opendesktop family domains
+                allowed_domains = [
+                    # GNOME
+                    'gnome-look.org', 'www.gnome-look.org',
+                    # KDE
+                    'kde-store.net', 'www.kde-store.net',
+                    'store.kde.org', 'www.store.kde.org',
+                    # XFCE
+                    'xfce-look.org', 'www.xfce-look.org',
+                    # Cinnamon
+                    'cinnamon-look.org', 'www.cinnamon-look.org',
+                    # MATE
+                    'mate-look.org', 'www.mate-look.org',
+                    # Enlightenment
+                    'enlightenment-themes.org', 'www.enlightenment-themes.org',
+                    # General opendesktop
+                    'opendesktop.org', 'www.opendesktop.org',
+                    'pling.com', 'www.pling.com',
+                    'linux-apps.com', 'www.linux-apps.com',
+                ]
+                
+                from urllib.parse import urlparse
+                parsed = urlparse(uri)
+                if any(domain in parsed.netloc for domain in allowed_domains):
+                    decision.use()
+                    return False
+                
+                # Block navigation to other sites
+                decision.ignore()
+                return True
+        
+        decision.use()
+        return False
+    
+    def _handle_ocs_url(self, ocs_uri: str):
+        """Handle an ocs:// URI - download and install theme directly."""
+        self.status_label.set_text("🎨 Downloading theme...")
+        
+        if self.window:
+            self.window.show_toast(f"📦 Downloading {self.theme.name}...")
+        
+        # Parse the ocs:// URL
+        # Format: ocs://install?url=https%3A%2F%2F...&type=themes&filename=Name.tar.xz
+        try:
+            from urllib.parse import urlparse, parse_qs, unquote
+            
+            # Remove ocs:// prefix and parse
+            if ocs_uri.startswith('ocs://'):
+                ocs_uri = ocs_uri[6:]  # Remove 'ocs://'
+            
+            # Parse the path and query
+            if '?' in ocs_uri:
+                path, query = ocs_uri.split('?', 1)
+            else:
+                self.status_label.set_text("Invalid ocs:// URL format")
+                return
+            
+            params = parse_qs(query)
+            
+            # Get the download URL
+            download_url = params.get('url', [None])[0]
+            if download_url:
+                download_url = unquote(download_url)
+            
+            # Get the content type
+            content_type = params.get('type', ['themes'])[0]
+            
+            # Get the filename
+            filename = params.get('filename', [None])[0]
+            if filename:
+                filename = unquote(filename)
+            
+            if not download_url:
+                self.status_label.set_text("No download URL in ocs:// link")
+                if self.window:
+                    self.window.show_toast("❌ Invalid download link")
+                return
+            
+            # Download and install in background thread
+            def do_download_and_install():
+                try:
+                    success, message = self._download_and_install_theme(
+                        download_url, content_type, filename
+                    )
+                    GLib.idle_add(self._on_theme_installed, success, message)
+                except Exception as e:
+                    GLib.idle_add(self._on_theme_installed, False, str(e))
+            
+            threading.Thread(target=do_download_and_install, daemon=True).start()
+            
+        except Exception as e:
+            self.status_label.set_text(f"Error parsing URL: {e}")
+            if self.window:
+                self.window.show_toast(f"❌ Error: {e}")
+    
+    def _download_and_install_theme(self, url: str, content_type: str, filename: str) -> tuple[bool, str]:
+        """Download and install a theme/icon pack. Returns (success, message)."""
+        import tempfile
+        import tarfile
+        import zipfile
+        
+        # Determine install directory based on content type
+        home = Path.home()
+        
+        # GTK themes (GNOME, XFCE, Cinnamon, MATE)
+        if content_type in ['themes', 'gtk3-themes', 'gtk-themes', 'gnome-shell-themes',
+                            'xfce-themes', 'cinnamon-themes', 'mate-themes', 'metacity-themes']:
+            install_dir = home / '.themes'
+        
+        # KDE/Plasma specific
+        elif content_type in ['plasma-themes', 'plasma5-themes', 'plasma-desktopthemes']:
+            install_dir = home / '.local' / 'share' / 'plasma' / 'desktoptheme'
+        elif content_type in ['plasma-look-and-feel', 'plasma-lookandfeel']:
+            install_dir = home / '.local' / 'share' / 'plasma' / 'look-and-feel'
+        elif content_type in ['aurorae-themes', 'kde-window-decorations']:
+            install_dir = home / '.local' / 'share' / 'aurorae' / 'themes'
+        elif content_type in ['color-schemes', 'kde-color-schemes']:
+            install_dir = home / '.local' / 'share' / 'color-schemes'
+        elif content_type in ['kvantum-themes', 'kvantum']:
+            install_dir = home / '.config' / 'Kvantum'
+        elif content_type in ['plasma-splashscreens', 'kde-splash']:
+            install_dir = home / '.local' / 'share' / 'plasma' / 'look-and-feel'
+        elif content_type in ['konsole-themes', 'konsole']:
+            install_dir = home / '.local' / 'share' / 'konsole'
+        elif content_type in ['yakuake-skins']:
+            install_dir = home / '.local' / 'share' / 'yakuake' / 'skins'
+        
+        # Icons (universal - all DEs use ~/.icons)
+        elif content_type in ['icons', 'icon-themes', 'full-icon-themes', 'kde-icons',
+                              'gnome-icons', 'xfce-icons', 'cinnamon-icons', 'mate-icons',
+                              'icon-theme', 'icon', 'icons-gnome', 'icons-kde']:
+            install_dir = home / '.icons'
+        
+        # Cursors (also go in ~/.icons)
+        elif content_type in ['cursors', 'cursor-themes', 'xcursors', 'x11-cursors',
+                              'cursor', 'cursor-theme', 'mouse-cursors', 'xcursor']:
+            install_dir = home / '.icons'
+        
+        # Wallpapers (universal)
+        elif content_type in ['wallpapers', 'wallpaper', 'wallpapers-hd', 'backgrounds',
+                              'gnome-backgrounds', 'kde-wallpapers', 'desktop-wallpapers',
+                              'wallpapers-uhd', 'wallpapers-4k']:
+            install_dir = home / 'Pictures' / 'Wallpapers'
+        
+        # Fonts (universal)
+        elif content_type in ['fonts', 'font', 'ttf-fonts', 'otf-fonts']:
+            install_dir = home / '.local' / 'share' / 'fonts'
+        
+        # SDDM login themes (KDE)
+        elif content_type in ['sddm-themes', 'sddm', 'sddm-theme']:
+            install_dir = home / '.local' / 'share' / 'sddm' / 'themes'
+        
+        # GDM/LightDM themes (GNOME)
+        elif content_type in ['gdm-themes', 'lightdm-themes']:
+            install_dir = home / '.themes'  # These typically need system install
+        
+        # Conky configs
+        elif content_type in ['conky', 'conky-themes', 'conky-configs']:
+            install_dir = home / '.config' / 'conky'
+        
+        # Plank themes (dock)
+        elif content_type in ['plank-themes', 'plank']:
+            install_dir = home / '.local' / 'share' / 'plank' / 'themes'
+        
+        # Latte Dock themes (KDE)
+        elif content_type in ['latte-dock', 'latte-layouts']:
+            install_dir = home / '.config' / 'latte'
+        
+        # Rofi themes
+        elif content_type in ['rofi-themes', 'rofi']:
+            install_dir = home / '.config' / 'rofi' / 'themes'
+        
+        # Default to ~/.themes for unknown types
+        else:
+            install_dir = home / '.themes'
+        
+        # Create install directory if needed
+        install_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Create temp directory for download
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+            
+            # Determine filename if not provided
+            if not filename:
+                filename = url.split('/')[-1]
+                if not filename or '.' not in filename:
+                    filename = 'theme-download.tar.xz'
+            
+            download_path = tmpdir / filename
+            
+            # Download the file
+            try:
+                result = subprocess.run(
+                    ['wget', '-q', '--show-progress', '-O', str(download_path), url],
+                    capture_output=True, text=True, timeout=120
+                )
+                if result.returncode != 0:
+                    # Try curl as fallback
+                    result = subprocess.run(
+                        ['curl', '-L', '-o', str(download_path), url],
+                        capture_output=True, text=True, timeout=120
+                    )
+                    if result.returncode != 0:
+                        return False, "Download failed"
+            except subprocess.TimeoutExpired:
+                return False, "Download timed out"
+            except Exception as e:
+                return False, f"Download error: {e}"
+            
+            if not download_path.exists() or download_path.stat().st_size == 0:
+                return False, "Downloaded file is empty"
+            
+            # Extract the archive
+            try:
+                if filename.endswith('.tar.xz') or filename.endswith('.tar.gz') or filename.endswith('.tar.bz2') or filename.endswith('.tar'):
+                    with tarfile.open(download_path) as tar:
+                        # Get the top-level directory name
+                        members = tar.getmembers()
+                        if members:
+                            top_dirs = set()
+                            for m in members:
+                                parts = m.name.split('/')
+                                if parts[0]:
+                                    top_dirs.add(parts[0])
+                            
+                            # Extract to install directory
+                            tar.extractall(path=install_dir)
+                            
+                            theme_name = list(top_dirs)[0] if len(top_dirs) == 1 else filename.rsplit('.', 2)[0]
+                        else:
+                            return False, "Archive is empty"
+                            
+                elif filename.endswith('.zip'):
+                    with zipfile.ZipFile(download_path, 'r') as zf:
+                        # Get the top-level directory name
+                        names = zf.namelist()
+                        if names:
+                            top_dirs = set()
+                            for n in names:
+                                parts = n.split('/')
+                                if parts[0]:
+                                    top_dirs.add(parts[0])
+                            
+                            # Extract to install directory
+                            zf.extractall(path=install_dir)
+                            
+                            theme_name = list(top_dirs)[0] if len(top_dirs) == 1 else filename.rsplit('.', 1)[0]
+                        else:
+                            return False, "Archive is empty"
+                else:
+                    return False, f"Unsupported archive format: {filename}"
+                    
+            except Exception as e:
+                return False, f"Extraction failed: {e}"
+        
+        return True, f"Installed to {install_dir}"
+    
+    def _on_theme_installed(self, success: bool, message: str):
+        """Handle theme installation completion."""
+        if success:
+            self.status_label.set_text(f"✓ {self.theme.name} installed!")
+            if self.window:
+                self.window.show_toast(f"✓ {self.theme.name} installed! You may need to select it in Settings → Appearance")
+        else:
+            self.status_label.set_text(f"❌ Installation failed: {message}")
+            if self.window:
+                self.window.show_toast(f"❌ Failed: {message}")
+        
+        return False
+    
+    def _on_open_external(self, button):
+        """Open the theme page in external browser."""
+        url = self.theme.gnome_look_url or self.theme.kde_store_url
+        if url:
+            subprocess.Popen(['xdg-open', url])
 
 
 # =============================================================================
