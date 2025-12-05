@@ -851,11 +851,16 @@ depends=(
     'polkit'
     'python-dbus'
     'webkit2gtk-4.1'
+    'gstreamer'
+    'gst-plugins-base'
+    'gst-plugins-good'
 )
 optdepends=(
     'speedtest-cli: for network speed tests'
     'samba: for network file sharing'
     'gnome-shell: for GNOME extension management'
+    'gst-plugins-ugly: for additional audio format support'
+    'gst-plugins-bad: for additional audio format support'
 )
 source=("$pkgname-$pkgver.tar.gz::https://github.com/dorrellkc/Tux-Assistant/archive/refs/tags/v$pkgver.tar.gz")
 sha256sums=('{sha256sum}')
@@ -873,20 +878,27 @@ package() {{
     install -Dm755 tux-helper "$pkgdir/opt/tux-assistant/"
     install -Dm644 VERSION "$pkgdir/opt/tux-assistant/"
     
-    # Install launcher script
+    # Install Tux Assistant launcher script
     install -dm755 "$pkgdir/usr/bin"
     echo '#!/bin/bash' > "$pkgdir/usr/bin/tux-assistant"
     echo 'cd /opt/tux-assistant && python tux-assistant.py "$@"' >> "$pkgdir/usr/bin/tux-assistant"
     chmod 755 "$pkgdir/usr/bin/tux-assistant"
     
+    # Install Tux Tunes launcher script
+    echo '#!/bin/bash' > "$pkgdir/usr/bin/tux-tunes"
+    echo 'python /opt/tux-assistant/tux/apps/tux_tunes/tux-tunes.py "$@"' >> "$pkgdir/usr/bin/tux-tunes"
+    chmod 755 "$pkgdir/usr/bin/tux-tunes"
+    
     # Install tux-helper to /usr/bin
     install -Dm755 tux-helper "$pkgdir/usr/bin/tux-helper"
     
-    # Install desktop file
+    # Install desktop files
     install -Dm644 data/com.tuxassistant.app.desktop "$pkgdir/usr/share/applications/com.tuxassistant.app.desktop"
+    install -Dm644 data/com.tuxassistant.tuxtunes.desktop "$pkgdir/usr/share/applications/com.tuxassistant.tuxtunes.desktop"
     
-    # Install icon
+    # Install icons
     install -Dm644 assets/icon.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/tux-assistant.svg"
+    install -Dm644 assets/tux-tunes.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/tux-tunes.svg"
     
     # Install polkit policy
     install -Dm644 data/com.tuxassistant.helper.policy "$pkgdir/usr/share/polkit-1/actions/com.tuxassistant.helper.policy"
@@ -910,9 +922,14 @@ package() {{
 \tdepends = polkit
 \tdepends = python-dbus
 \tdepends = webkit2gtk-4.1
+\tdepends = gstreamer
+\tdepends = gst-plugins-base
+\tdepends = gst-plugins-good
 \toptdepends = speedtest-cli: for network speed tests
 \toptdepends = samba: for network file sharing
 \toptdepends = gnome-shell: for GNOME extension management
+\toptdepends = gst-plugins-ugly: for additional audio format support
+\toptdepends = gst-plugins-bad: for additional audio format support
 \tsource = tux-assistant-{version}.tar.gz::https://github.com/dorrellkc/Tux-Assistant/archive/refs/tags/v{version}.tar.gz
 \tsha256sums = {sha256sum}
 

@@ -2,6 +2,16 @@
 
 All notable changes to Tux Assistant will be documented in this file.
 
+## [0.9.94] - 2025-12-05
+
+### Fixed
+- **AUR PKGBUILD now installs Tux Tunes properly:**
+  - Added `/usr/bin/tux-tunes` launcher script
+  - Added `/usr/share/applications/com.tuxassistant.tuxtunes.desktop`
+  - Added `/usr/share/icons/hicolor/scalable/apps/tux-tunes.svg`
+- Added GStreamer dependencies to AUR package (gstreamer, gst-plugins-base, gst-plugins-good)
+- Added optional GStreamer plugins (ugly, bad) for extended audio format support
+
 ## [0.9.93] - 2025-12-05
 
 ### Fixed
