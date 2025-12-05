@@ -2,6 +2,16 @@
 
 All notable changes to Tux Assistant will be documented in this file.
 
+## [0.9.97] - 2025-12-05
+
+### Fixed
+- **AUR publish now works from any distro** (not just Arch-based)
+  - .SRCINFO is generated in Python, doesn't require makepkg
+  - Fixed branch handling - explicitly uses 'master' (what AUR requires)
+  - Auto-detects current branch instead of hardcoding
+  - Better error messages on push failure
+  - Cleans up broken repo directories before fresh clone
+
 ## [0.9.96] - 2025-12-05
 
 ### Fixed

@@ -982,27 +982,33 @@ pkgname = tux-assistant
                 # 2. Clone or pull AUR repo
                 GLib.idle_add(self.window.show_toast, "Syncing AUR repo...")
                 
-                if os.path.isdir(aur_repo):
-                    # Pull existing repo
+                if os.path.isdir(aur_repo) and os.path.isdir(os.path.join(aur_repo, '.git')):
+                    # Pull existing repo - ensure we're on master branch (AUR uses master)
+                    subprocess.run(['git', 'checkout', 'master'], cwd=aur_repo, capture_output=True, timeout=10)
                     pull_result = subprocess.run(
-                        ['git', 'pull'],
+                        ['git', 'pull', 'origin', 'master'],
                         cwd=aur_repo,
                         env=ssh_env,
                         capture_output=True, text=True, timeout=60
                     )
                 else:
+                    # Remove any broken repo dir
+                    if os.path.exists(aur_repo):
+                        import shutil
+                        shutil.rmtree(aur_repo)
+                    
                     # Clone fresh
                     clone_result = subprocess.run(
-                        ['git', 'clone', 'ssh://aur@aur.archlinux.org/tux-assistant.git'],
+                        ['git', 'clone', 'ssh://aur@aur.archlinux.org/tux-assistant.git', 'tux-assistant'],
                         cwd=aur_dir,
                         env=ssh_env,
                         capture_output=True, text=True, timeout=60
                     )
                     
                     if clone_result.returncode != 0:
-                        # Repo might not exist yet - create empty dir and init
+                        # Repo might not exist yet on AUR - create empty dir and init
                         os.makedirs(aur_repo, exist_ok=True)
-                        subprocess.run(['git', 'init'], cwd=aur_repo, timeout=10)
+                        subprocess.run(['git', 'init', '-b', 'master'], cwd=aur_repo, timeout=10)
                         subprocess.run(
                             ['git', 'remote', 'add', 'origin', 'ssh://aur@aur.archlinux.org/tux-assistant.git'],
                             cwd=aur_repo, timeout=10
@@ -1031,27 +1037,25 @@ pkgname = tux-assistant
                     capture_output=True, text=True, timeout=30
                 )
                 
-                # Push (even if commit said "nothing to commit")
+                # Get current branch name
+                branch_result = subprocess.run(
+                    ['git', 'rev-parse', '--abbrev-ref', 'HEAD'],
+                    cwd=aur_repo, capture_output=True, text=True, timeout=10
+                )
+                current_branch = branch_result.stdout.strip() or 'master'
+                
+                # Push to the current branch (AUR uses master)
                 push_result = subprocess.run(
-                    ['git', 'push', '-u', 'origin', 'master'],
+                    ['git', 'push', '-u', 'origin', current_branch],
                     cwd=aur_repo,
                     env=ssh_env,
                     capture_output=True, text=True, timeout=60
                 )
                 
-                if push_result.returncode != 0:
-                    # Try 'main' branch instead
-                    push_result = subprocess.run(
-                        ['git', 'push', '-u', 'origin', 'main'],
-                        cwd=aur_repo,
-                        env=ssh_env,
-                        capture_output=True, text=True, timeout=60
-                    )
-                
                 if push_result.returncode == 0 or "Everything up-to-date" in push_result.stderr:
                     GLib.idle_add(self.window.show_toast, f"🎉 Published v{version} to AUR!")
                 else:
-                    error = push_result.stderr[:80] if push_result.stderr else "Push failed"
+                    error = push_result.stderr[:80] if push_result.stderr else push_result.stdout[:80]
                     GLib.idle_add(self.window.show_toast, f"AUR push failed: {error}")
                     
                 # Cleanup tarball
