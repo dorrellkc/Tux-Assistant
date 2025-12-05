@@ -433,6 +433,21 @@ class DeveloperToolsPage(Adw.NavigationPage):
         
         ta_group.add(publish_row)
         
+        # Publish to AUR row
+        aur_row = Adw.ActionRow()
+        aur_row.set_title("📦 Publish to AUR")
+        aur_row.set_subtitle("Generate PKGBUILD and push to Arch User Repository")
+        aur_row.add_prefix(Gtk.Image.new_from_icon_name("software-update-available-symbolic"))
+        
+        aur_btn = Gtk.Button(label=f"Publish v{version} to AUR")
+        aur_btn.add_css_class("suggested-action")
+        aur_btn.set_tooltip_text("Create/update AUR package")
+        aur_btn.set_valign(Gtk.Align.CENTER)
+        aur_btn.connect("clicked", self._on_publish_to_aur)
+        aur_row.add_suffix(aur_btn)
+        
+        ta_group.add(aur_row)
+        
         # Help link (small, at bottom)
         help_row = Adw.ActionRow()
         help_row.set_title("Need help?")
@@ -718,6 +733,262 @@ class DeveloperToolsPage(Adw.NavigationPage):
                 pass
         
         return env
+    
+    def _on_publish_to_aur(self, button):
+        """Handle AUR publish button click."""
+        version = self._get_ta_version()
+        
+        # Check SSH first
+        ssh_status = self._check_ssh_agent_status()
+        if "Unlocked" not in ssh_status:
+            self.window.show_toast("⚠️ Unlock SSH key first!")
+            return
+        
+        # Check if GitHub release exists (we need the tarball)
+        check_result = subprocess.run(
+            ['gh', 'release', 'view', f'v{version}'],
+            capture_output=True, text=True, timeout=30
+        )
+        
+        if check_result.returncode != 0:
+            self.window.show_toast(f"⚠️ GitHub release v{version} not found. Publish to GitHub first!")
+            return
+        
+        # Show confirmation dialog
+        dialog = Adw.AlertDialog()
+        dialog.set_heading(f"Publish v{version} to AUR?")
+        dialog.set_body(
+            "This will:\n\n"
+            "• Download source tarball from GitHub\n"
+            "• Generate PKGBUILD and .SRCINFO\n"
+            "• Push to AUR (ssh://aur@aur.archlinux.org/tux-assistant.git)\n\n"
+            "Make sure you have:\n"
+            "• AUR account at aur.archlinux.org\n"
+            "• SSH key added to AUR account"
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("publish", "Publish to AUR")
+        dialog.set_response_appearance("publish", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
+        dialog.connect("response", self._do_aur_publish, version)
+        dialog.present(self.window)
+    
+    def _generate_pkgbuild(self, version: str, sha256sum: str) -> str:
+        """Generate PKGBUILD content."""
+        return f'''# Maintainer: Christopher Dorrell <dorrellkc@gmail.com>
+pkgname=tux-assistant
+pkgver={version}
+pkgrel=1
+pkgdesc="GTK4/Libadwaita Linux system configuration tool - simplifies post-installation setup"
+arch=('any')
+url="https://github.com/dorrellkc/Tux-Assistant"
+license=('GPL-3.0-or-later')
+depends=(
+    'python'
+    'python-gobject'
+    'gtk4'
+    'libadwaita'
+    'python-requests'
+    'polkit'
+    'python-dbus'
+    'webkit2gtk-4.1'
+)
+optdepends=(
+    'speedtest-cli: for network speed tests'
+    'samba: for network file sharing'
+    'gnome-shell: for GNOME extension management'
+)
+source=("$pkgname-$pkgver.tar.gz::https://github.com/dorrellkc/Tux-Assistant/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('{sha256sum}')
+
+package() {{
+    cd "$srcdir/Tux-Assistant-$pkgver"
+    
+    # Install to /opt/tux-assistant
+    install -dm755 "$pkgdir/opt/tux-assistant"
+    cp -r tux "$pkgdir/opt/tux-assistant/"
+    cp -r assets "$pkgdir/opt/tux-assistant/"
+    cp -r data "$pkgdir/opt/tux-assistant/"
+    cp -r scripts "$pkgdir/opt/tux-assistant/"
+    install -Dm755 tux-assistant.py "$pkgdir/opt/tux-assistant/"
+    install -Dm755 tux-helper "$pkgdir/opt/tux-assistant/"
+    install -Dm644 VERSION "$pkgdir/opt/tux-assistant/"
+    
+    # Install launcher script
+    install -dm755 "$pkgdir/usr/bin"
+    echo '#!/bin/bash' > "$pkgdir/usr/bin/tux-assistant"
+    echo 'cd /opt/tux-assistant && python tux-assistant.py "$@"' >> "$pkgdir/usr/bin/tux-assistant"
+    chmod 755 "$pkgdir/usr/bin/tux-assistant"
+    
+    # Install tux-helper to /usr/bin
+    install -Dm755 tux-helper "$pkgdir/usr/bin/tux-helper"
+    
+    # Install desktop file
+    install -Dm644 data/com.tuxassistant.app.desktop "$pkgdir/usr/share/applications/com.tuxassistant.app.desktop"
+    
+    # Install icon
+    install -Dm644 assets/icon.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/tux-assistant.svg"
+    
+    # Install polkit policy
+    install -Dm644 data/com.tuxassistant.helper.policy "$pkgdir/usr/share/polkit-1/actions/com.tuxassistant.helper.policy"
+}}
+'''
+    
+    def _generate_srcinfo(self, version: str, sha256sum: str) -> str:
+        """Generate .SRCINFO content."""
+        return f'''pkgbase = tux-assistant
+\tpkgdesc = GTK4/Libadwaita Linux system configuration tool - simplifies post-installation setup
+\tpkgver = {version}
+\tpkgrel = 1
+\turl = https://github.com/dorrellkc/Tux-Assistant
+\tarch = any
+\tlicense = GPL-3.0-or-later
+\tdepends = python
+\tdepends = python-gobject
+\tdepends = gtk4
+\tdepends = libadwaita
+\tdepends = python-requests
+\tdepends = polkit
+\tdepends = python-dbus
+\tdepends = webkit2gtk-4.1
+\toptdepends = speedtest-cli: for network speed tests
+\toptdepends = samba: for network file sharing
+\toptdepends = gnome-shell: for GNOME extension management
+\tsource = tux-assistant-{version}.tar.gz::https://github.com/dorrellkc/Tux-Assistant/archive/refs/tags/v{version}.tar.gz
+\tsha256sums = {sha256sum}
+
+pkgname = tux-assistant
+'''
+    
+    def _do_aur_publish(self, dialog, response, version):
+        """Execute AUR publish workflow."""
+        if response != "publish":
+            return
+        
+        self.window.show_toast("Preparing AUR package...")
+        
+        def do_aur_publish():
+            try:
+                ssh_env = self._get_ssh_env()
+                aur_dir = os.path.expanduser("~/.cache/tux-assistant/aur")
+                aur_repo = os.path.join(aur_dir, "tux-assistant")
+                
+                # Create cache dir
+                os.makedirs(aur_dir, exist_ok=True)
+                
+                # 1. Download source tarball and calculate sha256
+                GLib.idle_add(self.window.show_toast, "Downloading source tarball...")
+                tarball_url = f"https://github.com/dorrellkc/Tux-Assistant/archive/refs/tags/v{version}.tar.gz"
+                tarball_path = os.path.join(aur_dir, f"tux-assistant-{version}.tar.gz")
+                
+                # Download with curl
+                dl_result = subprocess.run(
+                    ['curl', '-L', '-o', tarball_path, tarball_url],
+                    capture_output=True, text=True, timeout=120
+                )
+                
+                if dl_result.returncode != 0 or not os.path.exists(tarball_path):
+                    GLib.idle_add(self.window.show_toast, "Failed to download tarball")
+                    return
+                
+                # Calculate sha256
+                sha_result = subprocess.run(
+                    ['sha256sum', tarball_path],
+                    capture_output=True, text=True, timeout=30
+                )
+                
+                if sha_result.returncode != 0:
+                    GLib.idle_add(self.window.show_toast, "Failed to calculate sha256")
+                    return
+                
+                sha256sum = sha_result.stdout.split()[0]
+                
+                # 2. Clone or pull AUR repo
+                GLib.idle_add(self.window.show_toast, "Syncing AUR repo...")
+                
+                if os.path.isdir(aur_repo):
+                    # Pull existing repo
+                    pull_result = subprocess.run(
+                        ['git', 'pull'],
+                        cwd=aur_repo,
+                        env=ssh_env,
+                        capture_output=True, text=True, timeout=60
+                    )
+                else:
+                    # Clone fresh
+                    clone_result = subprocess.run(
+                        ['git', 'clone', 'ssh://aur@aur.archlinux.org/tux-assistant.git'],
+                        cwd=aur_dir,
+                        env=ssh_env,
+                        capture_output=True, text=True, timeout=60
+                    )
+                    
+                    if clone_result.returncode != 0:
+                        # Repo might not exist yet - create empty dir and init
+                        os.makedirs(aur_repo, exist_ok=True)
+                        subprocess.run(['git', 'init'], cwd=aur_repo, timeout=10)
+                        subprocess.run(
+                            ['git', 'remote', 'add', 'origin', 'ssh://aur@aur.archlinux.org/tux-assistant.git'],
+                            cwd=aur_repo, timeout=10
+                        )
+                
+                # 3. Generate PKGBUILD and .SRCINFO
+                GLib.idle_add(self.window.show_toast, "Generating PKGBUILD...")
+                
+                pkgbuild_content = self._generate_pkgbuild(version, sha256sum)
+                srcinfo_content = self._generate_srcinfo(version, sha256sum)
+                
+                with open(os.path.join(aur_repo, 'PKGBUILD'), 'w') as f:
+                    f.write(pkgbuild_content)
+                
+                with open(os.path.join(aur_repo, '.SRCINFO'), 'w') as f:
+                    f.write(srcinfo_content)
+                
+                # 4. Commit and push
+                GLib.idle_add(self.window.show_toast, "Pushing to AUR...")
+                
+                subprocess.run(['git', 'add', 'PKGBUILD', '.SRCINFO'], cwd=aur_repo, timeout=10)
+                
+                commit_result = subprocess.run(
+                    ['git', 'commit', '-m', f'Update to v{version}'],
+                    cwd=aur_repo,
+                    capture_output=True, text=True, timeout=30
+                )
+                
+                # Push (even if commit said "nothing to commit")
+                push_result = subprocess.run(
+                    ['git', 'push', '-u', 'origin', 'master'],
+                    cwd=aur_repo,
+                    env=ssh_env,
+                    capture_output=True, text=True, timeout=60
+                )
+                
+                if push_result.returncode != 0:
+                    # Try 'main' branch instead
+                    push_result = subprocess.run(
+                        ['git', 'push', '-u', 'origin', 'main'],
+                        cwd=aur_repo,
+                        env=ssh_env,
+                        capture_output=True, text=True, timeout=60
+                    )
+                
+                if push_result.returncode == 0 or "Everything up-to-date" in push_result.stderr:
+                    GLib.idle_add(self.window.show_toast, f"🎉 Published v{version} to AUR!")
+                else:
+                    error = push_result.stderr[:80] if push_result.stderr else "Push failed"
+                    GLib.idle_add(self.window.show_toast, f"AUR push failed: {error}")
+                    
+                # Cleanup tarball
+                try:
+                    os.remove(tarball_path)
+                except:
+                    pass
+                    
+            except Exception as e:
+                GLib.idle_add(self.window.show_toast, f"Error: {str(e)[:50]}")
+        
+        threading.Thread(target=do_aur_publish, daemon=True).start()
     
     def _find_tux_assistant_repo(self) -> Optional[str]:
         """Find the Tux Assistant repo on the system."""
