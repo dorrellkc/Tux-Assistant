@@ -234,9 +234,9 @@ def get_bluetooth_devices() -> List[BluetoothDevice]:
 def toggle_bluetooth_power(on: bool) -> bool:
     """Turn Bluetooth on or off."""
     try:
-        cmd = "power on" if on else "power off"
+        cmd = "on" if on else "off"
         result = subprocess.run(
-            ['bluetoothctl', cmd],
+            ['bluetoothctl', 'power', cmd],
             capture_output=True, text=True,
             input=""
         )
@@ -1092,21 +1092,41 @@ read'''
     
     def _on_enable_bluetooth(self, button):
         """Enable Bluetooth."""
-        success = toggle_bluetooth_power(True)
-        if success:
-            self.window.show_toast("Bluetooth enabled")
-            GLib.timeout_add(1000, self._refresh_bluetooth)
-        else:
-            self.window.show_toast("Could not enable Bluetooth")
+        button.set_sensitive(False)
+        button.set_label("Enabling...")
+        
+        def do_enable():
+            success = toggle_bluetooth_power(True)
+            GLib.idle_add(self._on_bluetooth_toggle_done, success, True, button)
+        
+        threading.Thread(target=do_enable, daemon=True).start()
     
     def _on_disable_bluetooth(self, button):
         """Disable Bluetooth."""
-        success = toggle_bluetooth_power(False)
+        button.set_sensitive(False)
+        button.set_label("Disabling...")
+        
+        def do_disable():
+            success = toggle_bluetooth_power(False)
+            GLib.idle_add(self._on_bluetooth_toggle_done, success, False, button)
+        
+        threading.Thread(target=do_disable, daemon=True).start()
+    
+    def _on_bluetooth_toggle_done(self, success: bool, was_enabling: bool, button):
+        """Handle bluetooth toggle completion."""
         if success:
-            self.window.show_toast("Bluetooth disabled")
-            GLib.timeout_add(1000, self._refresh_bluetooth)
+            action = "enabled" if was_enabling else "disabled"
+            self.window.show_toast(f"Bluetooth {action}")
         else:
-            self.window.show_toast("Could not disable Bluetooth")
+            action = "enable" if was_enabling else "disable"
+            self.window.show_toast(f"Could not {action} Bluetooth")
+            # Re-enable button on failure
+            button.set_sensitive(True)
+            button.set_label("Enable Bluetooth" if was_enabling else "Disable")
+        
+        # Refresh UI to show new state
+        self._refresh_bluetooth()
+        return False
     
     def _on_open_bluetooth_settings(self, row):
         """Open system Bluetooth settings."""

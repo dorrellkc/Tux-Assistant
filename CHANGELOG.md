@@ -2,6 +2,19 @@
 
 All notable changes to Tux Assistant will be documented in this file.
 
+## [0.9.99] - 2025-12-05
+
+### Fixed
+- **Bluetooth toggle now works on XFCE/Arch** (and other systems)
+  - Fixed `bluetoothctl` command syntax - args were incorrectly combined
+  - Changed from `['bluetoothctl', 'power on']` to `['bluetoothctl', 'power', 'on']`
+  - Added instant visual feedback: button shows "Enabling..." / "Disabling..." during operation
+  - Operation runs in background thread to prevent UI freeze
+
+- **XFCE themes no longer revert after applying**
+  - Now sets both GTK theme (`xsettings`) AND window manager theme (`xfwm4`)
+  - Without setting xfwm4, window decorations wouldn't match and could revert on session restart
+
 ## [0.9.98] - 2025-12-05
 
 ### Fixed

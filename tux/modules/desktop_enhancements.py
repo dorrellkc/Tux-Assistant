@@ -2558,9 +2558,15 @@ class ThemeManager:
                     check=True, timeout=5
                 )
             elif self.desktop.desktop_env == DesktopEnv.XFCE:
+                # XFCE needs both GTK theme and window manager theme
                 subprocess.run(
                     ['xfconf-query', '-c', 'xsettings', '-p', '/Net/ThemeName', '-s', theme_name],
                     check=True, timeout=5
+                )
+                # Also set the window manager (xfwm4) theme for window decorations
+                subprocess.run(
+                    ['xfconf-query', '-c', 'xfwm4', '-p', '/general/theme', '-s', theme_name],
+                    timeout=5
                 )
             elif self.desktop.desktop_env == DesktopEnv.KDE:
                 # KDE: Set GTK theme via kde-gtk-config or plasma settings
