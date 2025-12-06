@@ -34,6 +34,9 @@ from . import __version__, __app_name__, __app_id__
 from .core import get_distro, get_desktop
 from .modules import ModuleRegistry, ModuleCategory
 
+# Weather widget (feature flag - set to False to disable)
+ENABLE_WEATHER_WIDGET = True
+
 
 APP_ID = __app_id__
 APP_VERSION = __version__
@@ -612,6 +615,15 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         menu_button.set_icon_name("open-menu-symbolic")
         menu_button.set_menu_model(self.create_menu())
         header.pack_end(menu_button)
+        
+        # Weather widget (before other toggle buttons)
+        if ENABLE_WEATHER_WIDGET:
+            try:
+                from .ui.weather_widget import WeatherWidget
+                self.weather_widget = WeatherWidget(self)
+                header.pack_end(self.weather_widget)
+            except Exception as e:
+                print(f"Weather widget failed to load: {e}")
         
         # Claude AI toggle button (only if WebKit available)
         if WEBKIT_AVAILABLE:
@@ -1654,13 +1666,36 @@ echo "Installation complete!"
         info_banner = self.create_system_info_banner()
         content_box.append(info_banner)
         
+        # Search bar
+        search_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        search_box.set_margin_top(8)
+        search_box.set_margin_bottom(8)
+        
+        self.search_entry = Gtk.SearchEntry()
+        self.search_entry.set_placeholder_text("Search Tux Assistant...")
+        self.search_entry.set_hexpand(True)
+        self.search_entry.connect("activate", self._on_search_activated)
+        self.search_entry.connect("search-changed", self._on_search_changed)
+        search_box.append(self.search_entry)
+        
+        content_box.append(search_box)
+        
+        # Search results container (hidden by default)
+        self.search_results_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        self.search_results_box.set_visible(False)
+        content_box.append(self.search_results_box)
+        
+        # Module content box (will be hidden during search)
+        self.modules_content_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
+        content_box.append(self.modules_content_box)
+        
         # Dynamically create module groups based on registered modules
         for category in ModuleRegistry.get_categories():
             modules = ModuleRegistry.get_modules_by_category(category)
             
             if modules:
                 group = self.create_module_group_from_registry(category.value, modules)
-                content_box.append(group)
+                self.modules_content_box.append(group)
         
         # "I'm Done" section at the bottom
         done_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
@@ -2108,6 +2143,166 @@ read'''
             group.add(row)
         
         return group
+    
+    # =========================================================================
+    # Search Functionality
+    # =========================================================================
+    
+    def _build_search_index(self) -> list:
+        """Build searchable index from all modules."""
+        search_items = []
+        
+        for category in ModuleRegistry.get_categories():
+            modules = ModuleRegistry.get_modules_by_category(category)
+            for mod in modules:
+                # Add module with keywords
+                keywords = [
+                    mod.name.lower(),
+                    mod.id.lower(),
+                    mod.description.lower() if mod.description else "",
+                    category.value.lower(),
+                ]
+                
+                # Add common search terms for each module
+                module_keywords = {
+                    "gaming": ["steam", "lutris", "proton", "wine", "games", "play"],
+                    "software_center": ["install", "apps", "software", "packages", "flatpak", "snap"],
+                    "system_maintenance": ["update", "clean", "cache", "startup", "services"],
+                    "networking_simple": ["wifi", "network", "internet", "connection", "vpn", "samba"],
+                    "hardware_manager": ["printer", "bluetooth", "drivers", "sound", "audio"],
+                    "desktop_enhancements": ["theme", "icon", "font", "wallpaper", "gnome", "kde", "extensions"],
+                    "backup_restore": ["backup", "restore", "timeshift", "snapshot"],
+                    "setup_tools": ["codecs", "drivers", "nvidia", "setup"],
+                    "media_server": ["plex", "jellyfin", "media", "server", "dvd"],
+                    "developer_tools": ["git", "ssh", "code", "programming", "aur", "deb", "rpm"],
+                    "help_learning": ["help", "tutorial", "learn", "troubleshoot", "guide"],
+                    "repo_management": ["repository", "repo", "ppa", "copr", "packman", "multilib"],
+                }
+                
+                if mod.id in module_keywords:
+                    keywords.extend(module_keywords[mod.id])
+                
+                search_items.append({
+                    "module": mod,
+                    "keywords": " ".join(keywords),
+                    "name": mod.name,
+                    "description": mod.description or "",
+                    "icon": mod.icon,
+                })
+        
+        return search_items
+    
+    def _on_search_changed(self, entry):
+        """Handle search text changes - show/hide results."""
+        query = entry.get_text().strip().lower()
+        
+        if not query:
+            # Clear search, show modules
+            self.search_results_box.set_visible(False)
+            self.modules_content_box.set_visible(True)
+            # Clear old results
+            while child := self.search_results_box.get_first_child():
+                self.search_results_box.remove(child)
+            return
+        
+        # Show search results, hide modules
+        self.search_results_box.set_visible(True)
+        self.modules_content_box.set_visible(False)
+        
+        # Clear old results
+        while child := self.search_results_box.get_first_child():
+            self.search_results_box.remove(child)
+        
+        # Search
+        search_index = self._build_search_index()
+        matches = []
+        
+        for item in search_index:
+            if query in item["keywords"]:
+                matches.append(item)
+        
+        if matches:
+            results_group = Adw.PreferencesGroup()
+            results_group.set_title(f"Results for \"{entry.get_text().strip()}\"")
+            
+            for match in matches[:10]:  # Limit to 10 results
+                row = Adw.ActionRow()
+                row.set_title(match["name"])
+                row.set_subtitle(match["description"])
+                row.set_activatable(True)
+                row.add_prefix(Gtk.Image.new_from_icon_name(match["icon"]))
+                row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+                row.connect("activated", self.on_module_clicked, match["module"])
+                results_group.add(row)
+            
+            self.search_results_box.append(results_group)
+        else:
+            # No results - show web search option
+            no_results = Adw.PreferencesGroup()
+            no_results.set_title("No matching features found")
+            no_results.set_description(f"Press Enter to search the web for \"{entry.get_text().strip()}\"")
+            
+            web_row = Adw.ActionRow()
+            web_row.set_title("Search DuckDuckGo")
+            web_row.set_subtitle(f"Search the web for: {entry.get_text().strip()}")
+            web_row.set_activatable(True)
+            web_row.add_prefix(Gtk.Image.new_from_icon_name("web-browser-symbolic"))
+            web_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+            web_row.connect("activated", lambda r: self._do_web_search(entry.get_text().strip()))
+            no_results.add(web_row)
+            
+            self.search_results_box.append(no_results)
+    
+    def _on_search_activated(self, entry):
+        """Handle Enter key in search - navigate to first result or web search."""
+        query = entry.get_text().strip().lower()
+        
+        if not query:
+            return
+        
+        # Check for matches
+        search_index = self._build_search_index()
+        matches = [item for item in search_index if query in item["keywords"]]
+        
+        if matches:
+            # Navigate to first match
+            mod = matches[0]["module"]
+            if mod.page_class:
+                page = mod.page_class(self)
+                self.navigation_view.push(page)
+                entry.set_text("")
+                self.search_results_box.set_visible(False)
+                self.modules_content_box.set_visible(True)
+        else:
+            # No matches - do web search
+            self._do_web_search(entry.get_text().strip())
+    
+    def _do_web_search(self, query: str):
+        """Open web search in internal browser."""
+        import urllib.parse
+        
+        search_url = f"https://duckduckgo.com/?q={urllib.parse.quote(query + ' linux')}"
+        
+        if WEBKIT_AVAILABLE and hasattr(self, 'browser_panel'):
+            # Use internal browser
+            if not self.browser_panel_visible:
+                self.browser_toggle_btn.set_active(True)
+            
+            # Load search URL
+            if hasattr(self, 'browser_webview'):
+                self.browser_webview.load_uri(search_url)
+            
+            self.show_toast(f"Searching: {query}")
+        else:
+            # Fallback to external browser
+            import subprocess
+            subprocess.Popen(['xdg-open', search_url])
+            self.show_toast(f"Opening search in browser...")
+        
+        # Clear search
+        self.search_entry.set_text("")
+        self.search_results_box.set_visible(False)
+        self.modules_content_box.set_visible(True)
     
     def show_toast(self, message: str, timeout: int = 3):
         """Show a toast notification."""
