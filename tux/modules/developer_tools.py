@@ -854,6 +854,7 @@ depends=(
     'gstreamer'
     'gst-plugins-base'
     'gst-plugins-good'
+    'hicolor-icon-theme'
 )
 optdepends=(
     'speedtest-cli: for network speed tests'
@@ -862,8 +863,11 @@ optdepends=(
     'gst-plugins-ugly: for additional audio format support'
     'gst-plugins-bad: for additional audio format support'
 )
-source=("$pkgname-$pkgver.tar.gz::https://github.com/dorrellkc/Tux-Assistant/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('{sha256sum}')
+install=tux-assistant.install
+source=("$pkgname-$pkgver.tar.gz::https://github.com/dorrellkc/Tux-Assistant/archive/refs/tags/v$pkgver.tar.gz"
+        "tux-assistant.install")
+sha256sums=('{sha256sum}'
+            'SKIP')
 
 package() {{
     cd "$srcdir/Tux-Assistant-$pkgver"
@@ -914,6 +918,7 @@ package() {{
 \turl = https://github.com/dorrellkc/Tux-Assistant
 \tarch = any
 \tlicense = GPL-3.0-or-later
+\tinstall = tux-assistant.install
 \tdepends = python
 \tdepends = python-gobject
 \tdepends = gtk4
@@ -925,15 +930,43 @@ package() {{
 \tdepends = gstreamer
 \tdepends = gst-plugins-base
 \tdepends = gst-plugins-good
+\tdepends = hicolor-icon-theme
 \toptdepends = speedtest-cli: for network speed tests
 \toptdepends = samba: for network file sharing
 \toptdepends = gnome-shell: for GNOME extension management
 \toptdepends = gst-plugins-ugly: for additional audio format support
 \toptdepends = gst-plugins-bad: for additional audio format support
 \tsource = tux-assistant-{version}.tar.gz::https://github.com/dorrellkc/Tux-Assistant/archive/refs/tags/v{version}.tar.gz
+\tsource = tux-assistant.install
 \tsha256sums = {sha256sum}
+\tsha256sums = SKIP
 
 pkgname = tux-assistant
+'''
+    
+    def _generate_install_hook(self) -> str:
+        """Generate tux-assistant.install hook file for icon cache updates."""
+        return '''# tux-assistant.install - Post-install hooks for Tux Assistant
+
+post_install() {
+    # Update icon cache
+    if [ -x /usr/bin/gtk-update-icon-cache ]; then
+        gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor
+    fi
+    
+    # Update desktop database
+    if [ -x /usr/bin/update-desktop-database ]; then
+        update-desktop-database -q /usr/share/applications
+    fi
+}
+
+post_upgrade() {
+    post_install
+}
+
+post_remove() {
+    post_install
+}
 '''
     
     def _do_aur_publish(self, dialog, response, version):
@@ -1020,11 +1053,12 @@ pkgname = tux-assistant
                         GLib.idle_add(self.window.show_toast, f"Clone failed: {clone_result.stderr[:60]}")
                         return
                 
-                # 3. Generate PKGBUILD and .SRCINFO
+                # 3. Generate PKGBUILD, .SRCINFO, and install hook
                 GLib.idle_add(self.window.show_toast, "Generating PKGBUILD...")
                 
                 pkgbuild_content = self._generate_pkgbuild(version, sha256sum)
                 srcinfo_content = self._generate_srcinfo(version, sha256sum)
+                install_hook_content = self._generate_install_hook()
                 
                 with open(os.path.join(aur_repo, 'PKGBUILD'), 'w') as f:
                     f.write(pkgbuild_content)
@@ -1032,10 +1066,13 @@ pkgname = tux-assistant
                 with open(os.path.join(aur_repo, '.SRCINFO'), 'w') as f:
                     f.write(srcinfo_content)
                 
+                with open(os.path.join(aur_repo, 'tux-assistant.install'), 'w') as f:
+                    f.write(install_hook_content)
+                
                 # 4. Commit and push
                 GLib.idle_add(self.window.show_toast, "Pushing to AUR...")
                 
-                subprocess.run(['git', 'add', 'PKGBUILD', '.SRCINFO'], cwd=aur_repo, timeout=10)
+                subprocess.run(['git', 'add', 'PKGBUILD', '.SRCINFO', 'tux-assistant.install'], cwd=aur_repo, timeout=10)
                 
                 commit_result = subprocess.run(
                     ['git', 'commit', '-m', f'Update to v{version}'],

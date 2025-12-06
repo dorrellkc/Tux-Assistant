@@ -2,6 +2,15 @@
 
 All notable changes to Tux Assistant will be documented in this file.
 
+## [0.9.100] - 2025-12-05
+
+### Fixed
+- **Tux Tunes icon now appears in AUR installs**
+  - Added `tux-assistant.install` hook file to update icon cache after install
+  - Runs `gtk-update-icon-cache` and `update-desktop-database` on post_install/post_upgrade
+  - Added `hicolor-icon-theme` as dependency to ensure base icon theme exists
+  - Updated PKGBUILD and .SRCINFO to include the install hook
+
 ## [0.9.99] - 2025-12-05
 
 ### Fixed
