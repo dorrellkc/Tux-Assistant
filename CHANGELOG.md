@@ -2,6 +2,145 @@
 
 All notable changes to Tux Assistant will be documented in this file.
 
+## [0.9.159] - 2025-12-07
+
+### Added
+- **Browser Settings Panel** - Complete Phase 4! New settings button (⚙️) with:
+  - Homepage URL setting (applied to home button and new tabs)
+  - Search engine dropdown (DuckDuckGo, Google, Bing, Startpage, Brave)
+  - Default zoom level (50% - 200%)
+  - Clear History button
+  - Clear Cookies button  
+  - Clear Cache button
+  - Clear All Data button (with confirmation dialog)
+- Search engine setting now applies to:
+  - URL bar searches (non-URL text)
+  - Main page search box
+  - Web search fallback from module search
+
+## [0.9.158] - 2025-12-07
+
+### Added
+- **uBlock Origin-style ad blocking** - Smarter banner detection:
+  - Banner-sized image detection (IAB standard sizes: 728x90, 300x250, etc.)
+  - Ad keyword detection in image URLs (banner, sponsor, affiliate, etc.)
+  - Affiliate link detection (ShareASale, Awin, Impact, CJ, etc.)
+  - WebKit UserContentFilterStore integration (when available)
+  - Network-level blocking rules in Safari/WebKit JSON format
+
+## [0.9.157] - 2025-12-07
+
+### Fixed
+- **Privacy Shield v3** - Made ad blocking more conservative
+  - Removed overly broad selectors that were hiding legitimate content
+  - Now only targets definite ad patterns (ad-container, adsbygoogle, etc.)
+  - Removed text-based matching that was too aggressive
+  - Sites like Yahoo now display correctly while still blocking ads
+
+## [0.9.156] - 2025-12-07
+
+### Enhanced
+- **Privacy Shield v2** 🛡️
+  - **CSS-based ad hiding** - Injects stylesheet to hide ad containers, sponsored content, and popups
+  - Expanded ad blocklist to 50+ ad networks (added mobile ad networks, verification services)
+  - Expanded tracker blocklist to 60+ domains (added analytics APIs, marketing automation, app tracking)
+  - Blocks cookie consent banners and GDPR popups
+  - Blocks newsletter/subscription popups
+  - Hides Taboola, Outbrain, and other "recommended content" widgets
+
+## [0.9.155] - 2025-12-07
+
+### Added
+- **Phase 5: Privacy Shield** 🛡️
+  - Privacy shield button in browser toolbar
+  - **Force HTTPS** - Automatically upgrades HTTP links to HTTPS
+  - **Ad Blocking** - Blocks 30+ common ad networks (Google Ads, Facebook Ads, Amazon Ads, etc.)
+  - **Tracker Blocking** - Blocks 40+ tracking domains (Google Analytics, Facebook Pixel, Hotjar, etc.)
+  - Live blocked count display ("🛡️ X blocked this session")
+  - All settings toggleable and persist across sessions
+  - Smart blocking: skips localhost and local network addresses
+
+## [0.9.154] - 2025-12-07
+
+### Added
+- **Downloads Manager** 📥
+  - Downloads button in browser toolbar
+  - Shows download progress, completed, and failed downloads
+  - Open file button (▶️) to launch downloaded files
+  - Open folder button (📁) to open containing folder
+  - "Open Downloads Folder" button
+  - "Clear" button to remove completed downloads from list
+  - Policy handler for proper download detection
+
+### Fixed
+- History navigation now works (was calling non-existent method)
+- Ampersand characters in URLs now display correctly in history
+- Downloads properly trigger via decide-policy handler
+
+## [0.9.153] - 2025-12-07
+
+### Added
+- **Downloads Manager** 📥
+  - Downloads button in browser toolbar
+  - Shows download progress, completed, and failed downloads
+  - Open file directly from downloads list
+  - Open Downloads folder button
+  - Clear completed downloads
+
+## [0.9.152] - 2025-12-07
+
+### Added
+- **Print Page (Ctrl+P)** 🖨️
+  - Opens system print dialog
+  - Print to printer or save as PDF
+
+## [0.9.151] - 2025-12-07
+
+### Added
+- **Fullscreen Mode (F11)** 🖥️
+  - Press F11 to toggle fullscreen anywhere in the app
+  - Press Escape to exit fullscreen
+  - Immersive browsing experience
+  - Works via window-level handler (not blocked by WebView)
+
+## [0.9.150] - 2025-12-07
+
+### Added
+- **Find in Page (Ctrl+F)** - Phase 4 begins! 🔍
+  - Search bar appears at bottom of browser
+  - Live search as you type
+  - Match count display
+  - Previous/Next navigation (Shift+Enter / Enter)
+  - Case-insensitive with wrap-around
+  - Escape to close
+  - Visual feedback for no matches
+
+### Fixed
+- Keyboard shortcuts use CAPTURE phase to intercept before WebView
+- Focus returns to webview after closing find bar (fixes Ctrl+F not working after first use)
+
+## [0.9.149] - 2025-12-07
+
+### Added
+- **Persistent Zoom Level** - Browser remembers your zoom preference
+  - Saved to `~/.config/tux-assistant/browser.conf`
+  - Applied to all tabs automatically
+  - Persists between app launches
+
+## [0.9.148] - 2025-12-07
+
+### Added
+- **Browser Zoom Controls** 🔍
+  - Ctrl++ (or Ctrl+=): Zoom in
+  - Ctrl+-: Zoom out
+  - Ctrl+0: Reset to 100%
+  - Ctrl+Scroll wheel: Zoom in/out (throttled for smooth scrolling)
+  - Zoom range: 30% to 300%
+  - Toast notification shows current zoom level (keyboard shortcuts only)
+
+### Changed
+- **Browser opens wide by default** - When docked, browser now takes most of the window, leaving just enough navigation sidebar to browse. Makes the browser the star of the show!
+
 ## [0.9.147] - 2025-12-07
 
 ### Added - Browser Phase 3: Complete History System 🎉

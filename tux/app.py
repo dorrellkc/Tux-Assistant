@@ -496,6 +496,64 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
     HISTORY_MAX_ENTRIES = 500000  # Maximum entries
     HISTORY_CLEANUP_PERCENT = 20  # Delete this % when limit hit
     
+    # Privacy blocklists - common ad and tracker domains
+    AD_DOMAINS = {
+        # Google Ads
+        'doubleclick.net', 'googlesyndication.com', 'googleadservices.com',
+        'googleads.g.doubleclick.net', 'pagead2.googlesyndication.com',
+        'adservice.google.com', 'ads.google.com', 'tpc.googlesyndication.com',
+        # Facebook/Meta
+        'facebook.com/tr', 'connect.facebook.net', 'an.facebook.com',
+        # Amazon
+        'amazon-adsystem.com', 'aax.amazon-adsystem.com', 'z-na.amazon-adsystem.com',
+        # Major ad networks
+        'adsserver.com', 'adnxs.com', 'adsrvr.org', 'adtech.de',
+        'advertising.com', 'adform.net', 'adroll.com', 'adfox.ru',
+        'criteo.com', 'criteo.net', 'outbrain.com', 'outbrainimg.com',
+        'taboola.com', 'taboola.net', 'mgid.com', 'revcontent.com',
+        'pubmatic.com', 'rubiconproject.com', 'openx.net', 'contextweb.com',
+        'bidswitch.net', 'casalemedia.com', 'media.net', 'medianet.com',
+        'yieldmo.com', 'teads.tv', 'sharethrough.com', 'smartadserver.com',
+        'moatads.com', 'adsafeprotected.com', 'doubleverify.com',
+        'serving-sys.com', 'eyeota.net', 'liadm.com', 'rlcdn.com',
+        'bluekai.com', 'krxd.net', 'exelator.com', 'demdex.net',
+        'adzerk.net', 'adcolony.com', 'unity3d.com/ads', 'unityads.unity3d.com',
+        'mopub.com', 'applovin.com', 'vungle.com', 'chartboost.com',
+    }
+    
+    TRACKER_DOMAINS = {
+        # Google Analytics/Tags
+        'google-analytics.com', 'analytics.google.com', 'ssl.google-analytics.com',
+        'googletagmanager.com', 'googletagservices.com', 'googlesyndication.com',
+        # Facebook
+        'facebook.net', 'pixel.facebook.com', 'connect.facebook.net',
+        # Analytics platforms
+        'hotjar.com', 'static.hotjar.com', 'mixpanel.com', 'api.mixpanel.com',
+        'segment.io', 'segment.com', 'api.segment.io', 'cdn.segment.com',
+        'amplitude.com', 'api.amplitude.com', 'heapanalytics.com',
+        'fullstory.com', 'rs.fullstory.com', 'mouseflow.com', 'crazyegg.com',
+        'luckyorange.com', 'clarity.ms', 'clicktale.net',
+        # A/B Testing
+        'optimizely.com', 'cdn.optimizely.com', 'abtasty.com', 'vwo.com',
+        # Error tracking
+        'newrelic.com', 'nr-data.net', 'sentry.io', 'bugsnag.com',
+        'rollbar.com', 'loggly.com', 'track.js',
+        # Chat/Support widgets
+        'intercom.io', 'widget.intercom.io', 'drift.com', 'js.driftt.com',
+        'crisp.chat', 'client.crisp.chat', 'zopim.com', 'tawk.to',
+        'freshchat.com', 'wchat.freshchat.com',
+        # Marketing automation
+        'hubspot.com', 'hs-analytics.net', 'hsforms.com', 'js.hs-analytics.net',
+        'marketo.com', 'munchkin.marketo.net', 'pardot.com', 'pi.pardot.com',
+        # Audience measurement
+        'scorecardresearch.com', 'quantserve.com', 'pixel.quantserve.com',
+        'chartbeat.com', 'static.chartbeat.com', 'comscore.com', 'sb.scorecardresearch.com',
+        'imrworldwide.com', 'Nielsen.com', 'secure-us.imrworldwide.com',
+        # Other trackers
+        'branch.io', 'app.link', 'adjust.com', 'app.adjust.com',
+        'appsflyer.com', 'kochava.com', 'singular.net',
+    }
+    
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         
@@ -521,11 +579,40 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         self.bookmark_folders = []  # List of folder names
         self._load_bookmarks()
         
+        # Initialize downloads list
+        self.downloads = []  # List of {download, destination, progress, status}
+        
+        # Initialize privacy settings
+        browser_settings = self._load_browser_settings()
+        self.force_https = browser_settings.get('force_https', True)
+        self.block_ads = browser_settings.get('block_ads', True)
+        self.block_trackers = browser_settings.get('block_trackers', True)
+        self.pages_protected = 0  # Track protected pages this session
+        
+        # Initialize content filter store for ad blocking
+        self.content_filter_store = None
+        self.content_filters = []  # List of compiled filters
+        self._init_content_filters()
+        
         # Initialize history database
         self._init_history_db()
         
         # Build UI
         self.build_ui()
+        
+        # Window-level keyboard handler for F11 (fullscreen)
+        window_key_controller = Gtk.EventControllerKey()
+        window_key_controller.connect("key-pressed", self._on_window_key_pressed)
+        self.add_controller(window_key_controller)
+    
+    def _on_window_key_pressed(self, controller, keyval, keycode, state):
+        """Handle window-level keyboard shortcuts."""
+        # F11: Toggle fullscreen
+        if keyval == Gdk.KEY_F11:
+            self._toggle_fullscreen()
+            return True
+        
+        return False
     
     def _load_window_size(self) -> tuple[int, int, bool]:
         """Load saved window size from config file."""
@@ -974,32 +1061,84 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
     
     # ==================== End History Methods ====================
     
-    def _load_bookmarks_bar_visible(self):
-        """Load bookmarks bar visibility preference."""
+    def _load_browser_settings(self):
+        """Load browser settings from config file."""
         import os
+        
+        settings = {
+            'bookmarks_bar_visible': True,
+            'zoom_level': 1.0,
+            'force_https': True,
+            'block_ads': True,
+            'block_trackers': True,
+            'homepage': 'https://duckduckgo.com',
+            'search_engine': 'DuckDuckGo',
+            'default_zoom': 1.0
+        }
         
         try:
             pref_file = os.path.join(self.CONFIG_DIR, 'browser.conf')
             if os.path.exists(pref_file):
                 with open(pref_file, 'r') as f:
                     for line in f:
-                        if line.startswith('bookmarks_bar_visible='):
-                            return line.strip().split('=')[1].lower() == 'true'
+                        line = line.strip()
+                        if '=' in line:
+                            key, value = line.split('=', 1)
+                            if key == 'bookmarks_bar_visible':
+                                settings['bookmarks_bar_visible'] = value.lower() == 'true'
+                            elif key == 'zoom_level':
+                                settings['zoom_level'] = float(value)
+                            elif key == 'force_https':
+                                settings['force_https'] = value.lower() == 'true'
+                            elif key == 'block_ads':
+                                settings['block_ads'] = value.lower() == 'true'
+                            elif key == 'block_trackers':
+                                settings['block_trackers'] = value.lower() == 'true'
+                            elif key == 'homepage':
+                                settings['homepage'] = value
+                            elif key == 'search_engine':
+                                settings['search_engine'] = value
+                            elif key == 'default_zoom':
+                                settings['default_zoom'] = float(value)
         except:
             pass
-        return True  # Default to visible
+        return settings
     
-    def _save_bookmarks_bar_visible(self, visible):
-        """Save bookmarks bar visibility preference."""
+    def _save_browser_settings(self, **kwargs):
+        """Save browser settings to config file."""
         import os
+        
+        # Load existing settings first
+        settings = self._load_browser_settings()
+        settings.update(kwargs)
         
         try:
             os.makedirs(self.CONFIG_DIR, exist_ok=True)
             pref_file = os.path.join(self.CONFIG_DIR, 'browser.conf')
             with open(pref_file, 'w') as f:
-                f.write(f"bookmarks_bar_visible={'true' if visible else 'false'}\n")
+                for key, value in settings.items():
+                    if isinstance(value, bool):
+                        f.write(f"{key}={'true' if value else 'false'}\n")
+                    else:
+                        f.write(f"{key}={value}\n")
         except:
             pass
+    
+    def _load_bookmarks_bar_visible(self):
+        """Load bookmarks bar visibility preference."""
+        return self._load_browser_settings()['bookmarks_bar_visible']
+    
+    def _save_bookmarks_bar_visible(self, visible):
+        """Save bookmarks bar visibility preference."""
+        self._save_browser_settings(bookmarks_bar_visible=visible)
+    
+    def _load_zoom_level(self):
+        """Load saved zoom level."""
+        return self._load_browser_settings()['zoom_level']
+    
+    def _save_zoom_level(self, level):
+        """Save zoom level."""
+        self._save_browser_settings(zoom_level=level)
     
     def _on_bookmarks_bar_toggle(self, switch, param):
         """Handle bookmarks bar visibility toggle."""
@@ -1414,7 +1553,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         self.browser_panel.add_css_class("claude-global-panel")
         
         # Panel header
-        self.browser_home_url = "https://duckduckgo.com"
+        self.browser_home_url = self._load_browser_settings().get('homepage', 'https://duckduckgo.com')
         self.browser_panel_visible = False
         
         # Panel header
@@ -1679,6 +1818,246 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         
         nav_toolbar.append(history_btn)
         
+        # Downloads menu button
+        downloads_btn = Gtk.MenuButton()
+        downloads_btn.set_icon_name("folder-download-symbolic")
+        downloads_btn.set_tooltip_text("Downloads")
+        
+        # Create popover for downloads
+        self.downloads_popover = Gtk.Popover()
+        self.downloads_popover.set_size_request(400, -1)
+        self.downloads_popover.set_autohide(True)
+        downloads_btn.set_popover(self.downloads_popover)
+        
+        # Downloads popover content
+        downloads_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        downloads_box.set_margin_top(8)
+        downloads_box.set_margin_bottom(8)
+        downloads_box.set_margin_start(8)
+        downloads_box.set_margin_end(8)
+        self.downloads_popover.set_child(downloads_box)
+        
+        # Downloads list
+        downloads_scroll = Gtk.ScrolledWindow()
+        downloads_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        downloads_scroll.set_max_content_height(350)
+        downloads_scroll.set_propagate_natural_height(True)
+        downloads_box.append(downloads_scroll)
+        
+        self.downloads_list_box = Gtk.ListBox()
+        self.downloads_list_box.set_selection_mode(Gtk.SelectionMode.NONE)
+        self.downloads_list_box.add_css_class("boxed-list")
+        downloads_scroll.set_child(self.downloads_list_box)
+        
+        # Empty state label
+        self.downloads_empty_label = Gtk.Label(label="No downloads yet")
+        self.downloads_empty_label.add_css_class("dim-label")
+        self.downloads_list_box.append(self.downloads_empty_label)
+        
+        # Bottom buttons
+        downloads_actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        downloads_box.append(downloads_actions)
+        
+        # Open Downloads folder
+        open_folder_btn = Gtk.Button(label="Open Downloads Folder")
+        open_folder_btn.set_icon_name("folder-open-symbolic")
+        open_folder_btn.connect("clicked", self._open_downloads_folder)
+        open_folder_btn.set_hexpand(True)
+        downloads_actions.append(open_folder_btn)
+        
+        # Clear completed
+        clear_downloads_btn = Gtk.Button(label="Clear")
+        clear_downloads_btn.set_icon_name("edit-clear-symbolic")
+        clear_downloads_btn.set_tooltip_text("Clear completed downloads")
+        clear_downloads_btn.connect("clicked", self._clear_completed_downloads)
+        downloads_actions.append(clear_downloads_btn)
+        
+        nav_toolbar.append(downloads_btn)
+        
+        # Privacy shield button
+        privacy_btn = Gtk.MenuButton()
+        privacy_btn.set_icon_name("security-high-symbolic")
+        privacy_btn.set_tooltip_text("Privacy Shield")
+        
+        # Privacy popover
+        self.privacy_popover = Gtk.Popover()
+        self.privacy_popover.set_autohide(True)
+        privacy_btn.set_popover(self.privacy_popover)
+        
+        privacy_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        privacy_box.set_margin_top(12)
+        privacy_box.set_margin_bottom(12)
+        privacy_box.set_margin_start(12)
+        privacy_box.set_margin_end(12)
+        self.privacy_popover.set_child(privacy_box)
+        
+        # Pages protected count label
+        self.blocked_label = Gtk.Label(label="🛡️ Protection active")
+        self.blocked_label.set_xalign(0)
+        self.blocked_label.add_css_class("heading")
+        privacy_box.append(self.blocked_label)
+        
+        privacy_box.append(Gtk.Separator())
+        
+        # Force HTTPS toggle
+        https_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        https_label = Gtk.Label(label="Force HTTPS")
+        https_label.set_hexpand(True)
+        https_label.set_xalign(0)
+        https_row.append(https_label)
+        self.https_switch = Gtk.Switch()
+        self.https_switch.set_active(self.force_https)
+        self.https_switch.connect("notify::active", self._on_https_toggled)
+        https_row.append(self.https_switch)
+        privacy_box.append(https_row)
+        
+        # Block ads toggle
+        ads_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        ads_label = Gtk.Label(label="Block Ads")
+        ads_label.set_hexpand(True)
+        ads_label.set_xalign(0)
+        ads_row.append(ads_label)
+        self.ads_switch = Gtk.Switch()
+        self.ads_switch.set_active(self.block_ads)
+        self.ads_switch.connect("notify::active", self._on_ads_toggled)
+        ads_row.append(self.ads_switch)
+        privacy_box.append(ads_row)
+        
+        # Block trackers toggle
+        trackers_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        trackers_label = Gtk.Label(label="Block Trackers")
+        trackers_label.set_hexpand(True)
+        trackers_label.set_xalign(0)
+        trackers_row.append(trackers_label)
+        self.trackers_switch = Gtk.Switch()
+        self.trackers_switch.set_active(self.block_trackers)
+        self.trackers_switch.connect("notify::active", self._on_trackers_toggled)
+        trackers_row.append(self.trackers_switch)
+        privacy_box.append(trackers_row)
+        
+        nav_toolbar.append(privacy_btn)
+        
+        # Settings button
+        settings_btn = Gtk.MenuButton()
+        settings_btn.set_icon_name("emblem-system-symbolic")
+        settings_btn.set_tooltip_text("Browser Settings")
+        
+        # Create settings popover
+        self.settings_popover = Gtk.Popover()
+        self.settings_popover.set_size_request(350, -1)
+        self.settings_popover.set_autohide(True)
+        settings_btn.set_popover(self.settings_popover)
+        
+        settings_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        settings_box.set_margin_top(12)
+        settings_box.set_margin_bottom(12)
+        settings_box.set_margin_start(12)
+        settings_box.set_margin_end(12)
+        self.settings_popover.set_child(settings_box)
+        
+        # Title
+        settings_title = Gtk.Label(label="Browser Settings")
+        settings_title.add_css_class("title-3")
+        settings_box.append(settings_title)
+        
+        settings_box.append(Gtk.Separator())
+        
+        # === General Section ===
+        general_label = Gtk.Label(label="General")
+        general_label.add_css_class("heading")
+        general_label.set_xalign(0)
+        settings_box.append(general_label)
+        
+        # Homepage
+        homepage_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        homepage_label = Gtk.Label(label="Homepage")
+        homepage_label.set_xalign(0)
+        homepage_label.set_hexpand(True)
+        homepage_row.append(homepage_label)
+        self.homepage_entry = Gtk.Entry()
+        self.homepage_entry.set_width_chars(20)
+        self.homepage_entry.set_text(self._load_browser_settings().get('homepage', 'https://duckduckgo.com'))
+        self.homepage_entry.connect("changed", self._on_homepage_changed)
+        homepage_row.append(self.homepage_entry)
+        settings_box.append(homepage_row)
+        
+        # Search Engine
+        search_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        search_label = Gtk.Label(label="Search Engine")
+        search_label.set_xalign(0)
+        search_label.set_hexpand(True)
+        search_row.append(search_label)
+        
+        self.search_engine_dropdown = Gtk.DropDown()
+        search_engines = Gtk.StringList.new(["DuckDuckGo", "Google", "Bing", "Startpage", "Brave"])
+        self.search_engine_dropdown.set_model(search_engines)
+        
+        # Set current selection
+        current_engine = self._load_browser_settings().get('search_engine', 'DuckDuckGo')
+        engine_map = {"DuckDuckGo": 0, "Google": 1, "Bing": 2, "Startpage": 3, "Brave": 4}
+        self.search_engine_dropdown.set_selected(engine_map.get(current_engine, 0))
+        self.search_engine_dropdown.connect("notify::selected", self._on_search_engine_changed)
+        search_row.append(self.search_engine_dropdown)
+        settings_box.append(search_row)
+        
+        # Default Zoom
+        zoom_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        zoom_label = Gtk.Label(label="Default Zoom")
+        zoom_label.set_xalign(0)
+        zoom_label.set_hexpand(True)
+        zoom_row.append(zoom_label)
+        
+        self.zoom_dropdown = Gtk.DropDown()
+        zoom_levels = Gtk.StringList.new(["50%", "75%", "100%", "125%", "150%", "175%", "200%"])
+        self.zoom_dropdown.set_model(zoom_levels)
+        
+        # Set current zoom
+        current_zoom = self._load_browser_settings().get('default_zoom', 1.0)
+        zoom_map = {0.5: 0, 0.75: 1, 1.0: 2, 1.25: 3, 1.5: 4, 1.75: 5, 2.0: 6}
+        self.zoom_dropdown.set_selected(zoom_map.get(current_zoom, 2))
+        self.zoom_dropdown.connect("notify::selected", self._on_default_zoom_changed)
+        zoom_row.append(self.zoom_dropdown)
+        settings_box.append(zoom_row)
+        
+        settings_box.append(Gtk.Separator())
+        
+        # === Data Management Section ===
+        data_label = Gtk.Label(label="Clear Browsing Data")
+        data_label.add_css_class("heading")
+        data_label.set_xalign(0)
+        settings_box.append(data_label)
+        
+        # Clear buttons in a flow box
+        clear_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        settings_box.append(clear_box)
+        
+        # Clear History
+        clear_history_btn = Gtk.Button(label="Clear History")
+        clear_history_btn.set_icon_name("edit-clear-history-symbolic")
+        clear_history_btn.connect("clicked", self._on_clear_history_clicked)
+        clear_box.append(clear_history_btn)
+        
+        # Clear Cookies
+        clear_cookies_btn = Gtk.Button(label="Clear Cookies")
+        clear_cookies_btn.set_icon_name("cookie-symbolic")
+        clear_cookies_btn.connect("clicked", self._on_clear_cookies_clicked)
+        clear_box.append(clear_cookies_btn)
+        
+        # Clear Cache
+        clear_cache_btn = Gtk.Button(label="Clear Cache")
+        clear_cache_btn.set_icon_name("folder-templates-symbolic")
+        clear_cache_btn.connect("clicked", self._on_clear_cache_clicked)
+        clear_box.append(clear_cache_btn)
+        
+        # Clear All
+        clear_all_btn = Gtk.Button(label="Clear All Data")
+        clear_all_btn.set_icon_name("edit-clear-all-symbolic")
+        clear_all_btn.add_css_class("destructive-action")
+        clear_all_btn.connect("clicked", self._on_clear_all_clicked)
+        clear_box.append(clear_all_btn)
+        
+        nav_toolbar.append(settings_btn)
+        
         # New tab button
         new_tab_btn = Gtk.Button.new_from_icon_name("tab-new-symbolic")
         new_tab_btn.set_tooltip_text("New tab (Ctrl+T)")
@@ -1760,6 +2139,54 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         webview_frame.set_vexpand(True)
         self.browser_panel.append(webview_frame)
         
+        # Find bar (hidden by default)
+        self.find_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        self.find_bar.set_margin_start(12)
+        self.find_bar.set_margin_end(12)
+        self.find_bar.set_margin_bottom(8)
+        self.find_bar.add_css_class("toolbar")
+        self.find_bar.set_visible(False)
+        
+        find_label = Gtk.Label(label="Find:")
+        self.find_bar.append(find_label)
+        
+        self.find_entry = Gtk.Entry()
+        self.find_entry.set_placeholder_text("Search in page...")
+        self.find_entry.set_hexpand(True)
+        self.find_entry.connect("changed", self._on_find_text_changed)
+        self.find_entry.connect("activate", self._on_find_next)
+        self.find_bar.append(self.find_entry)
+        
+        # Match count label
+        self.find_match_label = Gtk.Label(label="")
+        self.find_match_label.add_css_class("dim-label")
+        self.find_bar.append(self.find_match_label)
+        
+        # Previous button
+        prev_btn = Gtk.Button.new_from_icon_name("go-up-symbolic")
+        prev_btn.set_tooltip_text("Previous match (Shift+Enter)")
+        prev_btn.connect("clicked", self._on_find_prev)
+        self.find_bar.append(prev_btn)
+        
+        # Next button
+        next_btn = Gtk.Button.new_from_icon_name("go-down-symbolic")
+        next_btn.set_tooltip_text("Next match (Enter)")
+        next_btn.connect("clicked", self._on_find_next)
+        self.find_bar.append(next_btn)
+        
+        # Close button
+        close_btn = Gtk.Button.new_from_icon_name("window-close-symbolic")
+        close_btn.set_tooltip_text("Close (Escape)")
+        close_btn.connect("clicked", lambda b: self._hide_find_bar())
+        self.find_bar.append(close_btn)
+        
+        # Handle Shift+Enter for previous
+        find_key_controller = Gtk.EventControllerKey()
+        find_key_controller.connect("key-pressed", self._on_find_key_pressed)
+        self.find_entry.add_controller(find_key_controller)
+        
+        self.browser_panel.append(self.find_bar)
+        
         # Add keyboard shortcuts
         self._setup_browser_keyboard_shortcuts()
         
@@ -1768,7 +2195,9 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
     
     def _setup_browser_keyboard_shortcuts(self):
         """Set up keyboard shortcuts for the browser."""
+        # Use CAPTURE phase to intercept before WebView gets the event
         controller = Gtk.EventControllerKey()
+        controller.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
         controller.connect("key-pressed", self._on_browser_key_pressed)
         self.browser_panel.add_controller(controller)
     
@@ -1809,9 +2238,206 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
                 # Ctrl+D: Bookmark current page
                 self._on_bookmark_toggle(None)
                 return True
+            elif keyval == Gdk.KEY_f or keyval == Gdk.KEY_F:
+                # Ctrl+F: Find in page
+                self._show_find_bar()
+                return True
+            elif keyval == Gdk.KEY_plus or keyval == Gdk.KEY_equal or keyval == Gdk.KEY_KP_Add:
+                # Ctrl++: Zoom in
+                self._browser_zoom_in()
+                return True
+            elif keyval == Gdk.KEY_minus or keyval == Gdk.KEY_KP_Subtract:
+                # Ctrl+-: Zoom out
+                self._browser_zoom_out()
+                return True
+            elif keyval == Gdk.KEY_0 or keyval == Gdk.KEY_KP_0:
+                # Ctrl+0: Reset zoom
+                self._browser_zoom_reset()
+                return True
+            elif keyval == Gdk.KEY_p or keyval == Gdk.KEY_P:
+                # Ctrl+P: Print page
+                self._browser_print()
+                return True
+        
+        # Escape to close find bar
+        if keyval == Gdk.KEY_Escape:
+            if hasattr(self, 'find_bar') and self.find_bar.get_visible():
+                self._hide_find_bar()
+                return True
+            # Also exit fullscreen with Escape
+            if self.is_fullscreen():
+                self.unfullscreen()
+                return True
+        
+        # F11: Toggle fullscreen (also handled at window level, but just in case)
+        if keyval == Gdk.KEY_F11:
+            self._toggle_fullscreen()
+            return True
         
         return False
     
+    def _browser_zoom_in(self):
+        """Zoom in the current webview."""
+        webview = self._get_current_browser_webview()
+        if webview:
+            current = webview.get_zoom_level()
+            new_zoom = min(current + 0.1, 3.0)  # Max 300%
+            self._apply_zoom_to_all_tabs(new_zoom)
+            self._save_zoom_level(new_zoom)
+            self._show_zoom_toast(new_zoom)
+    
+    def _browser_zoom_out(self):
+        """Zoom out the current webview."""
+        webview = self._get_current_browser_webview()
+        if webview:
+            current = webview.get_zoom_level()
+            new_zoom = max(current - 0.1, 0.3)  # Min 30%
+            self._apply_zoom_to_all_tabs(new_zoom)
+            self._save_zoom_level(new_zoom)
+            self._show_zoom_toast(new_zoom)
+    
+    def _browser_zoom_reset(self):
+        """Reset zoom to 100%."""
+        webview = self._get_current_browser_webview()
+        if webview:
+            self._apply_zoom_to_all_tabs(1.0)
+            self._save_zoom_level(1.0)
+            self.show_toast("Zoom: 100%")
+    
+    def _apply_zoom_to_all_tabs(self, zoom_level):
+        """Apply zoom level to all open tabs."""
+        if not hasattr(self, 'browser_tab_view'):
+            return
+        for i in range(self.browser_tab_view.get_n_pages()):
+            page = self.browser_tab_view.get_nth_page(i)
+            if page:
+                wv = page.get_child()
+                if wv:
+                    wv.set_zoom_level(zoom_level)
+    
+    def _show_zoom_toast(self, level):
+        """Show current zoom level."""
+        percent = int(level * 100)
+        self.show_toast(f"Zoom: {percent}%")
+    
+    def _show_find_bar(self):
+        """Show the find bar and focus the entry."""
+        if not hasattr(self, 'find_bar'):
+            return
+        self.find_bar.set_visible(True)
+        self.find_entry.grab_focus()
+        self.find_entry.select_region(0, -1)
+    
+    def _toggle_fullscreen(self):
+        """Toggle fullscreen mode."""
+        if self.is_fullscreen():
+            self.unfullscreen()
+        else:
+            self.fullscreen()
+    
+    def _browser_print(self):
+        """Print the current page."""
+        webview = self._get_current_browser_webview()
+        if webview:
+            try:
+                # WebKit 6.0 / WebKit2 5.0 API
+                print_operation = WebKit.PrintOperation.new(webview)
+                print_operation.run_dialog(self)
+            except Exception as e:
+                print(f"Print error: {e}")
+                self.show_toast("Print not available")
+    
+    def _hide_find_bar(self):
+        """Hide the find bar and clear search."""
+        if not hasattr(self, 'find_bar'):
+            return
+        self.find_bar.set_visible(False)
+        self.find_match_label.set_text("")
+        # Clear the search highlighting
+        webview = self._get_current_browser_webview()
+        if webview:
+            find_controller = webview.get_find_controller()
+            find_controller.search_finish()
+            # Return focus to webview so keyboard shortcuts work
+            webview.grab_focus()
+    
+    def _on_find_text_changed(self, entry):
+        """Handle find text changes - search as you type."""
+        text = entry.get_text()
+        webview = self._get_current_browser_webview()
+        if not webview:
+            return
+        
+        find_controller = webview.get_find_controller()
+        
+        if not text:
+            find_controller.search_finish()
+            self.find_match_label.set_text("")
+            return
+        
+        # Connect to match count updates (only once)
+        if not hasattr(self, '_find_handler_connected'):
+            find_controller.connect("counted-matches", self._on_find_match_count)
+            find_controller.connect("found-text", self._on_find_found)
+            find_controller.connect("failed-to-find-text", self._on_find_failed)
+            self._find_handler_connected = True
+        
+        # Search with options
+        find_controller.search(
+            text,
+            WebKit.FindOptions.CASE_INSENSITIVE | WebKit.FindOptions.WRAP_AROUND,
+            100  # Max matches to count
+        )
+    
+    def _on_find_match_count(self, find_controller, match_count):
+        """Update match count display."""
+        if match_count == 0:
+            self.find_match_label.set_text("No matches")
+        elif match_count == 1:
+            self.find_match_label.set_text("1 match")
+        else:
+            self.find_match_label.set_text(f"{match_count} matches")
+    
+    def _on_find_found(self, find_controller, match_count):
+        """Called when text is found."""
+        # Update styling to indicate success
+        self.find_entry.remove_css_class("error")
+    
+    def _on_find_failed(self, find_controller):
+        """Called when text is not found."""
+        self.find_match_label.set_text("No matches")
+        self.find_entry.add_css_class("error")
+    
+    def _on_find_next(self, *args):
+        """Find next match."""
+        webview = self._get_current_browser_webview()
+        if webview and self.find_entry.get_text():
+            find_controller = webview.get_find_controller()
+            find_controller.search_next()
+    
+    def _on_find_prev(self, *args):
+        """Find previous match."""
+        webview = self._get_current_browser_webview()
+        if webview and self.find_entry.get_text():
+            find_controller = webview.get_find_controller()
+            find_controller.search_previous()
+    
+    def _on_find_key_pressed(self, controller, keyval, keycode, state):
+        """Handle special keys in find entry."""
+        shift = state & Gdk.ModifierType.SHIFT_MASK
+        
+        if keyval == Gdk.KEY_Return or keyval == Gdk.KEY_KP_Enter:
+            if shift:
+                self._on_find_prev()
+            else:
+                self._on_find_next()
+            return True
+        elif keyval == Gdk.KEY_Escape:
+            self._hide_find_bar()
+            return True
+        
+        return False
+
     def _create_browser_webview(self):
         """Create a new WebView with proper settings."""
         try:
@@ -1830,6 +2456,10 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         
         webview.set_vexpand(True)
         webview.set_hexpand(True)
+        
+        # Apply ad-hiding CSS if blocking is enabled
+        if self.block_ads:
+            self._apply_ad_blocking_css(webview)
         
         # Configure settings
         settings = webview.get_settings()
@@ -1860,15 +2490,29 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             "(KHTML, like Gecko) Version/17.0 Safari/605.1.15"
         )
         
+        # Apply saved zoom level
+        try:
+            zoom = self._load_zoom_level()
+            webview.set_zoom_level(zoom)
+        except:
+            pass
+        
         # Connect signals
         webview.connect("load-changed", self._on_browser_load_changed)
         webview.connect("create", self._on_browser_create_window)
         webview.connect("notify::title", self._on_browser_title_changed)
+        webview.connect("decide-policy", self._on_browser_decide_policy)
         
         # Close bookmarks popover when clicking on webview
         click_controller = Gtk.GestureClick()
         click_controller.connect("pressed", self._on_webview_clicked)
         webview.add_controller(click_controller)
+        
+        # Ctrl+scroll for zoom
+        scroll_controller = Gtk.EventControllerScroll()
+        scroll_controller.set_flags(Gtk.EventControllerScrollFlags.VERTICAL)
+        scroll_controller.connect("scroll", self._on_webview_scroll)
+        webview.add_controller(scroll_controller)
         
         return webview
     
@@ -1878,6 +2522,31 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             self.bookmarks_popover.popdown()
         if self.url_autocomplete_popover and self.url_autocomplete_popover.is_visible():
             self.url_autocomplete_popover.popdown()
+    
+    def _on_webview_scroll(self, controller, dx, dy):
+        """Handle Ctrl+scroll for zoom with throttling."""
+        # Check if Ctrl is held
+        state = controller.get_current_event_state()
+        if not (state & Gdk.ModifierType.CONTROL_MASK):
+            return False  # Let normal scroll happen
+        
+        # Throttle: only zoom every 100ms to prevent jitter
+        import time
+        now = time.time()
+        if hasattr(self, '_last_zoom_time') and (now - self._last_zoom_time) < 0.1:
+            return True  # Consume but don't process
+        self._last_zoom_time = now
+        
+        webview = self._get_current_browser_webview()
+        if webview:
+            current = webview.get_zoom_level()
+            if dy < 0:  # Scroll up = zoom in
+                new_zoom = min(current + 0.1, 3.0)
+            else:  # Scroll down = zoom out
+                new_zoom = max(current - 0.1, 0.3)
+            self._apply_zoom_to_all_tabs(new_zoom)
+            self._save_zoom_level(new_zoom)
+        return True  # Consume the event
     
     def _browser_new_tab(self, url=None):
         """Create a new browser tab."""
@@ -2046,6 +2715,10 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         self.docked_panel = 'browser'
         self.browser_is_docked = True
         self.browser_panel_visible = True
+        
+        # Give browser most of the space - leave ~250px for navigation
+        # This makes the browser the star of the show
+        GLib.idle_add(lambda: self.main_paned.set_position(250))
     
     def _show_browser_floating(self):
         """Show browser in a floating window."""
@@ -2107,9 +2780,8 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
                 text = 'https://' + text
             url = text
         else:
-            # Search with DuckDuckGo
-            from urllib.parse import quote
-            url = f"https://duckduckgo.com/?q={quote(text)}"
+            # Search with configured search engine
+            url = self._get_search_url(text)
         
         webview = self._get_current_browser_webview()
         if webview:
@@ -2561,7 +3233,9 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         else:
             time_str = dt.strftime("%b %d")
         
-        row.set_subtitle(f"{time_str} • {entry['url'][:60]}{'...' if len(entry['url']) > 60 else ''}")
+        # Escape ampersands for markup
+        display_url = entry['url'][:60].replace('&', '&amp;')
+        row.set_subtitle(f"{time_str} • {display_url}{'...' if len(entry['url']) > 60 else ''}")
         row.set_tooltip_text(entry['url'])
         
         # Make clickable
@@ -2589,7 +3263,9 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         url = getattr(row, 'history_url', None)
         if url and hasattr(self, 'history_popover'):
             self.history_popover.popdown()
-            self._browser_navigate(url)
+            webview = self._get_current_browser_webview()
+            if webview:
+                webview.load_uri(url)
     
     def _on_history_delete_entry(self, button):
         """Delete single history entry."""
@@ -2875,6 +3551,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         # Truncate URL for display
         url = entry['url']
         display_url = url[:70] + '...' if len(url) > 70 else url
+        display_url = display_url.replace('&', '&amp;')  # Escape for markup
         
         row.set_subtitle(f"{time_str} • {display_url}")
         row.set_tooltip_text(url)
@@ -2910,7 +3587,9 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         url = getattr(button, 'history_url', None)
         if url:
             self.history_window.close()
-            self._browser_navigate(url)
+            webview = self._get_current_browser_webview()
+            if webview:
+                webview.load_uri(url)
     
     def _on_hw_delete_selected(self, button):
         """Delete selected history entries."""
@@ -5201,6 +5880,420 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         
         return False
     
+    def _on_browser_decide_policy(self, webview, decision, decision_type):
+        """Handle policy decisions for downloads, HTTPS upgrade, and blocking."""
+        
+        # Handle navigation actions (links, typed URLs)
+        if decision_type == WebKit.PolicyDecisionType.NAVIGATION_ACTION:
+            nav_action = decision.get_navigation_action()
+            request = nav_action.get_request()
+            uri = request.get_uri()
+            
+            if uri:
+                # Check for blocked domains (ads/trackers)
+                if self._should_block_uri(uri):
+                    decision.ignore()
+                    return True
+                
+                # Upgrade HTTP to HTTPS
+                if self.force_https and uri.startswith('http://'):
+                    # Skip localhost and local network
+                    if not any(x in uri for x in ['localhost', '127.0.0.1', '192.168.', '10.', '172.16.']):
+                        https_uri = 'https://' + uri[7:]
+                        decision.ignore()
+                        webview.load_uri(https_uri)
+                        return True
+        
+        # Handle response decisions (downloads, subresources)
+        if decision_type == WebKit.PolicyDecisionType.RESPONSE:
+            response = decision.get_response()
+            if response:
+                uri = response.get_uri()
+                
+                # Block ad/tracker resources
+                if uri and self._should_block_uri(uri):
+                    decision.ignore()
+                    return True
+                
+                # Check if this should be downloaded
+                if decision.is_mime_type_supported() == False:
+                    decision.download()
+                    return True
+        
+        decision.use()
+        return False
+    
+    def _should_block_uri(self, uri):
+        """Check if a URI should be blocked based on privacy settings."""
+        if not uri:
+            return False
+        
+        try:
+            # Extract domain from URI
+            from urllib.parse import urlparse
+            parsed = urlparse(uri)
+            domain = parsed.netloc.lower()
+            
+            # Remove www. prefix for matching
+            if domain.startswith('www.'):
+                domain = domain[4:]
+            
+            # Check against blocklists
+            if self.block_ads:
+                for ad_domain in self.AD_DOMAINS:
+                    if ad_domain in domain or domain.endswith('.' + ad_domain):
+                        return True
+            
+            if self.block_trackers:
+                for tracker_domain in self.TRACKER_DOMAINS:
+                    if tracker_domain in domain or domain.endswith('.' + tracker_domain):
+                        return True
+        except:
+            pass
+        
+        return False
+    
+    def _on_https_toggled(self, switch, pspec):
+        """Handle HTTPS toggle."""
+        self.force_https = switch.get_active()
+        self._save_browser_settings(force_https=self.force_https)
+    
+    def _on_ads_toggled(self, switch, pspec):
+        """Handle ads blocking toggle."""
+        self.block_ads = switch.get_active()
+        self._save_browser_settings(block_ads=self.block_ads)
+    
+    def _on_trackers_toggled(self, switch, pspec):
+        """Handle tracker blocking toggle."""
+        self.block_trackers = switch.get_active()
+        self._save_browser_settings(block_trackers=self.block_trackers)
+    
+    def _on_homepage_changed(self, entry):
+        """Handle homepage change."""
+        homepage = entry.get_text().strip()
+        if homepage:
+            self._save_browser_settings(homepage=homepage)
+            # Also update the instance variable
+            self.browser_home_url = homepage
+    
+    def _on_search_engine_changed(self, dropdown, pspec):
+        """Handle search engine change."""
+        engines = ["DuckDuckGo", "Google", "Bing", "Startpage", "Brave"]
+        selected = dropdown.get_selected()
+        if 0 <= selected < len(engines):
+            self._save_browser_settings(search_engine=engines[selected])
+    
+    def _on_default_zoom_changed(self, dropdown, pspec):
+        """Handle default zoom change."""
+        zoom_values = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0]
+        selected = dropdown.get_selected()
+        if 0 <= selected < len(zoom_values):
+            zoom = zoom_values[selected]
+            self._save_browser_settings(default_zoom=zoom)
+            # Apply to all current tabs
+            self._apply_zoom_to_all_tabs(zoom)
+            self._save_zoom_level(zoom)
+    
+    def _on_clear_history_clicked(self, button):
+        """Clear browsing history."""
+        try:
+            history_db = os.path.join(self.CONFIG_DIR, 'browser_history.db')
+            if os.path.exists(history_db):
+                import sqlite3
+                conn = sqlite3.connect(history_db)
+                conn.execute("DELETE FROM history")
+                conn.commit()
+                conn.close()
+            self._show_toast("History cleared")
+        except Exception as e:
+            self._show_toast(f"Failed to clear history: {e}")
+    
+    def _on_clear_cookies_clicked(self, button):
+        """Clear browser cookies."""
+        try:
+            if self.browser_network_session:
+                cookie_manager = self.browser_network_session.get_cookie_manager()
+                # Clear all cookies
+                data_dir = os.path.join(GLib.get_user_data_dir(), 'tux-assistant', 'webview')
+                cookie_file = os.path.join(data_dir, 'cookies.sqlite')
+                if os.path.exists(cookie_file):
+                    os.remove(cookie_file)
+                self._show_toast("Cookies cleared (restart browser to take effect)")
+            else:
+                self._show_toast("Cookie manager not available")
+        except Exception as e:
+            self._show_toast(f"Failed to clear cookies: {e}")
+    
+    def _on_clear_cache_clicked(self, button):
+        """Clear browser cache."""
+        try:
+            cache_dir = os.path.join(GLib.get_user_cache_dir(), 'tux-assistant', 'webview')
+            if os.path.exists(cache_dir):
+                import shutil
+                shutil.rmtree(cache_dir)
+                os.makedirs(cache_dir, exist_ok=True)
+            self._show_toast("Cache cleared")
+        except Exception as e:
+            self._show_toast(f"Failed to clear cache: {e}")
+    
+    def _on_clear_all_clicked(self, button):
+        """Clear all browsing data."""
+        # Create confirmation dialog
+        dialog = Adw.MessageDialog.new(
+            self,
+            "Clear All Browsing Data?",
+            "This will clear history, cookies, and cache. This cannot be undone."
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("clear", "Clear All")
+        dialog.set_response_appearance("clear", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_default_response("cancel")
+        dialog.connect("response", self._on_clear_all_confirmed)
+        dialog.present()
+    
+    def _on_clear_all_confirmed(self, dialog, response):
+        """Handle clear all confirmation."""
+        if response == "clear":
+            # Clear history
+            try:
+                history_db = os.path.join(self.CONFIG_DIR, 'browser_history.db')
+                if os.path.exists(history_db):
+                    import sqlite3
+                    conn = sqlite3.connect(history_db)
+                    conn.execute("DELETE FROM history")
+                    conn.commit()
+                    conn.close()
+            except:
+                pass
+            
+            # Clear cookies
+            try:
+                data_dir = os.path.join(GLib.get_user_data_dir(), 'tux-assistant', 'webview')
+                cookie_file = os.path.join(data_dir, 'cookies.sqlite')
+                if os.path.exists(cookie_file):
+                    os.remove(cookie_file)
+            except:
+                pass
+            
+            # Clear cache
+            try:
+                cache_dir = os.path.join(GLib.get_user_cache_dir(), 'tux-assistant', 'webview')
+                if os.path.exists(cache_dir):
+                    import shutil
+                    shutil.rmtree(cache_dir)
+                    os.makedirs(cache_dir, exist_ok=True)
+            except:
+                pass
+            
+            self._show_toast("All browsing data cleared")
+    
+    def _show_toast(self, message):
+        """Show a toast notification."""
+        if hasattr(self, 'toast_overlay'):
+            toast = Adw.Toast.new(message)
+            toast.set_timeout(3)
+            self.toast_overlay.add_toast(toast)
+        else:
+            print(f"[Toast] {message}")
+    
+    def _update_blocked_count(self):
+        """Update the protection status label."""
+        if hasattr(self, 'blocked_label'):
+            if self.pages_protected > 0:
+                self.blocked_label.set_label(f"🛡️ {self.pages_protected} pages protected")
+            else:
+                self.blocked_label.set_label("🛡️ Protection active")
+    
+    def _init_content_filters(self):
+        """Initialize WebKit content filter store for ad blocking."""
+        try:
+            # Check if UserContentFilterStore is available
+            if not hasattr(WebKit, 'UserContentFilterStore'):
+                print("[Privacy] UserContentFilterStore not available, using fallback")
+                return
+            
+            # Create filter store directory
+            filter_dir = os.path.join(self.CONFIG_DIR, 'filters')
+            os.makedirs(filter_dir, exist_ok=True)
+            
+            # Create the filter store
+            self.content_filter_store = WebKit.UserContentFilterStore.new(filter_dir)
+            
+            # Load or create our filter
+            self._load_or_create_filters()
+            
+        except Exception as e:
+            print(f"[Privacy] Failed to init content filters: {e}")
+    
+    def _load_or_create_filters(self):
+        """Load existing filters or create new ones."""
+        if not self.content_filter_store:
+            return
+        
+        # Check if we have a cached filter
+        filter_file = os.path.join(self.CONFIG_DIR, 'filters', 'easylist.json')
+        
+        if not os.path.exists(filter_file):
+            # Create our filter rules
+            self._create_filter_rules(filter_file)
+        
+        # Load the filter
+        try:
+            self.content_filter_store.load(
+                'tux-adblock',
+                None,  # cancellable
+                self._on_filter_loaded
+            )
+        except Exception as e:
+            print(f"[Privacy] Filter load failed, saving new: {e}")
+            self._save_and_load_filter(filter_file)
+    
+    def _create_filter_rules(self, filter_file):
+        """Create WebKit content blocker rules in JSON format."""
+        # WebKit Content Blocker format (same as Safari)
+        # This is a curated list based on EasyList patterns
+        rules = [
+            # Block common ad domains
+            {"trigger": {"url-filter": ".*doubleclick\\.net"}, "action": {"type": "block"}},
+            {"trigger": {"url-filter": ".*googlesyndication\\.com"}, "action": {"type": "block"}},
+            {"trigger": {"url-filter": ".*googleadservices\\.com"}, "action": {"type": "block"}},
+            {"trigger": {"url-filter": ".*google-analytics\\.com"}, "action": {"type": "block"}},
+            {"trigger": {"url-filter": ".*googletagmanager\\.com"}, "action": {"type": "block"}},
+            {"trigger": {"url-filter": ".*amazon-adsystem\\.com"}, "action": {"type": "block"}},
+            {"trigger": {"url-filter": ".*facebook\\.net.*tr"}, "action": {"type": "block"}},
+            {"trigger": {"url-filter": ".*facebook\\.com/tr"}, "action": {"type": "block"}},
+            {"trigger": {"url-filter": ".*adnxs\\.com"}, "action": {"type": "block"}},
+            {"trigger": {"url-filter": ".*adsrvr\\.org"}, "action": {"type": "block"}},
+            {"trigger": {"url-filter": ".*criteo\\.(com|net)"}, "action": {"type": "block"}},
+            {"trigger": {"url-filter": ".*taboola\\.com"}, "action": {"type": "block"}},
+            {"trigger": {"url-filter": ".*outbrain\\.com"}, "action": {"type": "block"}},
+            {"trigger": {"url-filter": ".*pubmatic\\.com"}, "action": {"type": "block"}},
+            {"trigger": {"url-filter": ".*rubiconproject\\.com"}, "action": {"type": "block"}},
+            {"trigger": {"url-filter": ".*openx\\.net"}, "action": {"type": "block"}},
+            {"trigger": {"url-filter": ".*hotjar\\.com"}, "action": {"type": "block"}},
+            {"trigger": {"url-filter": ".*mixpanel\\.com"}, "action": {"type": "block"}},
+            {"trigger": {"url-filter": ".*segment\\.io"}, "action": {"type": "block"}},
+            {"trigger": {"url-filter": ".*amplitude\\.com"}, "action": {"type": "block"}},
+            {"trigger": {"url-filter": ".*quantserve\\.com"}, "action": {"type": "block"}},
+            {"trigger": {"url-filter": ".*scorecardresearch\\.com"}, "action": {"type": "block"}},
+            {"trigger": {"url-filter": ".*moatads\\.com"}, "action": {"type": "block"}},
+            {"trigger": {"url-filter": ".*adsafeprotected\\.com"}, "action": {"type": "block"}},
+            
+            # Block ad URLs by pattern
+            {"trigger": {"url-filter": ".*/ads/"}, "action": {"type": "block"}},
+            {"trigger": {"url-filter": ".*/ad/"}, "action": {"type": "block"}},
+            {"trigger": {"url-filter": ".*\\.ad\\."}, "action": {"type": "block"}},
+            {"trigger": {"url-filter": ".*/pagead/"}, "action": {"type": "block"}},
+            {"trigger": {"url-filter": ".*/adserver"}, "action": {"type": "block"}},
+            {"trigger": {"url-filter": ".*/adclick"}, "action": {"type": "block"}},
+            {"trigger": {"url-filter": ".*/aclk\\?"}, "action": {"type": "block"}},
+            {"trigger": {"url-filter": ".*banner.*\\.gif"}, "action": {"type": "block"}},
+            {"trigger": {"url-filter": ".*banner.*\\.jpg"}, "action": {"type": "block"}},
+            {"trigger": {"url-filter": ".*banner.*\\.png"}, "action": {"type": "block"}},
+            
+            # CSS hiding rules
+            {"trigger": {"url-filter": ".*"}, "action": {"type": "css-display-none", "selector": ".adsbygoogle, .ad-container, .ad-wrapper, .ad-slot, .ad-banner, .ad-unit"}},
+            {"trigger": {"url-filter": ".*"}, "action": {"type": "css-display-none", "selector": "[id*='div-gpt-ad'], [class*='gpt-ad'], .taboola, .outbrain, .OUTBRAIN"}},
+            {"trigger": {"url-filter": ".*"}, "action": {"type": "css-display-none", "selector": "[class*='banner-ad'], [class*='ad-banner'], [class*='leaderboard-ad']"}},
+            {"trigger": {"url-filter": ".*"}, "action": {"type": "css-display-none", "selector": "ins.adsbygoogle, amp-ad, amp-embed, amp-sticky-ad"}},
+        ]
+        
+        import json
+        with open(filter_file, 'w') as f:
+            json.dump(rules, f)
+        
+        print(f"[Privacy] Created {len(rules)} filter rules")
+    
+    def _save_and_load_filter(self, filter_file):
+        """Save filter to store and load it."""
+        if not self.content_filter_store or not os.path.exists(filter_file):
+            return
+        
+        try:
+            with open(filter_file, 'r') as f:
+                rules_json = f.read()
+            
+            # Save to the filter store
+            self.content_filter_store.save(
+                'tux-adblock',
+                GLib.Bytes.new(rules_json.encode('utf-8')),
+                None,  # cancellable
+                self._on_filter_saved
+            )
+        except Exception as e:
+            print(f"[Privacy] Failed to save filter: {e}")
+    
+    def _on_filter_saved(self, store, result):
+        """Called when filter is saved."""
+        try:
+            content_filter = store.save_finish(result)
+            self.content_filters.append(content_filter)
+            print("[Privacy] Content filter saved and ready")
+        except Exception as e:
+            print(f"[Privacy] Filter save failed: {e}")
+    
+    def _on_filter_loaded(self, store, result):
+        """Called when filter is loaded."""
+        try:
+            content_filter = store.load_finish(result)
+            self.content_filters.append(content_filter)
+            print("[Privacy] Content filter loaded")
+        except Exception as e:
+            # Filter doesn't exist yet, create it
+            filter_file = os.path.join(self.CONFIG_DIR, 'filters', 'easylist.json')
+            if not os.path.exists(filter_file):
+                self._create_filter_rules(filter_file)
+            self._save_and_load_filter(filter_file)
+    
+    def _apply_ad_blocking_css(self, webview):
+        """Apply CSS to hide common ad elements."""
+        try:
+            content_manager = webview.get_user_content_manager()
+            
+            # Conservative ad-hiding CSS - only target definite ad patterns
+            ad_hide_css = """
+            /* Definite ad containers */
+            .ad-container, .ad-wrapper, .ad-slot, .ad-unit,
+            .ad-banner, .ad-box, .ad-placeholder, .ad-frame,
+            .adsbygoogle, .ads-container, .ad-leaderboard,
+            .banner-ad, .sidebar-ad,
+            
+            /* Google Ads */
+            ins.adsbygoogle, [data-ad-slot], [data-google-query-id],
+            amp-ad, amp-embed, amp-sticky-ad,
+            iframe[src*="doubleclick"], iframe[src*="googlesyndication"],
+            iframe[src*="amazon-adsystem"],
+            
+            /* Common banner ad patterns */
+            [class*="banner-ad"], [class*="ad-banner"], [id*="banner-ad"],
+            [class*="leaderboard"], [class*="top-banner"], [class*="header-ad"],
+            [class*="rectangle-ad"], [class*="skyscraper"],
+            
+            /* Specific ad networks */
+            .taboola, .outbrain, #taboola-below, .OUTBRAIN,
+            [id*="div-gpt-ad"], [class*="gpt-ad"],
+            
+            /* Common WordPress ad plugins */
+            .wp-ad, .wpa, .adrotate, .advanced-ads,
+            
+            /* Cookie banners (specific patterns) */
+            .cc-banner, .cookie-banner, .cookie-notice,
+            #onetrust-banner-sdk, .onetrust-pc-dark-filter
+            
+            { display: none !important; visibility: hidden !important; height: 0 !important; overflow: hidden !important; }
+            """
+            
+            user_style = WebKit.UserStyleSheet.new(
+                ad_hide_css,
+                WebKit.UserContentInjectedFrames.ALL_FRAMES,
+                WebKit.UserStyleLevel.USER,
+                None,  # allowlist
+                None   # blocklist
+            )
+            content_manager.add_style_sheet(user_style)
+        except Exception as e:
+            print(f"Failed to apply ad-blocking CSS: {e}")
+    
     def _on_browser_load_changed(self, webview, event):
         """Update URL bar when page loads and record history."""
         if event == WebKit.LoadEvent.COMMITTED:
@@ -5220,6 +6313,185 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             title = webview.get_title()
             if uri:
                 self._record_history(uri, title)
+            
+            # Inject ad-hiding JavaScript after page loads
+            if self.block_ads:
+                self._inject_ad_hiding_js(webview)
+    
+    def _inject_ad_hiding_js(self, webview):
+        """Inject JavaScript to hide ads after page load."""
+        js_code = """
+        (function() {
+            console.log('[Tux] Ad hiding script running...');
+            
+            // Conservative selectors - only definite ad patterns
+            const adSelectors = [
+                // Definite ad containers
+                '.ad-container', '.ad-wrapper', '.ad-slot', '.ad-unit',
+                '.ad-banner', '.ad-box', '.ad-placeholder',
+                '.adsbygoogle', '.ads-container', '.ad-leaderboard',
+                '.banner-ad', '.sidebar-ad',
+                
+                // Banner ad patterns
+                '[class*="banner-ad"]', '[class*="ad-banner"]', '[id*="banner-ad"]',
+                '[class*="leaderboard"]', '[class*="top-banner"]', '[class*="header-ad"]',
+                '[class*="rectangle-ad"]', '[class*="skyscraper"]',
+                
+                // Google/Network ads
+                'ins.adsbygoogle', '[data-ad-slot]', '[data-google-query-id]',
+                '[id*="div-gpt-ad"]', '[class*="gpt-ad"]',
+                
+                // WordPress ad plugins
+                '.wp-ad', '.wpa', '.adrotate', '.advanced-ads',
+                
+                // Specific networks
+                '.taboola', '.OUTBRAIN', '.outbrain', '#taboola-below',
+                
+                // Cookie banners
+                '.cc-banner', '.cookie-banner', '.cookie-notice',
+                '#onetrust-banner-sdk'
+            ];
+            
+            let hiddenCount = 0;
+            
+            function hideAds() {
+                adSelectors.forEach(selector => {
+                    try {
+                        document.querySelectorAll(selector).forEach(el => {
+                            if (el.style.display !== 'none') {
+                                el.style.display = 'none';
+                                el.style.visibility = 'hidden';
+                                el.style.height = '0';
+                                el.style.overflow = 'hidden';
+                                hiddenCount++;
+                            }
+                        });
+                    } catch(e) {}
+                });
+                
+                // Hide iframes from ad networks
+                document.querySelectorAll('iframe').forEach(iframe => {
+                    const src = iframe.src || '';
+                    if (src.includes('doubleclick') || src.includes('googlesyndication') ||
+                        src.includes('amazon-adsystem') || src.includes('taboola') || 
+                        src.includes('outbrain') || src.includes('ad.') ||
+                        src.includes('/ads/') || src.includes('adserver')) {
+                        if (iframe.style.display !== 'none') {
+                            iframe.style.display = 'none';
+                            hiddenCount++;
+                        }
+                    }
+                });
+                
+                // Hide banner-sized images (common ad dimensions)
+                // Standard IAB ad sizes: 728x90, 300x250, 336x280, 160x600, 320x50, 468x60
+                document.querySelectorAll('img').forEach(img => {
+                    const w = img.naturalWidth || img.width;
+                    const h = img.naturalHeight || img.height;
+                    const src = (img.src || '').toLowerCase();
+                    
+                    // Check for banner dimensions
+                    const isBannerSize = (
+                        (w === 728 && h === 90) ||   // Leaderboard
+                        (w === 300 && h === 250) ||  // Medium Rectangle
+                        (w === 336 && h === 280) ||  // Large Rectangle
+                        (w === 160 && h === 600) ||  // Wide Skyscraper
+                        (w === 320 && h === 50) ||   // Mobile Leaderboard
+                        (w === 468 && h === 60) ||   // Full Banner
+                        (w === 970 && h === 90) ||   // Large Leaderboard
+                        (w === 970 && h === 250) ||  // Billboard
+                        (w === 300 && h === 600) ||  // Half Page
+                        (w >= 700 && h >= 80 && h <= 100 && w/h > 6) // Wide banners
+                    );
+                    
+                    // Check for ad keywords in image source
+                    const hasAdKeyword = (
+                        src.includes('banner') || src.includes('/ad/') ||
+                        src.includes('/ads/') || src.includes('advert') ||
+                        src.includes('sponsor') || src.includes('promo') ||
+                        src.includes('affiliate') || src.includes('click.')
+                    );
+                    
+                    if (isBannerSize || hasAdKeyword) {
+                        // Also check parent - if it's a link, hide the link
+                        const parent = img.closest('a') || img.parentElement;
+                        if (parent && parent.style.display !== 'none') {
+                            parent.style.display = 'none';
+                            hiddenCount++;
+                        } else if (img.style.display !== 'none') {
+                            img.style.display = 'none';
+                            hiddenCount++;
+                        }
+                    }
+                });
+                
+                // Hide links with affiliate/tracking patterns containing images
+                document.querySelectorAll('a').forEach(link => {
+                    const href = (link.href || '').toLowerCase();
+                    const hasImage = link.querySelector('img');
+                    
+                    if (hasImage && link.style.display !== 'none') {
+                        // Common affiliate/ad link patterns
+                        const isAdLink = (
+                            href.includes('doubleclick') ||
+                            href.includes('googlesyndication') ||
+                            href.includes('googleadservices') ||
+                            href.includes('/aclk') ||
+                            href.includes('pagead') ||
+                            href.includes('amazon-adsystem') ||
+                            href.includes('affiliate') ||
+                            href.includes('shareasale') ||
+                            href.includes('awin1.com') ||
+                            href.includes('prf.hn') ||
+                            href.includes('anrdoezrs') ||
+                            href.includes('tkqlhce') ||
+                            href.includes('jdoqocy') ||
+                            href.includes('dpbolvw') ||
+                            href.includes('kqzyfj') ||
+                            href.includes('commission') ||
+                            href.includes('partnerize') ||
+                            href.includes('impact.com') ||
+                            (href.includes('click') && href.includes('track'))
+                        );
+                        
+                        if (isAdLink) {
+                            link.style.display = 'none';
+                            hiddenCount++;
+                        }
+                    }
+                });
+                
+                if (hiddenCount > 0) {
+                    console.log('[Tux] Hidden ' + hiddenCount + ' ad elements');
+                }
+            }
+            
+            // Run immediately and after delays for lazy content
+            hideAds();
+            setTimeout(hideAds, 1000);
+            setTimeout(hideAds, 3000);
+            
+            // Observe DOM for new ads
+            const observer = new MutationObserver(function() {
+                setTimeout(hideAds, 100);
+            });
+            if (document.body) {
+                observer.observe(document.body, { childList: true, subtree: true });
+            }
+        })();
+        """
+        try:
+            # Try newer API first, fall back to older
+            if hasattr(webview, 'evaluate_javascript'):
+                webview.evaluate_javascript(js_code, -1, None, None, None, None, None)
+            elif hasattr(webview, 'run_javascript'):
+                webview.run_javascript(js_code, None, None, None)
+            
+            # Update pages protected count
+            self.pages_protected += 1
+            self._update_blocked_count()
+        except Exception as e:
+            print(f"JS injection failed: {e}")
     
     def _on_browser_create_window(self, webview, navigation_action):
         """Handle links that try to open new windows - open in default browser."""
@@ -5240,6 +6512,18 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         download.connect('decide-destination', self._on_browser_download_decide_destination)
         download.connect('finished', self._on_browser_download_finished)
         download.connect('failed', self._on_browser_download_failed)
+        download.connect('received-data', self._on_browser_download_progress)
+        
+        # Track this download
+        download_info = {
+            'download': download,
+            'destination': None,
+            'filename': 'Downloading...',
+            'progress': 0.0,
+            'status': 'downloading'
+        }
+        self.downloads.insert(0, download_info)  # Add to front
+        self._update_downloads_ui()
     
     def _on_browser_download_decide_destination(self, download, suggested_filename):
         """Decide where to save browser download."""
@@ -5261,6 +6545,15 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             counter += 1
         
         download.set_destination(destination)
+        
+        # Update tracking info
+        for d in self.downloads:
+            if d['download'] == download:
+                d['destination'] = destination
+                d['filename'] = os.path.basename(destination)
+                break
+        self._update_downloads_ui()
+        
         self.show_toast(f"Downloading: {os.path.basename(destination)}")
         return True
     
@@ -5268,11 +6561,156 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         """Handle browser download completion."""
         destination = download.get_destination()
         filename = os.path.basename(destination) if destination else "file"
+        
+        # Update tracking info
+        for d in self.downloads:
+            if d['download'] == download:
+                d['status'] = 'completed'
+                d['progress'] = 1.0
+                break
+        self._update_downloads_ui()
+        
         self.show_toast(f"Downloaded: {filename}")
     
     def _on_browser_download_failed(self, download, error):
         """Handle browser download failure."""
+        # Update tracking info
+        for d in self.downloads:
+            if d['download'] == download:
+                d['status'] = 'failed'
+                break
+        self._update_downloads_ui()
+        
         self.show_toast("Download failed")
+    
+    def _on_browser_download_progress(self, download, data_length):
+        """Handle download progress update."""
+        try:
+            response = download.get_response()
+            if response:
+                total = response.get_content_length()
+                received = download.get_received_data_length()
+                if total > 0:
+                    progress = received / total
+                    for d in self.downloads:
+                        if d['download'] == download:
+                            d['progress'] = progress
+                            break
+                    # Don't update UI on every chunk - too slow
+                    # UI updates on finish/fail
+        except:
+            pass
+    
+    def _update_downloads_ui(self):
+        """Update the downloads list UI."""
+        if not hasattr(self, 'downloads_list_box'):
+            return
+        
+        # Clear existing items
+        while True:
+            child = self.downloads_list_box.get_first_child()
+            if child:
+                self.downloads_list_box.remove(child)
+            else:
+                break
+        
+        if not self.downloads:
+            # Show empty state
+            empty_label = Gtk.Label(label="No downloads yet")
+            empty_label.add_css_class("dim-label")
+            empty_label.set_margin_top(20)
+            empty_label.set_margin_bottom(20)
+            self.downloads_list_box.append(empty_label)
+            return
+        
+        # Add download items
+        for d in self.downloads[:20]:  # Show max 20
+            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+            row.set_margin_top(8)
+            row.set_margin_bottom(8)
+            row.set_margin_start(8)
+            row.set_margin_end(8)
+            
+            # Icon based on status
+            if d['status'] == 'completed':
+                icon = Gtk.Image.new_from_icon_name("emblem-ok-symbolic")
+                icon.add_css_class("success")
+            elif d['status'] == 'failed':
+                icon = Gtk.Image.new_from_icon_name("dialog-error-symbolic")
+                icon.add_css_class("error")
+            else:
+                icon = Gtk.Image.new_from_icon_name("folder-download-symbolic")
+            row.append(icon)
+            
+            # Filename and status
+            info_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+            info_box.set_hexpand(True)
+            
+            filename_label = Gtk.Label(label=d['filename'])
+            filename_label.set_xalign(0)
+            filename_label.set_ellipsize(3)  # PANGO_ELLIPSIZE_END
+            filename_label.set_max_width_chars(35)
+            info_box.append(filename_label)
+            
+            if d['status'] == 'downloading':
+                progress_bar = Gtk.ProgressBar()
+                progress_bar.set_fraction(d['progress'])
+                info_box.append(progress_bar)
+            elif d['status'] == 'failed':
+                status_label = Gtk.Label(label="Failed")
+                status_label.set_xalign(0)
+                status_label.add_css_class("dim-label")
+                status_label.add_css_class("error")
+                info_box.append(status_label)
+            
+            row.append(info_box)
+            
+            # Open file button (only for completed)
+            if d['status'] == 'completed' and d['destination']:
+                # Open containing folder button
+                folder_btn = Gtk.Button.new_from_icon_name("folder-symbolic")
+                folder_btn.set_tooltip_text("Open containing folder")
+                folder_btn.add_css_class("flat")
+                dest = d['destination']
+                folder_btn.connect("clicked", lambda b, f=dest: self._open_containing_folder(f))
+                row.append(folder_btn)
+                
+                # Open file button
+                open_btn = Gtk.Button.new_from_icon_name("media-playback-start-symbolic")
+                open_btn.set_tooltip_text("Open file")
+                open_btn.add_css_class("flat")
+                open_btn.connect("clicked", lambda b, f=dest: self._open_file(f))
+                row.append(open_btn)
+            
+            self.downloads_list_box.append(row)
+    
+    def _open_downloads_folder(self, button=None):
+        """Open the downloads folder in file manager."""
+        downloads_dir = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DOWNLOAD)
+        if not downloads_dir:
+            downloads_dir = os.path.expanduser("~/Downloads")
+        
+        import subprocess
+        subprocess.Popen(["xdg-open", downloads_dir])
+    
+    def _open_file(self, filepath):
+        """Open a file with default application."""
+        try:
+            Gtk.FileLauncher.new(Gio.File.new_for_path(filepath)).launch(self, None, None, None)
+        except:
+            import subprocess
+            subprocess.Popen(["xdg-open", filepath])
+    
+    def _open_containing_folder(self, filepath):
+        """Open the folder containing a file."""
+        import subprocess
+        folder = os.path.dirname(filepath)
+        subprocess.Popen(["xdg-open", folder])
+    
+    def _clear_completed_downloads(self, button=None):
+        """Clear completed and failed downloads from list."""
+        self.downloads = [d for d in self.downloads if d['status'] == 'downloading']
+        self._update_downloads_ui()
     
     def _on_claude_download_started(self, session_or_context, download):
         """Handle download requests from Claude webview."""
@@ -6308,11 +7746,26 @@ read -p "Press Enter to close..."
             # No matches - do web search
             self._do_web_search(entry.get_text().strip())
     
-    def _do_web_search(self, query: str):
-        """Open web search in internal browser."""
+    def _get_search_url(self, query):
+        """Get search URL based on configured search engine."""
         import urllib.parse
         
-        search_url = f"https://duckduckgo.com/?q={urllib.parse.quote(query + ' linux')}"
+        search_engine = self._load_browser_settings().get('search_engine', 'DuckDuckGo')
+        encoded_query = urllib.parse.quote(query)
+        
+        search_urls = {
+            'DuckDuckGo': f"https://duckduckgo.com/?q={encoded_query}",
+            'Google': f"https://www.google.com/search?q={encoded_query}",
+            'Bing': f"https://www.bing.com/search?q={encoded_query}",
+            'Startpage': f"https://www.startpage.com/search?q={encoded_query}",
+            'Brave': f"https://search.brave.com/search?q={encoded_query}"
+        }
+        
+        return search_urls.get(search_engine, search_urls['DuckDuckGo'])
+    
+    def _do_web_search(self, query: str):
+        """Open web search in internal browser."""
+        search_url = self._get_search_url(query + ' linux')
         
         if WEBKIT_AVAILABLE and hasattr(self, 'browser_panel') and self.browser_panel is not None:
             # Use internal browser
