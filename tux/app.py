@@ -10,6 +10,8 @@ Copyright (c) 2025 Christopher Dorrell. Licensed under GPL-3.0.
 import sys
 import os
 import gi
+import sqlite3
+import threading
 
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
@@ -487,6 +489,12 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
     CONFIG_DIR = GLib.get_user_config_dir() + "/tux-assistant"
     CONFIG_FILE = CONFIG_DIR + "/window.conf"
     BOOKMARKS_FILE = CONFIG_DIR + "/bookmarks.json"
+    HISTORY_DB = CONFIG_DIR + "/history.db"
+    
+    # History limits - designed for daily use over years
+    HISTORY_MAX_SIZE_MB = 200  # Maximum database size
+    HISTORY_MAX_ENTRIES = 500000  # Maximum entries
+    HISTORY_CLEANUP_PERCENT = 20  # Delete this % when limit hit
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -512,6 +520,9 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         self.bookmarks = []
         self.bookmark_folders = []  # List of folder names
         self._load_bookmarks()
+        
+        # Initialize history database
+        self._init_history_db()
         
         # Build UI
         self.build_ui()
@@ -616,6 +627,352 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
                 json.dump(data, f, indent=2)
         except Exception as e:
             print(f"Failed to save bookmarks: {e}")
+    
+    # ==================== History Database Methods ====================
+    
+    def _init_history_db(self):
+        """Initialize the history SQLite database."""
+        try:
+            os.makedirs(self.CONFIG_DIR, exist_ok=True)
+            
+            conn = sqlite3.connect(self.HISTORY_DB)
+            cursor = conn.cursor()
+            
+            # Create history table with frecency support
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    url TEXT NOT NULL UNIQUE,
+                    title TEXT,
+                    visit_count INTEGER DEFAULT 1,
+                    last_visit REAL NOT NULL,
+                    first_visit REAL NOT NULL,
+                    frecency INTEGER DEFAULT 0
+                )
+            ''')
+            
+            # Indexes for fast queries
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_history_url ON history(url)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_history_last_visit ON history(last_visit DESC)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_history_frecency ON history(frecency DESC)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_history_title ON history(title)')
+            
+            conn.commit()
+            conn.close()
+            
+            # Check if maintenance needed (in background)
+            threading.Thread(target=self._check_history_maintenance, daemon=True).start()
+            
+        except Exception as e:
+            print(f"Failed to initialize history database: {e}")
+    
+    def _record_history(self, url, title=None):
+        """Record a page visit to history with frecency update."""
+        if not url or url.startswith('about:') or url.startswith('data:'):
+            return
+        
+        import time
+        now = time.time()
+        
+        try:
+            conn = sqlite3.connect(self.HISTORY_DB)
+            cursor = conn.cursor()
+            
+            # Check if URL exists
+            cursor.execute('SELECT id, visit_count, first_visit FROM history WHERE url = ?', (url,))
+            existing = cursor.fetchone()
+            
+            if existing:
+                # Update existing entry
+                entry_id, visit_count, first_visit = existing
+                new_count = visit_count + 1
+                frecency = self._calculate_frecency(new_count, now, first_visit)
+                
+                cursor.execute('''
+                    UPDATE history 
+                    SET title = COALESCE(?, title),
+                        visit_count = ?,
+                        last_visit = ?,
+                        frecency = ?
+                    WHERE id = ?
+                ''', (title, new_count, now, frecency, entry_id))
+            else:
+                # Insert new entry
+                frecency = self._calculate_frecency(1, now, now)
+                cursor.execute('''
+                    INSERT INTO history (url, title, visit_count, last_visit, first_visit, frecency)
+                    VALUES (?, ?, 1, ?, ?, ?)
+                ''', (url, title or url, now, now, frecency))
+            
+            conn.commit()
+            conn.close()
+            
+        except Exception as e:
+            print(f"Failed to record history: {e}")
+    
+    def _calculate_frecency(self, visit_count, last_visit, first_visit):
+        """
+        Calculate frecency score (frequency × recency).
+        Higher score = more relevant for autocomplete.
+        
+        Formula inspired by Firefox:
+        - Recent visits worth more
+        - Frequent visits compound
+        - Decay over time
+        """
+        import time
+        now = time.time()
+        
+        # Time buckets (in seconds)
+        HOUR = 3600
+        DAY = 86400
+        WEEK = 604800
+        MONTH = 2592000
+        
+        # Age of last visit
+        age = now - last_visit
+        
+        # Recency weight (more recent = higher)
+        if age < HOUR:
+            recency_weight = 100
+        elif age < DAY:
+            recency_weight = 70
+        elif age < WEEK:
+            recency_weight = 50
+        elif age < MONTH:
+            recency_weight = 30
+        else:
+            recency_weight = 10
+        
+        # Frequency bonus (caps at reasonable level)
+        frequency_bonus = min(visit_count * 10, 200)
+        
+        # Combined score
+        return recency_weight + frequency_bonus
+    
+    def _get_history(self, limit=50, offset=0, search=None, time_filter=None):
+        """
+        Get history entries.
+        
+        Args:
+            limit: Maximum entries to return
+            offset: Pagination offset
+            search: Search term for URL/title
+            time_filter: 'today', 'yesterday', 'week', 'month', or None for all
+        
+        Returns:
+            List of dicts: [{url, title, visit_count, last_visit, frecency}, ...]
+        """
+        import time
+        
+        try:
+            conn = sqlite3.connect(self.HISTORY_DB)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            query = 'SELECT url, title, visit_count, last_visit, frecency FROM history'
+            params = []
+            conditions = []
+            
+            # Time filter
+            if time_filter:
+                now = time.time()
+                today_start = now - (now % 86400)  # Start of today (UTC)
+                
+                if time_filter == 'today':
+                    conditions.append('last_visit >= ?')
+                    params.append(today_start)
+                elif time_filter == 'yesterday':
+                    conditions.append('last_visit >= ? AND last_visit < ?')
+                    params.extend([today_start - 86400, today_start])
+                elif time_filter == 'week':
+                    conditions.append('last_visit >= ?')
+                    params.append(now - 604800)
+                elif time_filter == 'month':
+                    conditions.append('last_visit >= ?')
+                    params.append(now - 2592000)
+            
+            # Search filter
+            if search:
+                conditions.append('(url LIKE ? OR title LIKE ?)')
+                search_term = f'%{search}%'
+                params.extend([search_term, search_term])
+            
+            if conditions:
+                query += ' WHERE ' + ' AND '.join(conditions)
+            
+            query += ' ORDER BY last_visit DESC LIMIT ? OFFSET ?'
+            params.extend([limit, offset])
+            
+            cursor.execute(query, params)
+            results = [dict(row) for row in cursor.fetchall()]
+            
+            conn.close()
+            return results
+            
+        except Exception as e:
+            print(f"Failed to get history: {e}")
+            return []
+    
+    def _get_history_suggestions(self, query, limit=8):
+        """Get history suggestions for URL autocomplete, ranked by frecency."""
+        if not query or len(query) < 2:
+            return []
+        
+        try:
+            conn = sqlite3.connect(self.HISTORY_DB)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            # Search by URL or title, order by frecency
+            search_term = f'%{query}%'
+            cursor.execute('''
+                SELECT url, title, frecency 
+                FROM history 
+                WHERE url LIKE ? OR title LIKE ?
+                ORDER BY frecency DESC
+                LIMIT ?
+            ''', (search_term, search_term, limit))
+            
+            results = [dict(row) for row in cursor.fetchall()]
+            conn.close()
+            return results
+            
+        except Exception as e:
+            print(f"Failed to get history suggestions: {e}")
+            return []
+    
+    def _get_history_count(self):
+        """Get total number of history entries."""
+        try:
+            conn = sqlite3.connect(self.HISTORY_DB)
+            cursor = conn.cursor()
+            cursor.execute('SELECT COUNT(*) FROM history')
+            count = cursor.fetchone()[0]
+            conn.close()
+            return count
+        except:
+            return 0
+    
+    def _delete_history_entry(self, url):
+        """Delete a single history entry."""
+        try:
+            conn = sqlite3.connect(self.HISTORY_DB)
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM history WHERE url = ?', (url,))
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"Failed to delete history entry: {e}")
+            return False
+    
+    def _delete_history_entries(self, urls):
+        """Delete multiple history entries."""
+        try:
+            conn = sqlite3.connect(self.HISTORY_DB)
+            cursor = conn.cursor()
+            cursor.executemany('DELETE FROM history WHERE url = ?', [(url,) for url in urls])
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"Failed to delete history entries: {e}")
+            return False
+    
+    def _clear_history(self, time_range='all'):
+        """
+        Clear history for a time range.
+        
+        Args:
+            time_range: 'hour', 'today', 'all'
+        """
+        import time
+        
+        try:
+            conn = sqlite3.connect(self.HISTORY_DB)
+            cursor = conn.cursor()
+            
+            if time_range == 'all':
+                cursor.execute('DELETE FROM history')
+            elif time_range == 'hour':
+                cutoff = time.time() - 3600
+                cursor.execute('DELETE FROM history WHERE last_visit >= ?', (cutoff,))
+            elif time_range == 'today':
+                now = time.time()
+                today_start = now - (now % 86400)
+                cursor.execute('DELETE FROM history WHERE last_visit >= ?', (today_start,))
+            
+            conn.commit()
+            conn.close()
+            
+            # VACUUM in background to reclaim space
+            threading.Thread(target=self._vacuum_history_db, daemon=True).start()
+            
+            return True
+        except Exception as e:
+            print(f"Failed to clear history: {e}")
+            return False
+    
+    def _check_history_maintenance(self):
+        """Check if history database needs maintenance (size/entry limits)."""
+        try:
+            # Check file size
+            if os.path.exists(self.HISTORY_DB):
+                size_mb = os.path.getsize(self.HISTORY_DB) / (1024 * 1024)
+                if size_mb > self.HISTORY_MAX_SIZE_MB:
+                    print(f"History DB size ({size_mb:.1f}MB) exceeds limit, cleaning...")
+                    self._cleanup_old_history()
+                    return
+            
+            # Check entry count
+            count = self._get_history_count()
+            if count > self.HISTORY_MAX_ENTRIES:
+                print(f"History entries ({count}) exceeds limit, cleaning...")
+                self._cleanup_old_history()
+                
+        except Exception as e:
+            print(f"History maintenance check failed: {e}")
+    
+    def _cleanup_old_history(self):
+        """Delete oldest entries to stay within limits."""
+        try:
+            conn = sqlite3.connect(self.HISTORY_DB)
+            cursor = conn.cursor()
+            
+            # Get count
+            cursor.execute('SELECT COUNT(*) FROM history')
+            count = cursor.fetchone()[0]
+            
+            # Delete oldest 20%
+            delete_count = int(count * self.HISTORY_CLEANUP_PERCENT / 100)
+            if delete_count > 0:
+                cursor.execute('''
+                    DELETE FROM history WHERE id IN (
+                        SELECT id FROM history ORDER BY last_visit ASC LIMIT ?
+                    )
+                ''', (delete_count,))
+                conn.commit()
+                print(f"Cleaned up {delete_count} old history entries")
+            
+            conn.close()
+            
+            # VACUUM to reclaim space
+            self._vacuum_history_db()
+            
+        except Exception as e:
+            print(f"History cleanup failed: {e}")
+    
+    def _vacuum_history_db(self):
+        """Reclaim space in history database (run in background thread)."""
+        try:
+            conn = sqlite3.connect(self.HISTORY_DB)
+            conn.execute('VACUUM')
+            conn.close()
+        except Exception as e:
+            print(f"History VACUUM failed: {e}")
+    
+    # ==================== End History Methods ====================
     
     def _load_bookmarks_bar_visible(self):
         """Load bookmarks bar visibility preference."""
@@ -768,7 +1125,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         
         if WEBKIT_AVAILABLE:
             self._build_global_claude_panel()
-            self._build_global_browser_panel()
+            # Browser panel built lazily when first opened
         
         # Create main page
         main_page = self.create_main_page()
@@ -1118,12 +1475,19 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         home_btn.connect("clicked", self._on_browser_home)
         nav_toolbar.append(home_btn)
         
-        # URL bar
+        # URL bar with autocomplete
         self.browser_url_entry = Gtk.Entry()
         self.browser_url_entry.set_hexpand(True)
         self.browser_url_entry.set_placeholder_text("Enter URL or search...")
         self.browser_url_entry.connect("activate", self._on_browser_url_activate)
+        self.browser_url_entry.connect("changed", self._on_url_entry_changed)
         nav_toolbar.append(self.browser_url_entry)
+        
+        # Autocomplete popover and controllers created lazily
+        self.url_autocomplete_popover = None
+        self.url_autocomplete_list = None
+        self._autocomplete_active = False
+        self._url_controllers_added = False
         
         # Go button
         go_btn = Gtk.Button.new_from_icon_name("go-next-symbolic")
@@ -1225,6 +1589,12 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         export_btn.connect("clicked", self._on_bookmarks_export)
         buttons_box2.append(export_btn)
         
+        # Manage button - opens full bookmark manager window
+        manage_btn = Gtk.Button(label="Manage...")
+        manage_btn.set_icon_name("applications-system-symbolic")
+        manage_btn.connect("clicked", self._show_bookmark_manager)
+        popover_box.append(manage_btn)
+        
         # Clear All button
         clear_btn = Gtk.Button(label="Clear All")
         clear_btn.set_icon_name("user-trash-symbolic")
@@ -1248,6 +1618,66 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         bar_toggle_box.append(self.bookmarks_bar_switch)
         
         nav_toolbar.append(bookmarks_btn)
+        
+        # History menu button
+        history_btn = Gtk.MenuButton()
+        history_btn.set_icon_name("document-open-recent-symbolic")
+        history_btn.set_tooltip_text("History")
+        
+        # Create popover for history
+        self.history_popover = Gtk.Popover()
+        self.history_popover.set_size_request(400, -1)
+        self.history_popover.set_autohide(True)
+        self.history_popover.connect("show", lambda p: self._on_history_popover_show())
+        history_btn.set_popover(self.history_popover)
+        
+        # History popover content
+        history_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        history_box.set_margin_top(8)
+        history_box.set_margin_bottom(8)
+        history_box.set_margin_start(8)
+        history_box.set_margin_end(8)
+        self.history_popover.set_child(history_box)
+        
+        # Search bar
+        self.history_search_entry = Gtk.SearchEntry()
+        self.history_search_entry.set_placeholder_text("Search history...")
+        self.history_search_entry.connect("search-changed", self._on_history_search_changed)
+        history_box.append(self.history_search_entry)
+        
+        # History list
+        history_scroll = Gtk.ScrolledWindow()
+        history_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        history_scroll.set_max_content_height(350)
+        history_scroll.set_propagate_natural_height(True)
+        history_box.append(history_scroll)
+        
+        self.history_list_box = Gtk.ListBox()
+        self.history_list_box.set_selection_mode(Gtk.SelectionMode.NONE)
+        self.history_list_box.add_css_class("boxed-list")
+        history_scroll.set_child(self.history_list_box)
+        
+        # Separator
+        history_box.append(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
+        
+        # Bottom buttons
+        history_actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        history_box.append(history_actions)
+        
+        # Show All History
+        show_all_btn = Gtk.Button(label="Show All History")
+        show_all_btn.set_icon_name("view-list-symbolic")
+        show_all_btn.connect("clicked", self._show_history_window)
+        show_all_btn.set_hexpand(True)
+        history_actions.append(show_all_btn)
+        
+        # Clear History button (opens dialog)
+        clear_btn = Gtk.Button(label="Clear")
+        clear_btn.set_icon_name("edit-clear-symbolic")
+        clear_btn.connect("clicked", self._show_clear_history_dialog)
+        history_actions.append(clear_btn)
+        
+        nav_toolbar.append(history_btn)
         
         # New tab button
         new_tab_btn = Gtk.Button.new_from_icon_name("tab-new-symbolic")
@@ -1443,9 +1873,11 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         return webview
     
     def _on_webview_clicked(self, gesture, n_press, x, y):
-        """Close bookmarks popover when webview is clicked."""
+        """Close popovers when webview is clicked."""
         if hasattr(self, 'bookmarks_popover') and self.bookmarks_popover.is_visible():
             self.bookmarks_popover.popdown()
+        if self.url_autocomplete_popover and self.url_autocomplete_popover.is_visible():
+            self.url_autocomplete_popover.popdown()
     
     def _browser_new_tab(self, url=None):
         """Create a new browser tab."""
@@ -1528,7 +1960,11 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         if webview:
             uri = webview.get_uri()
             if uri and hasattr(self, 'browser_url_entry'):
+                if hasattr(self, '_autocomplete_active'):
+                    self._autocomplete_active = True
                 self.browser_url_entry.set_text(uri)
+                if hasattr(self, '_autocomplete_active'):
+                    self._autocomplete_active = False
             # Update bookmark star for current URL
             self._update_bookmark_star()
     
@@ -1561,8 +1997,12 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
     
     def _on_browser_toggle(self, button):
         """Toggle browser panel visibility."""
+        # Build browser panel lazily on first use
         if not hasattr(self, 'browser_panel') or self.browser_panel is None:
-            return
+            if WEBKIT_AVAILABLE:
+                self._build_global_browser_panel()
+            else:
+                return
         
         if button.get_active():
             # Show browser
@@ -1674,6 +2114,230 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         webview = self._get_current_browser_webview()
         if webview:
             webview.load_uri(url)
+        
+        # Hide autocomplete
+        if self.url_autocomplete_popover:
+            self.url_autocomplete_popover.popdown()
+    
+    def _create_url_autocomplete_popover(self):
+        """Create the URL autocomplete popover (called lazily after window is realized)."""
+        self.url_autocomplete_popover = Gtk.Popover()
+        self.url_autocomplete_popover.set_parent(self.browser_url_entry)
+        self.url_autocomplete_popover.set_position(Gtk.PositionType.BOTTOM)
+        self.url_autocomplete_popover.set_autohide(False)  # We control visibility
+        self.url_autocomplete_popover.set_size_request(400, -1)
+        
+        autocomplete_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        self.url_autocomplete_popover.set_child(autocomplete_box)
+        
+        autocomplete_scroll = Gtk.ScrolledWindow()
+        autocomplete_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        autocomplete_scroll.set_max_content_height(250)
+        autocomplete_scroll.set_propagate_natural_height(True)
+        autocomplete_box.append(autocomplete_scroll)
+        
+        self.url_autocomplete_list = Gtk.ListBox()
+        self.url_autocomplete_list.set_selection_mode(Gtk.SelectionMode.SINGLE)
+        self.url_autocomplete_list.add_css_class("boxed-list")
+        self.url_autocomplete_list.connect("row-activated", self._on_autocomplete_activated)
+        autocomplete_scroll.set_child(self.url_autocomplete_list)
+        
+        # Add controllers now that window is realized
+        if not self._url_controllers_added:
+            url_key_controller = Gtk.EventControllerKey()
+            url_key_controller.connect("key-pressed", self._on_url_key_pressed)
+            self.browser_url_entry.add_controller(url_key_controller)
+            
+            focus_controller = Gtk.EventControllerFocus()
+            focus_controller.connect("leave", self._on_url_focus_leave)
+            self.browser_url_entry.add_controller(focus_controller)
+            
+            self._url_controllers_added = True
+    
+    def _on_url_entry_changed(self, entry):
+        """Show autocomplete suggestions as user types."""
+        if getattr(self, '_autocomplete_active', False):
+            return  # Avoid loops when we set text programmatically
+        
+        text = entry.get_text().strip()
+        
+        # Need at least 2 characters
+        if len(text) < 2:
+            if self.url_autocomplete_popover:
+                self.url_autocomplete_popover.popdown()
+            return
+        
+        # Create popover lazily (first time)
+        if not self.url_autocomplete_popover:
+            self._create_url_autocomplete_popover()
+        
+        # Get suggestions from history (frecency-ranked)
+        suggestions = self._get_history_suggestions(text, limit=6)
+        
+        # Also get matching bookmarks
+        bookmark_matches = []
+        for bm in self.bookmarks:
+            if bm.get('type') == 'separator':
+                continue
+            if (text.lower() in bm.get('title', '').lower() or 
+                text.lower() in bm.get('url', '').lower()):
+                bookmark_matches.append({
+                    'url': bm['url'],
+                    'title': bm.get('title', bm['url']),
+                    'is_bookmark': True
+                })
+                if len(bookmark_matches) >= 3:
+                    break
+        
+        # Clear existing suggestions
+        while True:
+            child = self.url_autocomplete_list.get_first_child()
+            if child is None:
+                break
+            self.url_autocomplete_list.remove(child)
+        
+        # Combine: bookmarks first, then history
+        all_suggestions = []
+        seen_urls = set()
+        
+        for bm in bookmark_matches:
+            if bm['url'] not in seen_urls:
+                all_suggestions.append(bm)
+                seen_urls.add(bm['url'])
+        
+        for h in suggestions:
+            if h['url'] not in seen_urls:
+                h['is_bookmark'] = False
+                all_suggestions.append(h)
+                seen_urls.add(h['url'])
+        
+        if not all_suggestions:
+            self.url_autocomplete_popover.popdown()
+            return
+        
+        # Build suggestion rows
+        for suggestion in all_suggestions[:8]:
+            row = self._create_autocomplete_row(suggestion)
+            self.url_autocomplete_list.append(row)
+        
+        # Show the popover
+        self.url_autocomplete_popover.popup()
+    
+    def _create_autocomplete_row(self, suggestion):
+        """Create a row for autocomplete dropdown."""
+        row = Adw.ActionRow()
+        row.set_title(suggestion.get('title', suggestion['url']))
+        row.set_activatable(True)
+        
+        # Truncate URL
+        url = suggestion['url']
+        display_url = url[:50] + '...' if len(url) > 50 else url
+        row.set_subtitle(display_url)
+        
+        row.autocomplete_url = url
+        
+        # Icon - bookmark or history
+        if suggestion.get('is_bookmark'):
+            icon = Gtk.Image.new_from_icon_name("user-bookmarks-symbolic")
+        else:
+            icon = Gtk.Image.new_from_icon_name("document-open-recent-symbolic")
+        row.add_prefix(icon)
+        
+        # Add click gesture for reliable clicking
+        click = Gtk.GestureClick()
+        click.connect("pressed", lambda g, n, x, y, u=url: self._on_autocomplete_row_clicked(u))
+        row.add_controller(click)
+        
+        return row
+    
+    def _on_autocomplete_row_clicked(self, url):
+        """Handle click on autocomplete row."""
+        # Hide popover FIRST
+        if self.url_autocomplete_popover:
+            self.url_autocomplete_popover.popdown()
+        
+        # Update entry without triggering autocomplete
+        self._autocomplete_active = True
+        self.browser_url_entry.set_text(url)
+        self._autocomplete_active = False
+        
+        # Navigate
+        webview = self._get_current_browser_webview()
+        if webview:
+            webview.load_uri(url)
+    
+    def _on_autocomplete_activated(self, listbox, row):
+        """Navigate to selected autocomplete suggestion (keyboard)."""
+        # row is ListBoxRow, get_child() is our ActionRow
+        action_row = row.get_child()
+        if action_row and hasattr(action_row, 'autocomplete_url'):
+            url = action_row.autocomplete_url
+            
+            # Update entry without triggering autocomplete
+            self._autocomplete_active = True
+            self.browser_url_entry.set_text(url)
+            self._autocomplete_active = False
+            
+            # Hide popover
+            self.url_autocomplete_popover.popdown()
+            
+            # Navigate
+            webview = self._get_current_browser_webview()
+            if webview:
+                webview.load_uri(url)
+    
+    def _on_url_key_pressed(self, controller, keyval, keycode, state):
+        """Handle keyboard navigation in URL autocomplete."""
+        if not self.url_autocomplete_popover or not self.url_autocomplete_popover.is_visible():
+            return False
+        
+        # Escape - hide autocomplete
+        if keyval == Gdk.KEY_Escape:
+            self.url_autocomplete_popover.popdown()
+            return True
+        
+        # Down arrow - move to list
+        if keyval == Gdk.KEY_Down:
+            first_row = self.url_autocomplete_list.get_row_at_index(0)
+            if first_row:
+                self.url_autocomplete_list.select_row(first_row)
+                first_row.grab_focus()
+            return True
+        
+        # Up arrow - select last item
+        if keyval == Gdk.KEY_Up:
+            # Count rows
+            i = 0
+            while self.url_autocomplete_list.get_row_at_index(i):
+                i += 1
+            if i > 0:
+                last_row = self.url_autocomplete_list.get_row_at_index(i - 1)
+                if last_row:
+                    self.url_autocomplete_list.select_row(last_row)
+                    last_row.grab_focus()
+            return True
+        
+        return False
+    
+    def _on_url_focus_leave(self, controller):
+        """Hide autocomplete when URL entry loses focus."""
+        # Small delay to allow clicking on suggestions
+        GLib.timeout_add(150, self._maybe_hide_autocomplete)
+    
+    def _maybe_hide_autocomplete(self):
+        """Hide autocomplete if focus isn't in the list."""
+        if self.url_autocomplete_popover:
+            # Check if focus went to the autocomplete list
+            focus = self.get_focus()
+            if focus and hasattr(focus, 'get_parent'):
+                parent = focus.get_parent()
+                while parent:
+                    if parent == self.url_autocomplete_list:
+                        return False  # Focus is in list, don't hide
+                    parent = parent.get_parent() if hasattr(parent, 'get_parent') else None
+            
+            self.url_autocomplete_popover.popdown()
+        return False  # Don't repeat
     
     def _on_bookmark_toggle(self, button):
         """Add or remove current page from bookmarks."""
@@ -1805,6 +2469,526 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         if hasattr(self, 'bookmarks_search_entry'):
             search_text = self.bookmarks_search_entry.get_text()
         self._refresh_bookmarks_list(search_text)
+    
+    # ==================== History Panel Methods ====================
+    
+    def _on_history_popover_show(self):
+        """Handle history popover showing."""
+        if hasattr(self, 'history_search_entry'):
+            self.history_search_entry.set_text("")
+        self._refresh_history_list()
+    
+    def _on_history_search_changed(self, entry):
+        """Filter history based on search text."""
+        self._refresh_history_list(entry.get_text())
+    
+    def _refresh_history_list(self, search_filter=""):
+        """Rebuild the history list in the popover."""
+        import time
+        from datetime import datetime
+        
+        if not hasattr(self, 'history_list_box'):
+            return
+        
+        # Clear existing
+        while True:
+            child = self.history_list_box.get_first_child()
+            if child is None:
+                break
+            self.history_list_box.remove(child)
+        
+        # Get history entries
+        search = search_filter.strip() if search_filter else None
+        entries = self._get_history(limit=100, search=search)
+        
+        if not entries:
+            empty = Adw.ActionRow()
+            empty.set_title("No history" if not search else "No matches found")
+            empty.add_css_class("dim-label")
+            self.history_list_box.append(empty)
+            return
+        
+        # Group by time
+        now = time.time()
+        today_start = now - (now % 86400)
+        yesterday_start = today_start - 86400
+        week_start = now - 604800
+        
+        current_section = None
+        
+        for entry in entries:
+            last_visit = entry['last_visit']
+            
+            # Determine section
+            if last_visit >= today_start:
+                section = "Today"
+            elif last_visit >= yesterday_start:
+                section = "Yesterday"
+            elif last_visit >= week_start:
+                section = "This Week"
+            else:
+                section = "Older"
+            
+            # Add section header if new section
+            if section != current_section and not search_filter:
+                current_section = section
+                header = Adw.ActionRow()
+                header.set_title(section)
+                header.add_css_class("dim-label")
+                header.set_activatable(False)
+                header.set_selectable(False)
+                self.history_list_box.append(header)
+            
+            # Create history row
+            row = self._create_history_row(entry)
+            self.history_list_box.append(row)
+    
+    def _create_history_row(self, entry):
+        """Create a row for history list."""
+        import time
+        from datetime import datetime
+        
+        row = Adw.ActionRow()
+        row.set_title(entry.get('title', entry['url']))
+        
+        # Format time nicely
+        visit_time = entry['last_visit']
+        dt = datetime.fromtimestamp(visit_time)
+        now = time.time()
+        
+        if now - visit_time < 86400:  # Today
+            time_str = dt.strftime("%H:%M")
+        else:
+            time_str = dt.strftime("%b %d")
+        
+        row.set_subtitle(f"{time_str} • {entry['url'][:60]}{'...' if len(entry['url']) > 60 else ''}")
+        row.set_tooltip_text(entry['url'])
+        
+        # Make clickable
+        row.set_activatable(True)
+        row.history_url = entry['url']
+        row.connect("activated", self._on_history_activated)
+        
+        # Favicon
+        favicon = self._get_bookmark_favicon(entry['url'])
+        row.add_prefix(favicon)
+        
+        # Delete button
+        delete_btn = Gtk.Button.new_from_icon_name("edit-delete-symbolic")
+        delete_btn.add_css_class("flat")
+        delete_btn.set_valign(Gtk.Align.CENTER)
+        delete_btn.set_tooltip_text("Remove from history")
+        delete_btn.history_url = entry['url']
+        delete_btn.connect("clicked", self._on_history_delete_entry)
+        row.add_suffix(delete_btn)
+        
+        return row
+    
+    def _on_history_activated(self, row):
+        """Navigate to history entry."""
+        url = getattr(row, 'history_url', None)
+        if url and hasattr(self, 'history_popover'):
+            self.history_popover.popdown()
+            self._browser_navigate(url)
+    
+    def _on_history_delete_entry(self, button):
+        """Delete single history entry."""
+        url = getattr(button, 'history_url', None)
+        if url:
+            self._delete_history_entry(url)
+            # Refresh list
+            search = ""
+            if hasattr(self, 'history_search_entry'):
+                search = self.history_search_entry.get_text()
+            self._refresh_history_list(search)
+    
+    def _clear_history_action(self, time_range):
+        """Clear history with confirmation."""
+        if hasattr(self, 'history_popover'):
+            self.history_popover.popdown()
+        
+        if time_range == 'all':
+            count = self._get_history_count()
+            dialog = Adw.MessageDialog(
+                transient_for=self,
+                heading="Clear All History?",
+                body=f"This will permanently delete {count} history entries."
+            )
+            dialog.add_response("cancel", "Cancel")
+            dialog.add_response("clear", "Clear All")
+            dialog.set_response_appearance("clear", Adw.ResponseAppearance.DESTRUCTIVE)
+            dialog.set_default_response("cancel")
+            dialog.set_close_response("cancel")
+            
+            def on_response(d, response):
+                if response == "clear":
+                    self._clear_history(time_range)
+                    self.show_toast("History cleared")
+            
+            dialog.connect("response", on_response)
+            dialog.present()
+        else:
+            # For hour/today, just do it
+            self._clear_history(time_range)
+            label = "Last hour" if time_range == "hour" else "Today's history"
+            self.show_toast(f"{label} cleared")
+    
+    def _show_clear_history_dialog(self, button=None):
+        """Show dialog to choose what history to clear."""
+        if hasattr(self, 'history_popover'):
+            self.history_popover.popdown()
+        
+        dialog = Adw.MessageDialog(
+            transient_for=self,
+            heading="Clear History",
+            body="Choose what to clear:"
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("hour", "Last Hour")
+        dialog.add_response("today", "Today")
+        dialog.add_response("all", "All Time")
+        dialog.set_response_appearance("all", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
+        
+        def on_response(d, response):
+            if response in ('hour', 'today', 'all'):
+                self._clear_history(response)
+                if response == 'all':
+                    self.show_toast("All history cleared")
+                elif response == 'hour':
+                    self.show_toast("Last hour cleared")
+                else:
+                    self.show_toast("Today's history cleared")
+                # Refresh panel if open
+                if hasattr(self, 'history_search_entry'):
+                    self._refresh_history_list(self.history_search_entry.get_text())
+        
+        dialog.connect("response", on_response)
+        dialog.present()
+    
+    def _show_history_window(self, button=None):
+        """Show full history window."""
+        if hasattr(self, 'history_popover'):
+            self.history_popover.popdown()
+        
+        # Track current filters
+        self.hw_search_filter = ""
+        self.hw_time_filter = None
+        
+        # Create the window
+        self.history_window = Adw.Window()
+        self.history_window.set_title("History")
+        self.history_window.set_default_size(700, 550)
+        self.history_window.set_transient_for(self)
+        self.history_window.set_modal(False)
+        
+        # Main layout
+        main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.history_window.set_content(main_box)
+        
+        # Header bar
+        header = Adw.HeaderBar()
+        main_box.append(header)
+        
+        # Time filter dropdown on left
+        time_options = ["All Time", "Today", "Yesterday", "This Week", "This Month"]
+        time_model = Gtk.StringList.new(time_options)
+        self.hw_time_dropdown = Gtk.DropDown(model=time_model)
+        self.hw_time_dropdown.set_tooltip_text("Filter by time")
+        self.hw_time_dropdown.connect("notify::selected", self._on_hw_time_filter_changed)
+        header.pack_start(self.hw_time_dropdown)
+        
+        # Search entry as title
+        self.hw_search = Gtk.SearchEntry()
+        self.hw_search.set_placeholder_text("Search history...")
+        self.hw_search.set_hexpand(True)
+        self.hw_search.connect("search-changed", self._on_hw_search_changed)
+        header.set_title_widget(self.hw_search)
+        
+        # Entry count label on right
+        self.hw_count_label = Gtk.Label()
+        self.hw_count_label.add_css_class("dim-label")
+        header.pack_end(self.hw_count_label)
+        
+        # Scrolled window for history list
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_vexpand(True)
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        main_box.append(scroll)
+        
+        # ListBox with multi-select
+        self.hw_list = Gtk.ListBox()
+        self.hw_list.set_selection_mode(Gtk.SelectionMode.MULTIPLE)
+        self.hw_list.add_css_class("boxed-list")
+        self.hw_list.set_margin_start(12)
+        self.hw_list.set_margin_end(12)
+        self.hw_list.set_margin_top(12)
+        self.hw_list.set_margin_bottom(12)
+        scroll.set_child(self.hw_list)
+        
+        # Bottom toolbar
+        toolbar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        toolbar.set_margin_start(12)
+        toolbar.set_margin_end(12)
+        toolbar.set_margin_bottom(12)
+        toolbar.set_margin_top(8)
+        main_box.append(toolbar)
+        
+        # Delete Selected button
+        delete_btn = Gtk.Button(label="Delete Selected")
+        delete_btn.set_icon_name("edit-delete-symbolic")
+        delete_btn.add_css_class("destructive-action")
+        delete_btn.connect("clicked", self._on_hw_delete_selected)
+        toolbar.append(delete_btn)
+        
+        # Spacer
+        spacer = Gtk.Box()
+        spacer.set_hexpand(True)
+        toolbar.append(spacer)
+        
+        # Clear All button
+        clear_all_btn = Gtk.Button(label="Clear All History")
+        clear_all_btn.set_icon_name("edit-clear-all-symbolic")
+        clear_all_btn.add_css_class("destructive-action")
+        clear_all_btn.connect("clicked", self._on_hw_clear_all)
+        toolbar.append(clear_all_btn)
+        
+        # Keyboard shortcuts
+        key_controller = Gtk.EventControllerKey()
+        key_controller.connect("key-pressed", self._on_hw_key_pressed)
+        self.history_window.add_controller(key_controller)
+        
+        # Populate the list
+        self._refresh_hw_list()
+        
+        # Show the window
+        self.history_window.present()
+    
+    def _refresh_hw_list(self):
+        """Refresh the history window list."""
+        import time
+        from datetime import datetime
+        
+        # Clear existing
+        while True:
+            child = self.hw_list.get_first_child()
+            if child is None:
+                break
+            self.hw_list.remove(child)
+        
+        # Map dropdown selection to time filter
+        time_map = {
+            0: None,        # All Time
+            1: 'today',
+            2: 'yesterday', 
+            3: 'week',
+            4: 'month'
+        }
+        
+        time_filter = time_map.get(self.hw_time_dropdown.get_selected(), None)
+        search = self.hw_search.get_text().strip() if hasattr(self, 'hw_search') else None
+        search = search if search else None
+        
+        # Get entries
+        entries = self._get_history(limit=500, search=search, time_filter=time_filter)
+        
+        # Update count label
+        total_count = self._get_history_count()
+        if search or time_filter:
+            self.hw_count_label.set_text(f"{len(entries)} of {total_count}")
+        else:
+            self.hw_count_label.set_text(f"{total_count} entries")
+        
+        if not entries:
+            empty = Adw.ActionRow()
+            if search:
+                empty.set_title("No matches found")
+            elif time_filter:
+                empty.set_title("No history for this time period")
+            else:
+                empty.set_title("No browsing history")
+            empty.add_css_class("dim-label")
+            empty.set_activatable(False)
+            empty.set_selectable(False)
+            self.hw_list.append(empty)
+            return
+        
+        # Group by date
+        now = time.time()
+        today_start = now - (now % 86400)
+        yesterday_start = today_start - 86400
+        week_start = now - 604800
+        month_start = now - 2592000
+        
+        current_section = None
+        
+        for entry in entries:
+            last_visit = entry['last_visit']
+            
+            # Determine section
+            if last_visit >= today_start:
+                section = "Today"
+            elif last_visit >= yesterday_start:
+                section = "Yesterday"
+            elif last_visit >= week_start:
+                section = "This Week"
+            elif last_visit >= month_start:
+                section = "This Month"
+            else:
+                # Format as month/year for older entries
+                dt = datetime.fromtimestamp(last_visit)
+                section = dt.strftime("%B %Y")
+            
+            # Add section header if new section (only when not searching)
+            if section != current_section and not search:
+                current_section = section
+                header = Adw.ActionRow()
+                header.set_title(section)
+                header.add_css_class("dim-label")
+                header.set_activatable(False)
+                header.set_selectable(False)
+                self.hw_list.append(header)
+            
+            # Create history row
+            row = self._create_hw_row(entry)
+            self.hw_list.append(row)
+    
+    def _create_hw_row(self, entry):
+        """Create a row for history window list."""
+        import time
+        from datetime import datetime
+        
+        row = Adw.ActionRow()
+        row.set_title(entry.get('title', entry['url']))
+        
+        # Format timestamp
+        visit_time = entry['last_visit']
+        dt = datetime.fromtimestamp(visit_time)
+        now = time.time()
+        
+        if now - visit_time < 86400:
+            time_str = dt.strftime("%H:%M")
+        else:
+            time_str = dt.strftime("%b %d, %H:%M")
+        
+        # Truncate URL for display
+        url = entry['url']
+        display_url = url[:70] + '...' if len(url) > 70 else url
+        
+        row.set_subtitle(f"{time_str} • {display_url}")
+        row.set_tooltip_text(url)
+        
+        # Store data
+        row.history_url = url
+        
+        # Favicon
+        favicon = self._get_bookmark_favicon(url)
+        row.add_prefix(favicon)
+        
+        # Visit button (to navigate)
+        visit_btn = Gtk.Button.new_from_icon_name("go-jump-symbolic")
+        visit_btn.add_css_class("flat")
+        visit_btn.set_valign(Gtk.Align.CENTER)
+        visit_btn.set_tooltip_text("Visit this page")
+        visit_btn.history_url = url
+        visit_btn.connect("clicked", self._on_hw_visit_clicked)
+        row.add_suffix(visit_btn)
+        
+        return row
+    
+    def _on_hw_search_changed(self, entry):
+        """Handle search in history window."""
+        self._refresh_hw_list()
+    
+    def _on_hw_time_filter_changed(self, dropdown, param):
+        """Handle time filter change."""
+        self._refresh_hw_list()
+    
+    def _on_hw_visit_clicked(self, button):
+        """Navigate to history entry from window."""
+        url = getattr(button, 'history_url', None)
+        if url:
+            self.history_window.close()
+            self._browser_navigate(url)
+    
+    def _on_hw_delete_selected(self, button):
+        """Delete selected history entries."""
+        selected_rows = self.hw_list.get_selected_rows()
+        
+        # Filter to only rows with history_url (not headers)
+        urls_to_delete = []
+        for row in selected_rows:
+            # Get the actual child widget (ActionRow)
+            child = row.get_child()
+            if child and hasattr(child, 'history_url'):
+                urls_to_delete.append(child.history_url)
+        
+        if not urls_to_delete:
+            self.show_toast("No history entries selected")
+            return
+        
+        # Delete them
+        self._delete_history_entries(urls_to_delete)
+        
+        # Refresh
+        self._refresh_hw_list()
+        
+        # Also refresh panel if open
+        if hasattr(self, 'history_search_entry'):
+            self._refresh_history_list(self.history_search_entry.get_text())
+        
+        self.show_toast(f"Deleted {len(urls_to_delete)} entr{'y' if len(urls_to_delete) == 1 else 'ies'}")
+    
+    def _on_hw_clear_all(self, button):
+        """Clear all history from window."""
+        count = self._get_history_count()
+        
+        dialog = Adw.MessageDialog(
+            transient_for=self.history_window,
+            heading="Clear All History?",
+            body=f"This will permanently delete all {count} history entries."
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("clear", "Clear All")
+        dialog.set_response_appearance("clear", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
+        
+        def on_response(d, response):
+            if response == "clear":
+                self._clear_history('all')
+                self._refresh_hw_list()
+                self.show_toast("All history cleared")
+        
+        dialog.connect("response", on_response)
+        dialog.present()
+    
+    def _on_hw_key_pressed(self, controller, keyval, keycode, state):
+        """Handle keyboard shortcuts in history window."""
+        # Delete key - delete selected
+        if keyval == Gdk.KEY_Delete:
+            self._on_hw_delete_selected(None)
+            return True
+        
+        # Escape - close window
+        if keyval == Gdk.KEY_Escape:
+            self.history_window.close()
+            return True
+        
+        # Ctrl+A - select all
+        if keyval == Gdk.KEY_a and state & Gdk.ModifierType.CONTROL_MASK:
+            self.hw_list.select_all()
+            return True
+        
+        # Ctrl+F - focus search
+        if keyval == Gdk.KEY_f and state & Gdk.ModifierType.CONTROL_MASK:
+            self.hw_search.grab_focus()
+            return True
+        
+        return False
+    
+    # ==================== End History Panel Methods ====================
     
     def _refresh_bookmarks_list(self, search_filter=""):
         """Rebuild the bookmarks list in the popover."""
@@ -3187,14 +4371,855 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
                 msg += f" and {folder_count} folders"
             self.show_toast(msg)
     
+    def _get_all_tags(self):
+        """Get all unique tags from all bookmarks."""
+        tags = set()
+        for bm in self.bookmarks:
+            for tag in bm.get('tags', []):
+                tags.add(tag)
+        return sorted(tags)
+    
+    def _create_tag_chip(self, tag, removable=False, on_remove=None, on_click=None):
+        """Create a tag chip widget."""
+        chip = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
+        chip.add_css_class("card")
+        chip.set_margin_top(2)
+        chip.set_margin_bottom(2)
+        
+        if on_click:
+            # Make it a button
+            btn = Gtk.Button()
+            btn.add_css_class("flat")
+            btn.add_css_class("pill")
+            btn.set_child(chip)
+            btn.tag_name = tag
+            btn.connect("clicked", on_click)
+            container = btn
+        else:
+            container = chip
+        
+        label = Gtk.Label(label=tag)
+        label.set_margin_start(8)
+        label.set_margin_end(4 if removable else 8)
+        label.set_margin_top(2)
+        label.set_margin_bottom(2)
+        chip.append(label)
+        
+        if removable and on_remove:
+            remove_btn = Gtk.Button.new_from_icon_name("window-close-symbolic")
+            remove_btn.add_css_class("flat")
+            remove_btn.add_css_class("circular")
+            remove_btn.set_valign(Gtk.Align.CENTER)
+            remove_btn.tag_name = tag
+            remove_btn.connect("clicked", on_remove)
+            chip.append(remove_btn)
+        
+        return container
+    
+    def _show_bookmark_manager(self, button=None):
+        """Show the full bookmark manager window."""
+        if hasattr(self, 'bookmarks_popover'):
+            self.bookmarks_popover.popdown()
+        
+        # Track current tag filter
+        self.bm_tag_filter = None
+        
+        # Create the manager window
+        self.bm_window = Adw.Window()
+        self.bm_window.set_title("Bookmark Manager")
+        self.bm_window.set_default_size(650, 550)
+        self.bm_window.set_transient_for(self)
+        self.bm_window.set_modal(False)
+        
+        # Main layout
+        main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.bm_window.set_content(main_box)
+        
+        # Header bar with search and tag filter
+        header = Adw.HeaderBar()
+        main_box.append(header)
+        
+        # Search entry 
+        self.bm_search = Gtk.SearchEntry()
+        self.bm_search.set_placeholder_text("Search bookmarks...")
+        self.bm_search.set_hexpand(True)
+        self.bm_search.connect("search-changed", self._on_bm_search_changed)
+        header.set_title_widget(self.bm_search)
+        
+        # Tag filter dropdown in header
+        all_tags = self._get_all_tags()
+        tag_options = ["All Tags"] + all_tags
+        tag_model = Gtk.StringList.new(tag_options)
+        self.bm_tag_dropdown = Gtk.DropDown(model=tag_model)
+        self.bm_tag_dropdown.set_tooltip_text("Filter by tag")
+        self.bm_tag_dropdown.connect("notify::selected", self._on_bm_tag_filter_changed)
+        header.pack_start(self.bm_tag_dropdown)
+        
+        # Tag management button in header
+        tags_btn = Gtk.Button.new_from_icon_name("tag-symbolic")
+        tags_btn.set_tooltip_text("Manage tags")
+        tags_btn.connect("clicked", self._show_tag_manager)
+        header.pack_end(tags_btn)
+        
+        # Scrolled window for bookmark list
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_vexpand(True)
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        main_box.append(scroll)
+        
+        # ListBox with multi-select
+        self.bm_list = Gtk.ListBox()
+        self.bm_list.set_selection_mode(Gtk.SelectionMode.MULTIPLE)
+        self.bm_list.add_css_class("boxed-list")
+        self.bm_list.set_margin_start(12)
+        self.bm_list.set_margin_end(12)
+        self.bm_list.set_margin_top(12)
+        self.bm_list.set_margin_bottom(12)
+        scroll.set_child(self.bm_list)
+        
+        # Bottom toolbar
+        toolbar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        toolbar.set_margin_start(12)
+        toolbar.set_margin_end(12)
+        toolbar.set_margin_bottom(12)
+        toolbar.set_margin_top(8)
+        main_box.append(toolbar)
+        
+        # Delete Selected button
+        delete_btn = Gtk.Button(label="Delete Selected")
+        delete_btn.set_icon_name("edit-delete-symbolic")
+        delete_btn.add_css_class("destructive-action")
+        delete_btn.connect("clicked", self._on_bm_delete_selected)
+        toolbar.append(delete_btn)
+        
+        # Move to Folder dropdown
+        move_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        toolbar.append(move_box)
+        
+        move_label = Gtk.Label(label="Move to:")
+        move_box.append(move_label)
+        
+        # Build folder dropdown
+        folder_options = ["(Unfiled)"] + self.bookmark_folders
+        folder_model = Gtk.StringList.new(folder_options)
+        self.bm_folder_dropdown = Gtk.DropDown(model=folder_model)
+        self.bm_folder_dropdown.set_tooltip_text("Move selected to folder")
+        self.bm_folder_dropdown.connect("notify::selected", self._on_bm_move_to_folder)
+        move_box.append(self.bm_folder_dropdown)
+        
+        # Spacer
+        spacer = Gtk.Box()
+        spacer.set_hexpand(True)
+        toolbar.append(spacer)
+        
+        # New Folder button
+        new_folder_btn = Gtk.Button(label="New Folder")
+        new_folder_btn.set_icon_name("folder-new-symbolic")
+        new_folder_btn.connect("clicked", self._on_bm_new_folder)
+        toolbar.append(new_folder_btn)
+        
+        # Export button
+        export_btn = Gtk.Button(label="Export")
+        export_btn.set_icon_name("document-save-symbolic")
+        export_btn.connect("clicked", self._on_bookmarks_export)
+        toolbar.append(export_btn)
+        
+        # Keyboard shortcuts
+        key_controller = Gtk.EventControllerKey()
+        key_controller.connect("key-pressed", self._on_bm_key_pressed)
+        self.bm_window.add_controller(key_controller)
+        
+        # Populate the list
+        self._refresh_bm_list()
+        
+        # Show the window
+        self.bm_window.present()
+    
+    def _refresh_bm_list(self, search_filter=""):
+        """Refresh the bookmark manager list."""
+        # Clear existing
+        while True:
+            child = self.bm_list.get_first_child()
+            if child is None:
+                break
+            self.bm_list.remove(child)
+        
+        search_filter = search_filter.lower().strip()
+        tag_filter = getattr(self, 'bm_tag_filter', None)
+        
+        # Filter bookmarks
+        filtered = []
+        for bm in self.bookmarks:
+            if bm.get('type') == 'separator':
+                continue
+            
+            # Tag filter
+            if tag_filter:
+                if tag_filter not in bm.get('tags', []):
+                    continue
+            
+            # Search filter
+            if search_filter:
+                if not (search_filter in bm.get('title', '').lower() or 
+                        search_filter in bm.get('url', '').lower() or
+                        any(search_filter in tag.lower() for tag in bm.get('tags', []))):
+                    continue
+            
+            filtered.append(bm)
+        
+        if search_filter or tag_filter:
+            # When filtering, show flat list
+            for bm in filtered:
+                row = self._create_bm_row(bm)
+                self.bm_list.append(row)
+        else:
+            # Show organized by folder
+            unfiled = [bm for bm in filtered if not bm.get('folder')]
+            
+            # Add folders
+            for folder_name in self.bookmark_folders:
+                folder_bookmarks = [bm for bm in filtered if bm.get('folder') == folder_name]
+                
+                # Folder header
+                folder_row = Adw.ActionRow()
+                folder_row.set_title(f"📁 {folder_name}")
+                folder_row.set_subtitle(f"{len(folder_bookmarks)} bookmark{'s' if len(folder_bookmarks) != 1 else ''}")
+                folder_row.add_css_class("dim-label")
+                folder_row.set_activatable(False)
+                folder_row.set_selectable(False)
+                self.bm_list.append(folder_row)
+                
+                # Bookmarks in this folder
+                for bm in folder_bookmarks:
+                    row = self._create_bm_row(bm, indent=True)
+                    self.bm_list.append(row)
+            
+            # Unfiled section
+            if self.bookmark_folders and unfiled:
+                unfiled_header = Adw.ActionRow()
+                unfiled_header.set_title("Unfiled")
+                unfiled_header.set_subtitle(f"{len(unfiled)} bookmark{'s' if len(unfiled) != 1 else ''}")
+                unfiled_header.add_css_class("dim-label")
+                unfiled_header.set_activatable(False)
+                unfiled_header.set_selectable(False)
+                self.bm_list.append(unfiled_header)
+            
+            # Add unfiled bookmarks
+            for bm in unfiled:
+                row = self._create_bm_row(bm)
+                self.bm_list.append(row)
+        
+        # Show empty message if needed
+        if not self.bm_list.get_first_child():
+            empty = Adw.ActionRow()
+            if tag_filter:
+                empty.set_title(f"No bookmarks with tag '{tag_filter}'")
+            elif search_filter:
+                empty.set_title("No matches found")
+            else:
+                empty.set_title("No bookmarks")
+            empty.add_css_class("dim-label")
+            empty.set_activatable(False)
+            empty.set_selectable(False)
+            self.bm_list.append(empty)
+    
+    def _create_bm_row(self, bm, indent=False):
+        """Create a row for the bookmark manager list."""
+        row = Adw.ActionRow()
+        row.set_title(bm.get('title', 'Untitled'))
+        row.set_subtitle(bm.get('url', ''))
+        row.set_tooltip_text(bm.get('url', ''))
+        
+        # Store reference to bookmark data
+        row.bookmark_data = bm
+        
+        # Favicon
+        favicon = self._get_bookmark_favicon(bm.get('url', ''))
+        row.add_prefix(favicon)
+        
+        # Indent if in folder
+        if indent:
+            row.set_margin_start(24)
+        
+        # Tags display - show as chips
+        tags = bm.get('tags', [])
+        if tags:
+            tags_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+            tags_box.set_margin_end(8)
+            for tag in tags[:3]:  # Show max 3 tags inline
+                tag_label = Gtk.Label(label=tag)
+                tag_label.add_css_class("dim-label")
+                tag_label.set_margin_start(4)
+                tag_label.set_margin_end(4)
+                tags_box.append(tag_label)
+            if len(tags) > 3:
+                more_label = Gtk.Label(label=f"+{len(tags) - 3}")
+                more_label.add_css_class("dim-label")
+                tags_box.append(more_label)
+            row.add_suffix(tags_box)
+        
+        # Folder indicator
+        if bm.get('folder'):
+            folder_label = Gtk.Label(label=f"📁 {bm.get('folder')}")
+            folder_label.add_css_class("dim-label")
+            folder_label.set_margin_end(8)
+            row.add_suffix(folder_label)
+        
+        # Edit button
+        edit_btn = Gtk.Button.new_from_icon_name("document-edit-symbolic")
+        edit_btn.set_valign(Gtk.Align.CENTER)
+        edit_btn.add_css_class("flat")
+        edit_btn.set_tooltip_text("Edit bookmark")
+        edit_btn.bookmark_url = bm.get('url')
+        edit_btn.bookmark_title = bm.get('title', '')
+        edit_btn.bookmark_folder = bm.get('folder')
+        edit_btn.bookmark_tags = bm.get('tags', [])
+        edit_btn.connect("clicked", self._on_bm_edit_clicked)
+        row.add_suffix(edit_btn)
+        
+        return row
+    
+    def _on_bm_tag_filter_changed(self, dropdown, param):
+        """Handle tag filter dropdown change."""
+        selected = dropdown.get_selected()
+        if selected == 0:
+            self.bm_tag_filter = None
+        else:
+            all_tags = self._get_all_tags()
+            if selected - 1 < len(all_tags):
+                self.bm_tag_filter = all_tags[selected - 1]
+            else:
+                self.bm_tag_filter = None
+        
+        self._refresh_bm_list(self.bm_search.get_text() if hasattr(self, 'bm_search') else "")
+    
+    def _on_bm_search_changed(self, entry):
+        """Handle search in bookmark manager."""
+        self._refresh_bm_list(entry.get_text())
+    
+    def _on_bm_delete_selected(self, button):
+        """Delete selected bookmarks."""
+        selected_rows = self.bm_list.get_selected_rows()
+        if not selected_rows:
+            self.show_toast("No bookmarks selected")
+            return
+        
+        # Get URLs of selected bookmarks
+        urls_to_delete = []
+        for row in selected_rows:
+            if hasattr(row, 'bookmark_data'):
+                url = row.bookmark_data.get('url')
+                if url:
+                    urls_to_delete.append(url)
+        
+        if not urls_to_delete:
+            self.show_toast("No bookmarks selected")
+            return
+        
+        # Delete them
+        self.bookmarks = [bm for bm in self.bookmarks if bm.get('url') not in urls_to_delete]
+        self._save_bookmarks()
+        self._refresh_bm_list(self.bm_search.get_text() if hasattr(self, 'bm_search') else "")
+        self._refresh_bookmarks_list()
+        self._refresh_bookmarks_bar()
+        self._update_bookmark_star()
+        self.show_toast(f"Deleted {len(urls_to_delete)} bookmark{'s' if len(urls_to_delete) != 1 else ''}")
+    
+    def _on_bm_move_to_folder(self, dropdown, param):
+        """Move selected bookmarks to folder."""
+        selected_rows = self.bm_list.get_selected_rows()
+        if not selected_rows:
+            return
+        
+        selected_index = dropdown.get_selected()
+        if selected_index == 0:
+            target_folder = None  # Unfiled
+        else:
+            target_folder = self.bookmark_folders[selected_index - 1]
+        
+        moved_count = 0
+        for row in selected_rows:
+            if hasattr(row, 'bookmark_data'):
+                bm = row.bookmark_data
+                if bm.get('type') != 'separator':
+                    # Find and update the bookmark in main list
+                    for bookmark in self.bookmarks:
+                        if bookmark.get('url') == bm.get('url'):
+                            if target_folder:
+                                bookmark['folder'] = target_folder
+                            elif 'folder' in bookmark:
+                                del bookmark['folder']
+                            moved_count += 1
+                            break
+        
+        if moved_count > 0:
+            self._save_bookmarks()
+            self._refresh_bm_list(self.bm_search.get_text() if hasattr(self, 'bm_search') else "")
+            self._refresh_bookmarks_list()
+            self._refresh_bookmarks_bar()
+            folder_name = target_folder if target_folder else "Unfiled"
+            self.show_toast(f"Moved {moved_count} bookmark{'s' if moved_count != 1 else ''} to {folder_name}")
+        
+        # Reset dropdown to first item
+        dropdown.set_selected(0)
+    
+    def _on_bm_new_folder(self, button):
+        """Create a new folder from bookmark manager."""
+        dialog = Adw.MessageDialog(
+            transient_for=self.bm_window,
+            heading="New Folder",
+            body="Enter folder name:"
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("create", "Create")
+        dialog.set_response_appearance("create", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("create")
+        dialog.set_close_response("cancel")
+        
+        # Add entry
+        entry = Gtk.Entry()
+        entry.set_placeholder_text("Folder name")
+        entry.set_margin_start(24)
+        entry.set_margin_end(24)
+        dialog.set_extra_child(entry)
+        
+        def on_response(d, response):
+            if response == "create":
+                name = entry.get_text().strip()
+                if not name:
+                    self.show_toast("Folder name cannot be empty")
+                    return
+                if name in self.bookmark_folders:
+                    self.show_toast(f"Folder '{name}' already exists")
+                    return
+                
+                self.bookmark_folders.append(name)
+                self._save_bookmarks()
+                self._refresh_bm_list()
+                self._refresh_bookmarks_list()
+                
+                # Update the folder dropdown in manager
+                folder_options = ["(Unfiled)"] + self.bookmark_folders
+                folder_model = Gtk.StringList.new(folder_options)
+                self.bm_folder_dropdown.set_model(folder_model)
+                
+                self.show_toast(f"Created folder '{name}'")
+        
+        dialog.connect("response", on_response)
+        dialog.present()
+    
+    def _on_bm_edit_clicked(self, button):
+        """Edit bookmark from manager window."""
+        url = getattr(button, 'bookmark_url', None)
+        title = getattr(button, 'bookmark_title', '')
+        folder = getattr(button, 'bookmark_folder', None)
+        current_tags = list(getattr(button, 'bookmark_tags', []))
+        
+        if not url:
+            return
+        
+        dialog = Adw.MessageDialog(
+            transient_for=self.bm_window,
+            heading="Edit Bookmark",
+            body="Modify the bookmark details:"
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("save", "Save")
+        dialog.set_response_appearance("save", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("save")
+        dialog.set_close_response("cancel")
+        
+        # Form
+        form_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        form_box.set_margin_start(24)
+        form_box.set_margin_end(24)
+        
+        title_entry = Gtk.Entry()
+        title_entry.set_text(title)
+        title_entry.set_placeholder_text("Title")
+        form_box.append(title_entry)
+        
+        url_entry = Gtk.Entry()
+        url_entry.set_text(url)
+        url_entry.set_placeholder_text("URL")
+        form_box.append(url_entry)
+        
+        # Folder dropdown
+        folder_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        folder_label = Gtk.Label(label="Folder:")
+        folder_box.append(folder_label)
+        
+        folder_options = ["(None)"] + self.bookmark_folders
+        folder_model = Gtk.StringList.new(folder_options)
+        folder_dropdown = Gtk.DropDown(model=folder_model)
+        
+        # Set current folder
+        if folder and folder in self.bookmark_folders:
+            folder_dropdown.set_selected(self.bookmark_folders.index(folder) + 1)
+        
+        folder_box.append(folder_dropdown)
+        form_box.append(folder_box)
+        
+        # Tags section
+        tags_section = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        tags_section.set_margin_top(8)
+        form_box.append(tags_section)
+        
+        tags_label = Gtk.Label(label="Tags:")
+        tags_label.set_xalign(0)
+        tags_section.append(tags_label)
+        
+        # Current tags display
+        tags_display = Gtk.FlowBox()
+        tags_display.set_selection_mode(Gtk.SelectionMode.NONE)
+        tags_display.set_homogeneous(False)
+        tags_display.set_max_children_per_line(10)
+        tags_section.append(tags_display)
+        
+        # Store tags in a mutable list for the dialog
+        edit_tags = list(current_tags)
+        
+        def refresh_tags_display():
+            # Clear
+            while True:
+                child = tags_display.get_first_child()
+                if child is None:
+                    break
+                tags_display.remove(child)
+            # Add current tags
+            for tag in edit_tags:
+                chip_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
+                chip_label = Gtk.Label(label=tag)
+                chip_label.set_margin_start(6)
+                chip_label.set_margin_end(2)
+                chip_box.append(chip_label)
+                
+                remove_btn = Gtk.Button.new_from_icon_name("window-close-symbolic")
+                remove_btn.add_css_class("flat")
+                remove_btn.add_css_class("circular")
+                remove_btn.set_valign(Gtk.Align.CENTER)
+                remove_btn.tag_name = tag
+                def on_remove(btn):
+                    t = btn.tag_name
+                    if t in edit_tags:
+                        edit_tags.remove(t)
+                        refresh_tags_display()
+                remove_btn.connect("clicked", on_remove)
+                chip_box.append(remove_btn)
+                
+                chip_box.add_css_class("card")
+                tags_display.append(chip_box)
+            
+            if not edit_tags:
+                no_tags = Gtk.Label(label="No tags")
+                no_tags.add_css_class("dim-label")
+                tags_display.append(no_tags)
+        
+        refresh_tags_display()
+        
+        # Add tag entry with autocomplete suggestions
+        add_tag_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        tags_section.append(add_tag_box)
+        
+        tag_entry = Gtk.Entry()
+        tag_entry.set_placeholder_text("Add tag (Enter to add)")
+        tag_entry.set_hexpand(True)
+        add_tag_box.append(tag_entry)
+        
+        add_tag_btn = Gtk.Button.new_from_icon_name("list-add-symbolic")
+        add_tag_btn.set_tooltip_text("Add tag")
+        add_tag_box.append(add_tag_btn)
+        
+        def add_tag_from_entry():
+            new_tag = tag_entry.get_text().strip().lower()
+            if new_tag and new_tag not in edit_tags:
+                edit_tags.append(new_tag)
+                refresh_tags_display()
+                tag_entry.set_text("")
+        
+        add_tag_btn.connect("clicked", lambda b: add_tag_from_entry())
+        tag_entry.connect("activate", lambda e: add_tag_from_entry())
+        
+        # Suggestions from existing tags
+        all_tags = self._get_all_tags()
+        if all_tags:
+            suggest_label = Gtk.Label(label="Suggestions:")
+            suggest_label.set_xalign(0)
+            suggest_label.add_css_class("dim-label")
+            suggest_label.set_margin_top(4)
+            tags_section.append(suggest_label)
+            
+            suggest_box = Gtk.FlowBox()
+            suggest_box.set_selection_mode(Gtk.SelectionMode.NONE)
+            suggest_box.set_max_children_per_line(10)
+            tags_section.append(suggest_box)
+            
+            for tag in all_tags[:10]:  # Show max 10 suggestions
+                if tag not in edit_tags:
+                    suggest_btn = Gtk.Button(label=tag)
+                    suggest_btn.add_css_class("flat")
+                    suggest_btn.add_css_class("pill")
+                    suggest_btn.tag_name = tag
+                    def on_suggest(btn):
+                        t = btn.tag_name
+                        if t not in edit_tags:
+                            edit_tags.append(t)
+                            refresh_tags_display()
+                            # Hide used suggestion
+                            btn.set_visible(False)
+                    suggest_btn.connect("clicked", on_suggest)
+                    suggest_box.append(suggest_btn)
+        
+        dialog.set_extra_child(form_box)
+        
+        original_url = url
+        
+        def on_response(d, response):
+            if response == "save":
+                new_title = title_entry.get_text().strip()
+                new_url = url_entry.get_text().strip()
+                
+                if not new_url:
+                    self.show_toast("URL cannot be empty")
+                    return
+                
+                folder_idx = folder_dropdown.get_selected()
+                new_folder = self.bookmark_folders[folder_idx - 1] if folder_idx > 0 else None
+                
+                # Check for duplicate URL
+                if new_url != original_url and any(bm.get('url') == new_url for bm in self.bookmarks):
+                    self.show_toast("A bookmark with that URL already exists")
+                    return
+                
+                # Update the bookmark
+                for bm in self.bookmarks:
+                    if bm.get('url') == original_url:
+                        bm['url'] = new_url
+                        bm['title'] = new_title if new_title else new_url
+                        if new_folder:
+                            bm['folder'] = new_folder
+                        elif 'folder' in bm:
+                            del bm['folder']
+                        # Update tags
+                        if edit_tags:
+                            bm['tags'] = edit_tags
+                        elif 'tags' in bm:
+                            del bm['tags']
+                        break
+                
+                self._save_bookmarks()
+                self._refresh_bm_list(self.bm_search.get_text() if hasattr(self, 'bm_search') else "")
+                self._refresh_bookmarks_list()
+                self._refresh_bookmarks_bar()
+                self._update_bookmark_star()
+                
+                # Update tag filter dropdown
+                self._update_bm_tag_dropdown()
+                
+                self.show_toast("Bookmark updated")
+        
+        dialog.connect("response", on_response)
+        dialog.present()
+    
+    def _update_bm_tag_dropdown(self):
+        """Update the tag filter dropdown in bookmark manager."""
+        if hasattr(self, 'bm_tag_dropdown'):
+            all_tags = self._get_all_tags()
+            tag_options = ["All Tags"] + all_tags
+            tag_model = Gtk.StringList.new(tag_options)
+            self.bm_tag_dropdown.set_model(tag_model)
+    
+    def _show_tag_manager(self, button):
+        """Show tag management dialog."""
+        all_tags = self._get_all_tags()
+        
+        dialog = Adw.MessageDialog(
+            transient_for=self.bm_window,
+            heading="Manage Tags",
+            body=f"{len(all_tags)} tag{'s' if len(all_tags) != 1 else ''} in use"
+        )
+        dialog.add_response("close", "Close")
+        dialog.set_default_response("close")
+        dialog.set_close_response("close")
+        
+        if not all_tags:
+            dialog.set_body("No tags in use yet. Add tags when editing bookmarks.")
+            dialog.present()
+            return
+        
+        # List of tags with counts and actions
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        content.set_margin_start(24)
+        content.set_margin_end(24)
+        
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll.set_max_content_height(300)
+        scroll.set_propagate_natural_height(True)
+        content.append(scroll)
+        
+        tag_list = Gtk.ListBox()
+        tag_list.add_css_class("boxed-list")
+        tag_list.set_selection_mode(Gtk.SelectionMode.NONE)
+        scroll.set_child(tag_list)
+        
+        for tag in all_tags:
+            # Count bookmarks with this tag
+            count = sum(1 for bm in self.bookmarks if tag in bm.get('tags', []))
+            
+            row = Adw.ActionRow()
+            row.set_title(tag)
+            row.set_subtitle(f"{count} bookmark{'s' if count != 1 else ''}")
+            
+            # Rename button
+            rename_btn = Gtk.Button.new_from_icon_name("document-edit-symbolic")
+            rename_btn.add_css_class("flat")
+            rename_btn.set_valign(Gtk.Align.CENTER)
+            rename_btn.set_tooltip_text("Rename tag")
+            rename_btn.tag_name = tag
+            rename_btn.connect("clicked", lambda b: self._rename_tag(b.tag_name, dialog))
+            row.add_suffix(rename_btn)
+            
+            # Delete button
+            delete_btn = Gtk.Button.new_from_icon_name("edit-delete-symbolic")
+            delete_btn.add_css_class("flat")
+            delete_btn.set_valign(Gtk.Align.CENTER)
+            delete_btn.set_tooltip_text("Delete tag from all bookmarks")
+            delete_btn.tag_name = tag
+            delete_btn.connect("clicked", lambda b: self._delete_tag(b.tag_name, dialog))
+            row.add_suffix(delete_btn)
+            
+            tag_list.append(row)
+        
+        dialog.set_extra_child(content)
+        dialog.present()
+    
+    def _rename_tag(self, old_name, parent_dialog):
+        """Rename a tag across all bookmarks."""
+        dialog = Adw.MessageDialog(
+            transient_for=self.bm_window,
+            heading=f"Rename Tag '{old_name}'",
+            body="Enter new name:"
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("rename", "Rename")
+        dialog.set_response_appearance("rename", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("rename")
+        dialog.set_close_response("cancel")
+        
+        entry = Gtk.Entry()
+        entry.set_text(old_name)
+        entry.set_margin_start(24)
+        entry.set_margin_end(24)
+        dialog.set_extra_child(entry)
+        
+        def on_response(d, response):
+            if response == "rename":
+                new_name = entry.get_text().strip().lower()
+                if not new_name:
+                    self.show_toast("Tag name cannot be empty")
+                    return
+                if new_name == old_name:
+                    return
+                
+                # Update all bookmarks
+                count = 0
+                for bm in self.bookmarks:
+                    tags = bm.get('tags', [])
+                    if old_name in tags:
+                        tags.remove(old_name)
+                        if new_name not in tags:
+                            tags.append(new_name)
+                        bm['tags'] = tags
+                        count += 1
+                
+                self._save_bookmarks()
+                self._refresh_bm_list(self.bm_search.get_text() if hasattr(self, 'bm_search') else "")
+                self._update_bm_tag_dropdown()
+                self.show_toast(f"Renamed tag in {count} bookmark{'s' if count != 1 else ''}")
+                parent_dialog.close()
+        
+        dialog.connect("response", on_response)
+        dialog.present()
+    
+    def _delete_tag(self, tag_name, parent_dialog):
+        """Delete a tag from all bookmarks."""
+        count = sum(1 for bm in self.bookmarks if tag_name in bm.get('tags', []))
+        
+        dialog = Adw.MessageDialog(
+            transient_for=self.bm_window,
+            heading=f"Delete Tag '{tag_name}'?",
+            body=f"This will remove the tag from {count} bookmark{'s' if count != 1 else ''}."
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("delete", "Delete")
+        dialog.set_response_appearance("delete", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
+        
+        def on_response(d, response):
+            if response == "delete":
+                for bm in self.bookmarks:
+                    tags = bm.get('tags', [])
+                    if tag_name in tags:
+                        tags.remove(tag_name)
+                        if tags:
+                            bm['tags'] = tags
+                        elif 'tags' in bm:
+                            del bm['tags']
+                
+                self._save_bookmarks()
+                self._refresh_bm_list(self.bm_search.get_text() if hasattr(self, 'bm_search') else "")
+                self._update_bm_tag_dropdown()
+                self.show_toast(f"Deleted tag '{tag_name}'")
+                parent_dialog.close()
+        
+        dialog.connect("response", on_response)
+        dialog.present()
+    
+    def _on_bm_key_pressed(self, controller, keyval, keycode, state):
+        """Handle keyboard shortcuts in bookmark manager."""
+        # Delete key - delete selected
+        if keyval == Gdk.KEY_Delete:
+            self._on_bm_delete_selected(None)
+            return True
+        
+        # Escape - close window
+        if keyval == Gdk.KEY_Escape:
+            self.bm_window.close()
+            return True
+        
+        # Ctrl+A - select all
+        if keyval == Gdk.KEY_a and state & Gdk.ModifierType.CONTROL_MASK:
+            self.bm_list.select_all()
+            return True
+        
+        # Ctrl+F - focus search
+        if keyval == Gdk.KEY_f and state & Gdk.ModifierType.CONTROL_MASK:
+            self.bm_search.grab_focus()
+            return True
+        
+        return False
+    
     def _on_browser_load_changed(self, webview, event):
-        """Update URL bar when page loads."""
+        """Update URL bar when page loads and record history."""
         if event == WebKit.LoadEvent.COMMITTED:
             uri = webview.get_uri()
             if uri and hasattr(self, 'browser_url_entry'):
+                if hasattr(self, '_autocomplete_active'):
+                    self._autocomplete_active = True
                 self.browser_url_entry.set_text(uri)
+                if hasattr(self, '_autocomplete_active'):
+                    self._autocomplete_active = False
             # Update bookmark star for current URL
             self._update_bookmark_star()
+        
+        # Record to history when page finishes loading (has title)
+        elif event == WebKit.LoadEvent.FINISHED:
+            uri = webview.get_uri()
+            title = webview.get_title()
+            if uri:
+                self._record_history(uri, title)
     
     def _on_browser_create_window(self, webview, navigation_action):
         """Handle links that try to open new windows - open in default browser."""
@@ -4289,7 +6314,7 @@ read -p "Press Enter to close..."
         
         search_url = f"https://duckduckgo.com/?q={urllib.parse.quote(query + ' linux')}"
         
-        if WEBKIT_AVAILABLE and hasattr(self, 'browser_panel'):
+        if WEBKIT_AVAILABLE and hasattr(self, 'browser_panel') and self.browser_panel is not None:
             # Use internal browser
             if not self.browser_panel_visible:
                 self.browser_toggle_btn.set_active(True)

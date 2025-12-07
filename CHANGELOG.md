@@ -2,6 +2,72 @@
 
 All notable changes to Tux Assistant will be documented in this file.
 
+## [0.9.147] - 2025-12-07
+
+### Added - Browser Phase 3: Complete History System 🎉
+
+**History Database**
+- SQLite database at `~/.config/tux-assistant/history.db`
+- Frecency scoring (frequency × recency) for smart autocomplete
+- Auto-records every page visit with title
+- 200MB / 500k entry limits designed for years of daily use
+- Background maintenance: cleanup and VACUUM without UI freeze
+
+**History Panel**
+- New history button in browser toolbar (clock icon)
+- Dropdown showing recent history with time grouping
+- Sections: Today, Yesterday, This Week, Older
+- Search, delete individual entries, clear by time range
+
+**Full History Window**
+- Dedicated window for comprehensive history management
+- Time filter: All Time, Today, Yesterday, This Week, This Month
+- Search by URL or title
+- Multi-select with bulk delete
+- Keyboard shortcuts: Delete, Ctrl+A, Ctrl+F, Escape
+
+**URL Bar Autocomplete**
+- Smart suggestions as you type (2+ characters)
+- Frecency-ranked results - your frequent sites appear first
+- Bookmarks (⭐) prioritized over history (🕐)
+- Keyboard navigation: Up/Down arrows, Enter, Escape
+
+### Fixed
+- Browser panel now builds lazily (fixes startup on some systems)
+- Clear history uses dialog instead of nested popover
+
+## [0.9.143] - 2025-12-07
+
+### Added
+- **Complete Tags System** - Phase 2 complete! 🎉
+  - Tag filter dropdown in Bookmark Manager header
+  - Tags displayed on bookmark rows (up to 3 inline, "+N" for more)
+  - Full tag editing in bookmark edit dialog:
+    - Current tags shown as removable chips
+    - Add new tags via entry (Enter to add)
+    - Click suggestions from existing tags
+  - Tag Management dialog (tag icon in header):
+    - View all tags with bookmark counts
+    - Rename tag (updates all bookmarks)
+    - Delete tag (removes from all bookmarks)
+  - Search includes tag names
+  - Tags stored as `["tag1", "tag2"]` array in bookmark data
+
+## [0.9.142] - 2025-12-07
+
+### Added
+- **Full Bookmark Manager window** - Phase 2 milestone!
+  - Dedicated window for comprehensive bookmark management
+  - Multi-select support (Ctrl+Click, Shift+Click)
+  - Bulk delete selected bookmarks
+  - Move selected to folder dropdown
+  - Create new folders from manager
+  - Edit bookmark details inline
+  - Search/filter all bookmarks
+  - Folders shown as collapsible sections
+  - Keyboard shortcuts: Delete, Ctrl+A (select all), Ctrl+F (search), Escape (close)
+  - Access via "Manage..." button in bookmark dropdown
+
 ## [0.9.140] - 2025-12-06
 
 ### Fixed
