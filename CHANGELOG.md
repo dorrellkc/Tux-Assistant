@@ -2,6 +2,245 @@
 
 All notable changes to Tux Assistant will be documented in this file.
 
+## [0.9.140] - 2025-12-06
+
+### Fixed
+- **Separator drag & drop COMPLETE** - Full reordering support!
+  - Separators can now be dragged and reordered on toolbar
+  - Bookmarks can be dragged past separators
+  - Drop ON widgets to reorder (standard GTK4 behavior)
+  - Uses proper `GObject.TYPE_STRING` content providers
+  - Added `accept` signal handlers for reliable drop acceptance
+  - Removed parent bar drop target that was intercepting child drops
+
+### Technical Details
+- `_on_unified_drop` handler for all toolbar reordering
+- `_on_drop_accept` always returns True to accept drops
+- `set_preload(True)` on all drop targets for reliable data transfer
+- Typed `GObject.Value` instead of raw bytes for DnD content
+
+## [0.9.139] - 2025-12-06
+
+### Fixed
+- **Separator drag & drop** - Separators can now be reordered via drag & drop
+  - Updated reorder handler to find separators (they have no URL)
+  - Added drag source to toolbar separators (previously static)
+  - Separators in dropdown list can be dragged to reorder
+  - Separators in toolbar can be dragged to reorder
+
+## [0.9.138] - 2025-12-06
+
+### Added
+- **Bookmark Separators** - Add visual separators between bookmarks
+  - New "Separator" button in bookmarks popover
+  - Separators appear as horizontal lines in dropdown list
+  - Separators appear as vertical lines in toolbar
+  - Can delete separators with trash icon
+  - Separators can be dragged to reorder
+
+## [0.9.137] - 2025-12-06
+
+### Fixed
+- **Drag from folder popover to toolbar** - Fixed critical bug where dragging bookmarks OUT of folder popovers in toolbar didn't work
+  - Root cause: autohide=True was closing popover when drag started, destroying the widget mid-drag
+  - Solution: Disable autohide on folder popovers, close manually when drag begins
+  - Added separate drag handlers for popover rows
+- Removed debug output
+
+## [0.9.136] - 2025-12-06
+
+### Fixed
+- **Drag from folder to toolbar** - Fixed bug where dragging a bookmark from a folder popover to the toolbar didn't work (reorder handler only searched unfiled bookmarks, now searches all)
+
+## [0.9.135] - 2025-12-06
+
+### Added
+- **Drag from folder popovers** - Bookmarks inside folder dropdowns in toolbar now have drag sources
+- Drag a bookmark out of a folder dropdown and drop on toolbar to unfiled
+- Complete drag & drop: dropdown ↔ toolbar ↔ folder popovers
+
+## [0.9.134] - 2025-12-06
+
+### Added
+- **Drag from toolbar** - Bookmark buttons in the toolbar now have drag sources
+- **Reorder in toolbar** - Drag and drop bookmarks to reorder them in the toolbar
+- Drop on another bookmark to swap positions
+- Tooltip now shows "(drag to reorder)"
+
+## [0.9.133] - 2025-12-06
+
+### Fixed
+- **Drag and drop crash** - Fixed force close when dropping bookmarks (used instance variable instead of DnD type system)
+- Added error handling to all drag/drop callbacks
+
+### Added
+- **Drop to bookmarks bar** - Drag bookmarks onto folder buttons in the toolbar
+- **Drop to bar itself** - Drag to the bar area to move to unfiled
+- Tooltips now indicate drop capability ("drop to add")
+
+## [0.9.132] - 2025-12-06
+
+### Added
+- **Drag and drop bookmarks** - Drag bookmarks between folders
+  - Drag handle icon on each bookmark row
+  - Drop on folder header to move bookmark into folder
+  - Drop on "Unfiled" section to remove from folder
+  - Visual highlight when dragging over drop targets
+  - Drag icon shows bookmark title
+
+## [0.9.131] - 2025-12-06
+
+### Fixed
+- **tux-helper Permission denied error** - Fixed issue where privileged operations failed with "Permission denied" error on .run installer or when running from extracted location. The helper script now gets execute permissions automatically before running.
+
+## [0.9.130] - 2025-12-06
+
+### Added
+- **Folders in bookmarks bar** - Folders show as dropdown menus with their bookmarks
+- **Empty folders visible** - Empty folders now show in the list with "(empty)" indicator
+- **Delete folder button** - Trash icon on each folder to delete it (bookmarks move to Unfiled)
+- Folder expanders now properly collapse/expand their contents
+
+## [0.9.129] - 2025-12-06
+
+### Added
+- **Bookmark Folders** - Organize bookmarks into folders
+  - "New Folder" button to create folders
+  - Folder dropdown when adding/editing bookmarks
+  - Folders shown as collapsible expanders in bookmarks list
+  - Unfiled bookmarks shown separately
+  - Clear All now also clears folders
+- Backwards compatible with existing bookmarks (auto-migrates old format)
+
+## [0.9.128] - 2025-12-06
+
+### Added
+- **Show/Hide Bookmarks Bar toggle** - Switch in bookmarks dropdown to show or hide the bookmarks bar
+- Preference saved to `~/.config/tux-assistant/browser.conf`
+
+## [0.9.127] - 2025-12-06
+
+### Fixed
+- Bookmarks popover now closes properly when clicking outside after using sort dropdown
+
+## [0.9.126] - 2025-12-06
+
+### Added
+- **Ctrl+D shortcut** - Quickly bookmark/unbookmark current page
+- **Sort bookmarks** - Dropdown to sort by Default, Name A-Z, Name Z-A, or Recent
+- **Favicons** - Website icons shown next to bookmarks (cached locally)
+- Bookmarks now store timestamps for "Recent" sorting
+
+## [0.9.125] - 2025-12-06
+
+### Added
+- **Bookmark Manager Enhancements (Phase 2.5)**
+  - **Search bar** - Filter bookmarks by title or URL in real-time
+  - **Add button** - Manually add bookmarks with custom title and URL
+  - **Edit button** - Modify existing bookmark title and URL
+  - Edit and delete buttons now shown on each bookmark row
+
+## [0.9.124] - 2025-12-06
+
+### Fixed
+- **Browser panel sizing issue** - Bookmarks bar now scrolls horizontally instead of expanding the window beyond screen bounds
+
+## [0.9.123] - 2025-12-06
+
+### Added
+- **Bookmarks Bar** - Visual bar below URL bar showing bookmarks as buttons
+  - Click any bookmark to navigate directly
+  - Shows up to 15 bookmarks with "+N more" indicator
+  - Auto-updates when bookmarks change
+- **Clear All Bookmarks** - Red "Clear All" button in bookmarks dropdown
+  - Confirmation dialog before deleting
+  - Shows count of bookmarks to be deleted
+
+## [0.9.122] - 2025-12-06
+
+### Added
+- **Bookmark Import/Export (Phase 2 Complete)**
+  - Import button: Load bookmarks from Firefox/Chrome HTML format
+  - Export button: Save bookmarks to HTML (compatible with all browsers)
+  - Automatically skips duplicate URLs on import
+  - Standard Netscape bookmark format for maximum compatibility
+
+## [0.9.121] - 2025-12-06
+
+### Added
+- **Browser Bookmarks (Phase 2)**
+  - Star button in toolbar to add/remove current page
+  - Bookmarks menu button with dropdown list
+  - Click bookmark to navigate
+  - Delete button on each bookmark
+  - Bookmarks saved to `~/.config/tux-assistant/bookmarks.json`
+  - Star icon updates based on current URL (filled = bookmarked)
+
+## [0.9.120] - 2025-12-06
+
+### Fixed
+- **System Fetch now works on Fedora 43+** - added ptyxis terminal support
+- Terminal detection uses exact same code as Developer Tools (which works)
+- Added ptyxis to all terminal detection lists across the app
+
+## [0.9.117] - 2025-12-06
+
+### Fixed
+- **System Fetch button now finds terminal on all distros**
+  - Uses proper terminal detection from `core/commands.py`
+  - Supports: konsole, kgx (gnome-console), gnome-terminal, xfce4-terminal, mate-terminal, qterminal, lxterminal, tilix, terminator, alacritty, kitty, foot, wezterm, and more
+
+### Changed
+- **System Fetch button moved under Hardware** in System Information section
+
+## [0.9.116] - 2025-12-06
+
+### Changed
+- System Fetch button placed in System Information section
+
+## [0.9.115] - 2025-12-06
+
+### Changed
+- **Tux Tunes button moved to header bar** - now next to Claude and Browser buttons
+- **Sidebar removed** (code preserved for future use)
+- Cleaner main page layout without right sidebar
+
+## [0.9.114] - 2025-12-06
+
+### Changed
+- **Search bar moved above system info banner** on main page
+- **Removed TuxFetch sidebar panel** - no more fastfetch in the sidebar
+- **Added System Fetch button** in "Quick Tools" section at bottom of main page
+  - Opens fastfetch in your terminal (gnome-terminal, konsole, xfce4-terminal, kitty, alacritty, tilix, xterm)
+  - Shows "Press Enter to close..." after output
+
+### Fixed
+- **Tab close now works properly** - can close any tab except the last one
+- **No more tab explosion** when trying to close the last tab
+
+## [0.9.113] - 2025-12-06
+
+### Added - Tabbed Browser (Phase 1)
+- **Full tabbed browsing in Tux Browser!**
+  - Adw.TabView + Adw.TabBar for modern libadwaita tabs
+  - Open unlimited tabs, each with its own webview
+  - Tab titles auto-update to page title
+  - Close tabs with X button (always keeps at least one tab)
+  - New tab button in toolbar
+
+- **Keyboard shortcuts**
+  - Ctrl+T: New tab
+  - Ctrl+W: Close current tab
+  - Ctrl+L: Focus URL bar
+  - Ctrl+Tab: Next tab
+  - Ctrl+Shift+Tab: Previous tab
+  - Ctrl+R: Reload page
+
+- **Shared browser session**
+  - All tabs share cookies and cache
+  - Stay logged in across tabs
+  - Downloads work from any tab
+
 ## [0.9.100] - 2025-12-05
 
 ### Fixed

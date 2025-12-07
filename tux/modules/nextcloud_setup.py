@@ -624,6 +624,12 @@ class NextcloudInstallDialog(Adw.Dialog):
                 GLib.idle_add(self._installation_failed, "tux-helper not found")
                 return
             
+            # Ensure helper is executable
+            try:
+                os.chmod(helper_path, 0o755)
+            except:
+                pass
+            
             # Execute with pkexec
             import shutil
             use_pkexec = shutil.which('pkexec') is not None

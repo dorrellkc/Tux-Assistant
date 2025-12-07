@@ -14,7 +14,7 @@ import gi
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
 
-from gi.repository import Gtk, Adw, Gio, GLib, Gdk
+from gi.repository import Gtk, Adw, Gio, GLib, Gdk, GdkPixbuf, GObject
 
 # Try to import WebKit for global Claude AI panel
 WEBKIT_AVAILABLE = False
@@ -33,6 +33,9 @@ except (ValueError, ImportError):
 from . import __version__, __app_name__, __app_id__
 from .core import get_distro, get_desktop
 from .modules import ModuleRegistry, ModuleCategory
+
+# Weather widget (feature flag - set to False to disable)
+ENABLE_WEATHER_WIDGET = True
 
 
 APP_ID = __app_id__
@@ -483,6 +486,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
     
     CONFIG_DIR = GLib.get_user_config_dir() + "/tux-assistant"
     CONFIG_FILE = CONFIG_DIR + "/window.conf"
+    BOOKMARKS_FILE = CONFIG_DIR + "/bookmarks.json"
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -503,6 +507,11 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         # Detect system info
         self.distro = get_distro()
         self.desktop = get_desktop()
+        
+        # Initialize bookmarks and folders
+        self.bookmarks = []
+        self.bookmark_folders = []  # List of folder names
+        self._load_bookmarks()
         
         # Build UI
         self.build_ui()
@@ -566,6 +575,82 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         """Handle window state change (maximized/unmaximized)."""
         self._save_window_size()
     
+    def _load_bookmarks(self):
+        """Load bookmarks and folders from JSON file."""
+        import json
+        import os
+        
+        try:
+            if os.path.exists(self.BOOKMARKS_FILE):
+                with open(self.BOOKMARKS_FILE, 'r') as f:
+                    data = json.load(f)
+                    
+                # Handle both old format (list) and new format (dict with folders)
+                if isinstance(data, list):
+                    # Old format - just bookmarks list
+                    self.bookmarks = data
+                    self.bookmark_folders = []
+                elif isinstance(data, dict):
+                    # New format with folders
+                    self.bookmarks = data.get('bookmarks', [])
+                    self.bookmark_folders = data.get('folders', [])
+                else:
+                    self.bookmarks = []
+                    self.bookmark_folders = []
+        except Exception:
+            self.bookmarks = []
+            self.bookmark_folders = []
+    
+    def _save_bookmarks(self):
+        """Save bookmarks and folders to JSON file."""
+        import json
+        import os
+        
+        try:
+            os.makedirs(self.CONFIG_DIR, exist_ok=True)
+            data = {
+                'bookmarks': self.bookmarks,
+                'folders': self.bookmark_folders
+            }
+            with open(self.BOOKMARKS_FILE, 'w') as f:
+                json.dump(data, f, indent=2)
+        except Exception as e:
+            print(f"Failed to save bookmarks: {e}")
+    
+    def _load_bookmarks_bar_visible(self):
+        """Load bookmarks bar visibility preference."""
+        import os
+        
+        try:
+            pref_file = os.path.join(self.CONFIG_DIR, 'browser.conf')
+            if os.path.exists(pref_file):
+                with open(pref_file, 'r') as f:
+                    for line in f:
+                        if line.startswith('bookmarks_bar_visible='):
+                            return line.strip().split('=')[1].lower() == 'true'
+        except:
+            pass
+        return True  # Default to visible
+    
+    def _save_bookmarks_bar_visible(self, visible):
+        """Save bookmarks bar visibility preference."""
+        import os
+        
+        try:
+            os.makedirs(self.CONFIG_DIR, exist_ok=True)
+            pref_file = os.path.join(self.CONFIG_DIR, 'browser.conf')
+            with open(pref_file, 'w') as f:
+                f.write(f"bookmarks_bar_visible={'true' if visible else 'false'}\n")
+        except:
+            pass
+    
+    def _on_bookmarks_bar_toggle(self, switch, param):
+        """Handle bookmarks bar visibility toggle."""
+        visible = switch.get_active()
+        if hasattr(self, 'bookmarks_bar_container'):
+            self.bookmarks_bar_container.set_visible(visible)
+        self._save_bookmarks_bar_visible(visible)
+    
     def _on_width_changed_for_panel(self, widget, param):
         """Show/hide TuxFetch panel based on window width."""
         if hasattr(self, 'tux_fetch_panel'):
@@ -613,6 +698,15 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         menu_button.set_menu_model(self.create_menu())
         header.pack_end(menu_button)
         
+        # Weather widget (before other toggle buttons)
+        if ENABLE_WEATHER_WIDGET:
+            try:
+                from .ui.weather_widget import WeatherWidget
+                self.weather_widget = WeatherWidget(self)
+                header.pack_end(self.weather_widget)
+            except Exception as e:
+                print(f"Weather widget failed to load: {e}")
+        
         # Claude AI toggle button (only if WebKit available)
         if WEBKIT_AVAILABLE:
             # Browser toggle button
@@ -630,6 +724,14 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             self.claude_toggle_btn.add_css_class("claude-toggle-btn")
             self.claude_toggle_btn.connect("toggled", self._on_claude_toggle)
             header.pack_end(self.claude_toggle_btn)
+        
+        # Tux Tunes button (always available)
+        tux_tunes_btn = Gtk.Button()
+        tux_tunes_btn.set_icon_name("audio-headphones-symbolic")
+        tux_tunes_btn.set_tooltip_text("Launch Tux Tunes - Internet Radio")
+        tux_tunes_btn.add_css_class("claude-toggle-btn")
+        tux_tunes_btn.connect("clicked", self._on_tux_tunes_clicked)
+        header.pack_end(tux_tunes_btn)
         
         self.main_box.append(header)
         
@@ -955,6 +1057,10 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         self.browser_panel.add_css_class("claude-global-panel")
         
         # Panel header
+        self.browser_home_url = "https://duckduckgo.com"
+        self.browser_panel_visible = False
+        
+        # Panel header
         panel_header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         panel_header.set_margin_top(12)
         panel_header.set_margin_bottom(8)
@@ -969,7 +1075,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         icon_label = Gtk.Label(label="🌐")
         title_box.append(icon_label)
         
-        title_label = Gtk.Label(label="Web Browser")
+        title_label = Gtk.Label(label="Tux Browser")
         title_label.add_css_class("title")
         title_box.append(title_label)
         
@@ -981,47 +1087,29 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         popout_btn.connect("clicked", self._on_browser_popout)
         panel_header.append(popout_btn)
         
-        # URL bar
-        url_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
-        url_box.set_margin_start(12)
-        url_box.set_margin_end(12)
-        url_box.set_margin_bottom(8)
-        self.browser_panel.append(url_box)
-        
-        self.browser_url_entry = Gtk.Entry()
-        self.browser_url_entry.set_hexpand(True)
-        self.browser_url_entry.set_placeholder_text("Enter URL or search...")
-        self.browser_url_entry.connect("activate", self._on_browser_url_activate)
-        url_box.append(self.browser_url_entry)
-        
-        go_btn = Gtk.Button.new_from_icon_name("go-next-symbolic")
-        go_btn.set_tooltip_text("Go")
-        go_btn.connect("clicked", lambda b: self._on_browser_url_activate(self.browser_url_entry))
-        url_box.append(go_btn)
-        
-        # Navigation toolbar
+        # Navigation toolbar with URL bar
         nav_toolbar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
         nav_toolbar.set_margin_start(12)
         nav_toolbar.set_margin_end(12)
-        nav_toolbar.set_margin_bottom(8)
+        nav_toolbar.set_margin_bottom(4)
         self.browser_panel.append(nav_toolbar)
         
         # Back button
         back_btn = Gtk.Button.new_from_icon_name("go-previous-symbolic")
         back_btn.set_tooltip_text("Go back")
-        back_btn.connect("clicked", lambda b: self.browser_webview.go_back() if hasattr(self, 'browser_webview') else None)
+        back_btn.connect("clicked", lambda b: self._get_current_browser_webview().go_back() if self._get_current_browser_webview() else None)
         nav_toolbar.append(back_btn)
         
         # Forward button
         forward_btn = Gtk.Button.new_from_icon_name("go-next-symbolic")
         forward_btn.set_tooltip_text("Go forward")
-        forward_btn.connect("clicked", lambda b: self.browser_webview.go_forward() if hasattr(self, 'browser_webview') else None)
+        forward_btn.connect("clicked", lambda b: self._get_current_browser_webview().go_forward() if self._get_current_browser_webview() else None)
         nav_toolbar.append(forward_btn)
         
         # Reload button
         reload_btn = Gtk.Button.new_from_icon_name("view-refresh-symbolic")
         reload_btn.set_tooltip_text("Reload")
-        reload_btn.connect("clicked", lambda b: self.browser_webview.reload() if hasattr(self, 'browser_webview') else None)
+        reload_btn.connect("clicked", lambda b: self._get_current_browser_webview().reload() if self._get_current_browser_webview() else None)
         nav_toolbar.append(reload_btn)
         
         # Home button
@@ -1030,7 +1118,164 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         home_btn.connect("clicked", self._on_browser_home)
         nav_toolbar.append(home_btn)
         
-        # Create WebView (shares same cookie storage as Claude)
+        # URL bar
+        self.browser_url_entry = Gtk.Entry()
+        self.browser_url_entry.set_hexpand(True)
+        self.browser_url_entry.set_placeholder_text("Enter URL or search...")
+        self.browser_url_entry.connect("activate", self._on_browser_url_activate)
+        nav_toolbar.append(self.browser_url_entry)
+        
+        # Go button
+        go_btn = Gtk.Button.new_from_icon_name("go-next-symbolic")
+        go_btn.set_tooltip_text("Go")
+        go_btn.connect("clicked", lambda b: self._on_browser_url_activate(self.browser_url_entry))
+        nav_toolbar.append(go_btn)
+        
+        # Bookmark star button (add/remove current page)
+        self.bookmark_star_btn = Gtk.Button.new_from_icon_name("non-starred-symbolic")
+        self.bookmark_star_btn.set_tooltip_text("Add bookmark (Ctrl+D)")
+        self.bookmark_star_btn.connect("clicked", self._on_bookmark_toggle)
+        nav_toolbar.append(self.bookmark_star_btn)
+        
+        # Bookmarks menu button
+        bookmarks_btn = Gtk.MenuButton()
+        bookmarks_btn.set_icon_name("user-bookmarks-symbolic")
+        bookmarks_btn.set_tooltip_text("Bookmarks")
+        
+        # Create popover for bookmarks list
+        self.bookmarks_popover = Gtk.Popover()
+        self.bookmarks_popover.set_size_request(350, -1)
+        self.bookmarks_popover.set_autohide(True)
+        self.bookmarks_popover.connect("show", lambda p: self._on_bookmarks_popover_show())
+        bookmarks_btn.set_popover(self.bookmarks_popover)
+        
+        # Main container for popover content
+        popover_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        popover_box.set_margin_top(8)
+        popover_box.set_margin_bottom(8)
+        popover_box.set_margin_start(8)
+        popover_box.set_margin_end(8)
+        self.bookmarks_popover.set_child(popover_box)
+        
+        # Search bar and sort in a row
+        search_sort_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        popover_box.append(search_sort_box)
+        
+        # Search bar
+        self.bookmarks_search_entry = Gtk.SearchEntry()
+        self.bookmarks_search_entry.set_placeholder_text("Search bookmarks...")
+        self.bookmarks_search_entry.set_hexpand(True)
+        self.bookmarks_search_entry.connect("search-changed", self._on_bookmarks_search_changed)
+        search_sort_box.append(self.bookmarks_search_entry)
+        
+        # Sort dropdown
+        sort_model = Gtk.StringList.new(["Default", "Name A-Z", "Name Z-A", "Recent"])
+        self.bookmarks_sort_dropdown = Gtk.DropDown(model=sort_model)
+        self.bookmarks_sort_dropdown.set_tooltip_text("Sort bookmarks")
+        self.bookmarks_sort_dropdown.connect("notify::selected", self._on_bookmarks_sort_changed)
+        search_sort_box.append(self.bookmarks_sort_dropdown)
+        
+        # Bookmarks list box inside scrolled window
+        bookmarks_scroll = Gtk.ScrolledWindow()
+        bookmarks_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        bookmarks_scroll.set_max_content_height(300)
+        bookmarks_scroll.set_propagate_natural_height(True)
+        popover_box.append(bookmarks_scroll)
+        
+        self.bookmarks_list_box = Gtk.ListBox()
+        self.bookmarks_list_box.set_selection_mode(Gtk.SelectionMode.NONE)
+        self.bookmarks_list_box.add_css_class("boxed-list")
+        bookmarks_scroll.set_child(self.bookmarks_list_box)
+        
+        # Separator
+        popover_box.append(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
+        
+        # Add / New Folder / Separator buttons
+        buttons_box1 = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        buttons_box1.set_homogeneous(True)
+        popover_box.append(buttons_box1)
+        
+        add_btn = Gtk.Button(label="Add")
+        add_btn.set_icon_name("list-add-symbolic")
+        add_btn.connect("clicked", self._on_bookmark_add_manual)
+        buttons_box1.append(add_btn)
+        
+        new_folder_btn = Gtk.Button(label="Folder")
+        new_folder_btn.set_icon_name("folder-new-symbolic")
+        new_folder_btn.connect("clicked", self._on_bookmark_new_folder)
+        buttons_box1.append(new_folder_btn)
+        
+        separator_btn = Gtk.Button(label="Separator")
+        separator_btn.set_icon_name("view-more-horizontal-symbolic")
+        separator_btn.connect("clicked", self._on_bookmark_add_separator)
+        buttons_box1.append(separator_btn)
+        
+        # Import / Export buttons
+        buttons_box2 = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        buttons_box2.set_homogeneous(True)
+        popover_box.append(buttons_box2)
+        
+        import_btn = Gtk.Button(label="Import")
+        import_btn.set_icon_name("document-open-symbolic")
+        import_btn.connect("clicked", self._on_bookmarks_import)
+        buttons_box2.append(import_btn)
+        
+        export_btn = Gtk.Button(label="Export")
+        export_btn.set_icon_name("document-save-symbolic")
+        export_btn.connect("clicked", self._on_bookmarks_export)
+        buttons_box2.append(export_btn)
+        
+        # Clear All button
+        clear_btn = Gtk.Button(label="Clear All")
+        clear_btn.set_icon_name("user-trash-symbolic")
+        clear_btn.add_css_class("destructive-action")
+        clear_btn.connect("clicked", self._on_bookmarks_clear_all)
+        popover_box.append(clear_btn)
+        
+        # Show Bookmarks Bar toggle
+        bar_toggle_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        bar_toggle_box.set_margin_top(4)
+        popover_box.append(bar_toggle_box)
+        
+        bar_label = Gtk.Label(label="Show Bookmarks Bar")
+        bar_label.set_hexpand(True)
+        bar_label.set_xalign(0)
+        bar_toggle_box.append(bar_label)
+        
+        self.bookmarks_bar_switch = Gtk.Switch()
+        self.bookmarks_bar_switch.set_active(self._load_bookmarks_bar_visible())
+        self.bookmarks_bar_switch.connect("notify::active", self._on_bookmarks_bar_toggle)
+        bar_toggle_box.append(self.bookmarks_bar_switch)
+        
+        nav_toolbar.append(bookmarks_btn)
+        
+        # New tab button
+        new_tab_btn = Gtk.Button.new_from_icon_name("tab-new-symbolic")
+        new_tab_btn.set_tooltip_text("New tab (Ctrl+T)")
+        new_tab_btn.connect("clicked", lambda b: self._browser_new_tab())
+        nav_toolbar.append(new_tab_btn)
+        
+        # Bookmarks bar (like Firefox/Chrome) - in scrollable container
+        self.bookmarks_bar_container = Gtk.ScrolledWindow()
+        self.bookmarks_bar_container.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.NEVER)
+        self.bookmarks_bar_container.set_margin_start(12)
+        self.bookmarks_bar_container.set_margin_end(12)
+        self.bookmarks_bar_container.set_margin_bottom(4)
+        self.bookmarks_bar_container.set_max_content_width(600)
+        self.bookmarks_bar_container.set_propagate_natural_width(True)
+        self.browser_panel.append(self.bookmarks_bar_container)
+        
+        self.bookmarks_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        self.bookmarks_bar.add_css_class("toolbar")
+        self.bookmarks_bar_container.set_child(self.bookmarks_bar)
+        
+        # Apply saved visibility preference
+        self.bookmarks_bar_container.set_visible(self._load_bookmarks_bar_visible())
+        
+        # Populate bookmarks bar
+        self._refresh_bookmarks_bar()
+        
+        # Set up network session (shared by all tabs)
         self.browser_network_session = None
         try:
             if hasattr(WebKit, 'NetworkSession'):
@@ -1048,27 +1293,116 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
                     WebKit.CookiePersistentStorage.SQLITE
                 )
                 
-                self.browser_webview = WebKit.WebView(network_session=self.browser_network_session)
                 self.browser_network_session.connect('download-started', self._on_browser_download_started)
+        except Exception as e:
+            print(f"Browser network session error: {e}")
+        
+        # Tab bar container
+        tab_bar_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        tab_bar_box.set_margin_start(12)
+        tab_bar_box.set_margin_end(12)
+        tab_bar_box.set_margin_bottom(4)
+        self.browser_panel.append(tab_bar_box)
+        
+        # Create TabView (holds the tab pages)
+        self.browser_tab_view = Adw.TabView()
+        self.browser_tab_view.set_vexpand(True)
+        self.browser_tab_view.set_hexpand(True)
+        
+        # Create TabBar (the visual tab strip)
+        self.browser_tab_bar = Adw.TabBar()
+        self.browser_tab_bar.set_view(self.browser_tab_view)
+        self.browser_tab_bar.set_autohide(False)
+        self.browser_tab_bar.set_expand_tabs(False)
+        self.browser_tab_bar.set_hexpand(True)
+        tab_bar_box.append(self.browser_tab_bar)
+        
+        # Connect tab signals
+        self.browser_tab_view.connect("notify::selected-page", self._on_browser_tab_changed)
+        self.browser_tab_view.connect("close-page", self._on_browser_tab_close)
+        
+        # Frame around tab view
+        webview_frame = Gtk.Frame()
+        webview_frame.set_margin_start(12)
+        webview_frame.set_margin_end(12)
+        webview_frame.set_margin_bottom(12)
+        webview_frame.set_child(self.browser_tab_view)
+        webview_frame.set_vexpand(True)
+        self.browser_panel.append(webview_frame)
+        
+        # Add keyboard shortcuts
+        self._setup_browser_keyboard_shortcuts()
+        
+        # Create first tab
+        self._browser_new_tab(self.browser_home_url)
+    
+    def _setup_browser_keyboard_shortcuts(self):
+        """Set up keyboard shortcuts for the browser."""
+        controller = Gtk.EventControllerKey()
+        controller.connect("key-pressed", self._on_browser_key_pressed)
+        self.browser_panel.add_controller(controller)
+    
+    def _on_browser_key_pressed(self, controller, keyval, keycode, state):
+        """Handle browser keyboard shortcuts."""
+        ctrl = state & Gdk.ModifierType.CONTROL_MASK
+        shift = state & Gdk.ModifierType.SHIFT_MASK
+        
+        if ctrl:
+            if keyval == Gdk.KEY_t or keyval == Gdk.KEY_T:
+                # Ctrl+T: New tab
+                self._browser_new_tab()
+                return True
+            elif keyval == Gdk.KEY_w or keyval == Gdk.KEY_W:
+                # Ctrl+W: Close current tab
+                self._browser_close_current_tab()
+                return True
+            elif keyval == Gdk.KEY_l or keyval == Gdk.KEY_L:
+                # Ctrl+L: Focus URL bar
+                self.browser_url_entry.grab_focus()
+                self.browser_url_entry.select_region(0, -1)
+                return True
+            elif keyval == Gdk.KEY_Tab:
+                if shift:
+                    # Ctrl+Shift+Tab: Previous tab
+                    self._browser_prev_tab()
+                else:
+                    # Ctrl+Tab: Next tab
+                    self._browser_next_tab()
+                return True
+            elif keyval == Gdk.KEY_r or keyval == Gdk.KEY_R:
+                # Ctrl+R: Reload
+                webview = self._get_current_browser_webview()
+                if webview:
+                    webview.reload()
+                return True
+            elif keyval == Gdk.KEY_d or keyval == Gdk.KEY_D:
+                # Ctrl+D: Bookmark current page
+                self._on_bookmark_toggle(None)
+                return True
+        
+        return False
+    
+    def _create_browser_webview(self):
+        """Create a new WebView with proper settings."""
+        try:
+            if self.browser_network_session:
+                webview = WebKit.WebView(network_session=self.browser_network_session)
             else:
-                self.browser_webview = WebKit.WebView()
+                webview = WebKit.WebView()
                 try:
-                    context = self.browser_webview.get_context()
+                    context = webview.get_context()
                     context.connect('download-started', self._on_browser_download_started)
                 except:
                     pass
         except Exception as e:
-            print(f"Browser WebKit setup error: {e}")
-            self.browser_webview = WebKit.WebView()
+            print(f"WebView creation error: {e}")
+            webview = WebKit.WebView()
         
-        self.browser_webview.set_vexpand(True)
-        self.browser_webview.set_hexpand(True)
-        
-        # Update URL bar when page loads
-        self.browser_webview.connect("load-changed", self._on_browser_load_changed)
+        webview.set_vexpand(True)
+        webview.set_hexpand(True)
         
         # Configure settings
-        settings = self.browser_webview.get_settings()
+        settings = webview.get_settings()
         settings.set_enable_javascript(True)
         settings.set_javascript_can_open_windows_automatically(False)
         
@@ -1096,20 +1430,134 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             "(KHTML, like Gecko) Version/17.0 Safari/605.1.15"
         )
         
-        # Handle links that try to open new windows - open in default browser
-        self.browser_webview.connect("create", self._on_browser_create_window)
+        # Connect signals
+        webview.connect("load-changed", self._on_browser_load_changed)
+        webview.connect("create", self._on_browser_create_window)
+        webview.connect("notify::title", self._on_browser_title_changed)
         
-        # Frame around webview
-        webview_frame = Gtk.Frame()
-        webview_frame.set_margin_start(12)
-        webview_frame.set_margin_end(12)
-        webview_frame.set_margin_bottom(12)
-        webview_frame.set_child(self.browser_webview)
-        webview_frame.set_vexpand(True)
-        self.browser_panel.append(webview_frame)
+        # Close bookmarks popover when clicking on webview
+        click_controller = Gtk.GestureClick()
+        click_controller.connect("pressed", self._on_webview_clicked)
+        webview.add_controller(click_controller)
         
-        self.browser_panel_visible = False
-        self.browser_home_url = "https://duckduckgo.com"
+        return webview
+    
+    def _on_webview_clicked(self, gesture, n_press, x, y):
+        """Close bookmarks popover when webview is clicked."""
+        if hasattr(self, 'bookmarks_popover') and self.bookmarks_popover.is_visible():
+            self.bookmarks_popover.popdown()
+    
+    def _browser_new_tab(self, url=None):
+        """Create a new browser tab."""
+        if not hasattr(self, 'browser_tab_view'):
+            return
+        
+        webview = self._create_browser_webview()
+        
+        # Add to tab view
+        page = self.browser_tab_view.append(webview)
+        page.set_title("New Tab")
+        
+        # Select the new tab
+        self.browser_tab_view.set_selected_page(page)
+        
+        # Load URL
+        if url:
+            webview.load_uri(url)
+        else:
+            webview.load_uri(self.browser_home_url)
+        
+        return page
+    
+    def _browser_close_current_tab(self):
+        """Close the current browser tab."""
+        if not hasattr(self, 'browser_tab_view'):
+            return
+        
+        # Don't close if it's the last tab
+        if self.browser_tab_view.get_n_pages() <= 1:
+            return
+        
+        page = self.browser_tab_view.get_selected_page()
+        if page:
+            self.browser_tab_view.close_page(page)
+    
+    def _browser_next_tab(self):
+        """Switch to next tab."""
+        if not hasattr(self, 'browser_tab_view'):
+            return
+        
+        n_pages = self.browser_tab_view.get_n_pages()
+        if n_pages <= 1:
+            return
+        
+        current = self.browser_tab_view.get_selected_page()
+        current_pos = self.browser_tab_view.get_page_position(current)
+        next_pos = (current_pos + 1) % n_pages
+        next_page = self.browser_tab_view.get_nth_page(next_pos)
+        self.browser_tab_view.set_selected_page(next_page)
+    
+    def _browser_prev_tab(self):
+        """Switch to previous tab."""
+        if not hasattr(self, 'browser_tab_view'):
+            return
+        
+        n_pages = self.browser_tab_view.get_n_pages()
+        if n_pages <= 1:
+            return
+        
+        current = self.browser_tab_view.get_selected_page()
+        current_pos = self.browser_tab_view.get_page_position(current)
+        prev_pos = (current_pos - 1) % n_pages
+        prev_page = self.browser_tab_view.get_nth_page(prev_pos)
+        self.browser_tab_view.set_selected_page(prev_page)
+    
+    def _get_current_browser_webview(self):
+        """Get the WebView from the currently selected tab."""
+        if not hasattr(self, 'browser_tab_view'):
+            return None
+        
+        page = self.browser_tab_view.get_selected_page()
+        if page:
+            return page.get_child()
+        return None
+    
+    def _on_browser_tab_changed(self, tab_view, param):
+        """Handle tab selection change."""
+        webview = self._get_current_browser_webview()
+        if webview:
+            uri = webview.get_uri()
+            if uri and hasattr(self, 'browser_url_entry'):
+                self.browser_url_entry.set_text(uri)
+            # Update bookmark star for current URL
+            self._update_bookmark_star()
+    
+    def _on_browser_tab_close(self, tab_view, page):
+        """Handle tab close request."""
+        # Don't allow closing the last tab
+        if tab_view.get_n_pages() <= 1:
+            tab_view.close_page_finish(page, False)  # Deny close
+            return True
+        
+        tab_view.close_page_finish(page, True)  # Confirm close
+        return True
+    
+    def _on_browser_title_changed(self, webview, param):
+        """Update tab title when page title changes."""
+        if not hasattr(self, 'browser_tab_view'):
+            return
+        
+        title = webview.get_title()
+        if title:
+            # Find the page for this webview
+            for i in range(self.browser_tab_view.get_n_pages()):
+                page = self.browser_tab_view.get_nth_page(i)
+                if page.get_child() == webview:
+                    # Truncate long titles
+                    if len(title) > 25:
+                        title = title[:22] + "..."
+                    page.set_title(title)
+                    break
     
     def _on_browser_toggle(self, button):
         """Toggle browser panel visibility."""
@@ -1120,10 +1568,12 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             # Show browser
             button.add_css_class("active")
             
-            # Load home page if not already loaded
-            uri = self.browser_webview.get_uri()
-            if not uri or uri == "about:blank":
-                self.browser_webview.load_uri(self.browser_home_url)
+            # Ensure there's at least one tab
+            webview = self._get_current_browser_webview()
+            if webview:
+                uri = webview.get_uri()
+                if not uri or uri == "about:blank":
+                    webview.load_uri(self.browser_home_url)
             
             # Check if Claude is using the side panel
             if self.docked_panel == 'claude':
@@ -1200,8 +1650,9 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
     
     def _on_browser_home(self, button):
         """Navigate to home page."""
-        if hasattr(self, 'browser_webview'):
-            self.browser_webview.load_uri(self.browser_home_url)
+        webview = self._get_current_browser_webview()
+        if webview:
+            webview.load_uri(self.browser_home_url)
     
     def _on_browser_url_activate(self, entry):
         """Handle URL entry activation."""
@@ -1220,7 +1671,1521 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             from urllib.parse import quote
             url = f"https://duckduckgo.com/?q={quote(text)}"
         
-        self.browser_webview.load_uri(url)
+        webview = self._get_current_browser_webview()
+        if webview:
+            webview.load_uri(url)
+    
+    def _on_bookmark_toggle(self, button):
+        """Add or remove current page from bookmarks."""
+        webview = self._get_current_browser_webview()
+        if not webview:
+            return
+        
+        url = webview.get_uri()
+        title = webview.get_title() or url
+        
+        if not url or url == "about:blank":
+            return
+        
+        # Check if already bookmarked
+        existing = None
+        for i, bm in enumerate(self.bookmarks):
+            if bm.get('url') == url:
+                existing = i
+                break
+        
+        if existing is not None:
+            # Remove bookmark
+            del self.bookmarks[existing]
+            self.show_toast("Bookmark removed")
+        else:
+            # Add bookmark
+            import time
+            self.bookmarks.append({
+                'url': url,
+                'title': title,
+                'added': int(time.time())
+            })
+            self.show_toast("Bookmark added")
+        
+        self._save_bookmarks()
+        self._update_bookmark_star()
+        self._refresh_bookmarks_list()
+        self._refresh_bookmarks_bar()
+    
+    def _get_bookmark_favicon(self, url):
+        """Get favicon image for a bookmark URL."""
+        from urllib.parse import urlparse
+        import os
+        
+        # Default icon
+        icon = Gtk.Image.new_from_icon_name("web-browser-symbolic")
+        icon.set_pixel_size(24)
+        
+        if not url:
+            return icon
+        
+        try:
+            # Extract domain from URL
+            parsed = urlparse(url)
+            domain = parsed.netloc
+            if not domain:
+                return icon
+            
+            # Check favicon cache
+            cache_dir = os.path.join(GLib.get_user_cache_dir(), 'tux-assistant', 'favicons')
+            os.makedirs(cache_dir, exist_ok=True)
+            
+            cache_file = os.path.join(cache_dir, f"{domain}.ico")
+            
+            if os.path.exists(cache_file):
+                # Load from cache
+                try:
+                    pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(cache_file, 24, 24, True)
+                    icon = Gtk.Image.new_from_pixbuf(pixbuf)
+                except:
+                    pass
+            else:
+                # Queue async favicon fetch (don't block UI)
+                GLib.idle_add(self._fetch_favicon_async, domain, cache_file)
+        except:
+            pass
+        
+        return icon
+    
+    def _fetch_favicon_async(self, domain, cache_file):
+        """Fetch favicon in background."""
+        import urllib.request
+        import os
+        
+        try:
+            # Use DuckDuckGo's favicon service
+            favicon_url = f"https://icons.duckduckgo.com/ip3/{domain}.ico"
+            
+            # Fetch with timeout
+            urllib.request.urlretrieve(favicon_url, cache_file)
+        except:
+            pass
+        
+        return False  # Don't repeat
+    
+    def _update_bookmark_star(self):
+        """Update bookmark star icon based on current URL."""
+        if not hasattr(self, 'bookmark_star_btn'):
+            return
+        
+        webview = self._get_current_browser_webview()
+        if not webview:
+            return
+        
+        url = webview.get_uri()
+        is_bookmarked = any(bm.get('url') == url for bm in self.bookmarks)
+        
+        if is_bookmarked:
+            self.bookmark_star_btn.set_icon_name("starred-symbolic")
+            self.bookmark_star_btn.set_tooltip_text("Remove bookmark (Ctrl+D)")
+        else:
+            self.bookmark_star_btn.set_icon_name("non-starred-symbolic")
+            self.bookmark_star_btn.set_tooltip_text("Add bookmark (Ctrl+D)")
+    
+    def _on_bookmarks_popover_show(self):
+        """Handle bookmarks popover showing."""
+        # Clear search and refresh list
+        if hasattr(self, 'bookmarks_search_entry'):
+            self.bookmarks_search_entry.set_text("")
+        self._refresh_bookmarks_list()
+    
+    def _on_bookmarks_search_changed(self, entry):
+        """Filter bookmarks based on search text."""
+        self._refresh_bookmarks_list(entry.get_text())
+    
+    def _on_bookmarks_sort_changed(self, dropdown, param):
+        """Handle sort option change."""
+        search_text = ""
+        if hasattr(self, 'bookmarks_search_entry'):
+            search_text = self.bookmarks_search_entry.get_text()
+        self._refresh_bookmarks_list(search_text)
+    
+    def _refresh_bookmarks_list(self, search_filter=""):
+        """Rebuild the bookmarks list in the popover."""
+        if not hasattr(self, 'bookmarks_list_box'):
+            return
+        
+        # Clear existing items
+        while True:
+            child = self.bookmarks_list_box.get_first_child()
+            if child is None:
+                break
+            self.bookmarks_list_box.remove(child)
+        
+        # Filter bookmarks if search text provided
+        search_filter = search_filter.lower().strip()
+        if search_filter:
+            filtered = [bm for bm in self.bookmarks 
+                       if search_filter in bm.get('title', '').lower() 
+                       or search_filter in bm.get('url', '').lower()]
+        else:
+            filtered = list(self.bookmarks)  # Copy to avoid mutating original
+        
+        # Apply sorting
+        if hasattr(self, 'bookmarks_sort_dropdown'):
+            sort_index = self.bookmarks_sort_dropdown.get_selected()
+            if sort_index == 1:  # Name A-Z
+                filtered.sort(key=lambda bm: bm.get('title', '').lower())
+            elif sort_index == 2:  # Name Z-A
+                filtered.sort(key=lambda bm: bm.get('title', '').lower(), reverse=True)
+            elif sort_index == 3:  # Recent (by added timestamp, newest first)
+                filtered.sort(key=lambda bm: bm.get('added', 0), reverse=True)
+            # sort_index == 0 is Default (original order)
+        
+        if not filtered:
+            # Show empty/no results message
+            if search_filter:
+                empty_label = Gtk.Label(label="No matching bookmarks")
+            else:
+                empty_label = Gtk.Label(label="No bookmarks yet")
+            empty_label.add_css_class("dim-label")
+            empty_label.set_margin_top(20)
+            empty_label.set_margin_bottom(20)
+            self.bookmarks_list_box.append(empty_label)
+            return
+        
+        # Group bookmarks by folder
+        unfiled = [bm for bm in filtered if not bm.get('folder')]
+        
+        # Add ALL folders (even empty ones)
+        for folder_name in self.bookmark_folders:
+            folder_bookmarks = [bm for bm in filtered if bm.get('folder') == folder_name]
+            
+            # Folder header box with expander and delete button
+            folder_header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+            folder_header.set_margin_top(4)
+            folder_header.set_margin_bottom(4)
+            
+            # Add drop target to folder header
+            drop_target = Gtk.DropTarget.new(GObject.TYPE_STRING, Gdk.DragAction.MOVE)
+            drop_target.set_preload(True)
+            drop_target.folder_name = folder_name
+            drop_target.connect("accept", self._on_drop_accept)
+            drop_target.connect("drop", self._on_bookmark_drop_to_folder)
+            drop_target.connect("enter", self._on_drop_enter)
+            drop_target.connect("leave", self._on_drop_leave)
+            folder_header.add_controller(drop_target)
+            
+            # Expander takes most space
+            expander = Gtk.Expander(label=f"📁 {folder_name} ({len(folder_bookmarks)})")
+            expander.set_expanded(True)
+            expander.set_hexpand(True)
+            folder_header.append(expander)
+            
+            # Delete folder button
+            delete_folder_btn = Gtk.Button.new_from_icon_name("edit-delete-symbolic")
+            delete_folder_btn.add_css_class("flat")
+            delete_folder_btn.set_tooltip_text(f"Delete folder '{folder_name}'")
+            delete_folder_btn.set_valign(Gtk.Align.CENTER)
+            delete_folder_btn.folder_name = folder_name
+            delete_folder_btn.connect("clicked", self._on_delete_folder)
+            folder_header.append(delete_folder_btn)
+            
+            self.bookmarks_list_box.append(folder_header)
+            
+            if folder_bookmarks:
+                folder_list = Gtk.ListBox()
+                folder_list.set_selection_mode(Gtk.SelectionMode.NONE)
+                folder_list.add_css_class("boxed-list")
+                folder_list.set_margin_start(16)  # Indent under folder
+                
+                for bm in folder_bookmarks:
+                    row = self._create_bookmark_row(bm)
+                    folder_list.append(row)
+                
+                # Link list visibility to expander
+                expander.folder_list = folder_list
+                expander.connect("notify::expanded", self._on_folder_expander_toggled)
+                
+                self.bookmarks_list_box.append(folder_list)
+            else:
+                # Empty folder message
+                empty_msg = Gtk.Label(label="(empty)")
+                empty_msg.add_css_class("dim-label")
+                empty_msg.set_margin_start(24)
+                empty_msg.set_xalign(0)
+                expander.empty_label = empty_msg
+                expander.connect("notify::expanded", self._on_folder_expander_toggled)
+                self.bookmarks_list_box.append(empty_msg)
+        
+        # Add unfiled section (always show if there are folders, for drop target)
+        if self.bookmark_folders:
+            # Unfiled header with drop target
+            unfiled_header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+            unfiled_header.set_margin_top(8)
+            unfiled_header.set_margin_bottom(4)
+            
+            unfiled_label = Gtk.Label(label="Unfiled" if unfiled else "Unfiled (drop here)")
+            unfiled_label.add_css_class("dim-label")
+            unfiled_label.set_xalign(0)
+            unfiled_label.set_hexpand(True)
+            unfiled_header.append(unfiled_label)
+            
+            # Add drop target to unfiled section
+            drop_target = Gtk.DropTarget.new(GObject.TYPE_STRING, Gdk.DragAction.MOVE)
+            drop_target.set_preload(True)
+            drop_target.folder_name = None  # None means unfiled
+            drop_target.connect("accept", self._on_drop_accept)
+            drop_target.connect("drop", self._on_bookmark_drop_to_folder)
+            drop_target.connect("enter", self._on_drop_enter)
+            drop_target.connect("leave", self._on_drop_leave)
+            unfiled_header.add_controller(drop_target)
+            
+            self.bookmarks_list_box.append(unfiled_header)
+        
+        # Add unfiled bookmarks
+        for bm in unfiled:
+            row = self._create_bookmark_row(bm)
+            self.bookmarks_list_box.append(row)
+    
+    def _on_folder_expander_toggled(self, expander, param):
+        """Show/hide folder contents when expander is toggled."""
+        expanded = expander.get_expanded()
+        if hasattr(expander, 'folder_list'):
+            expander.folder_list.set_visible(expanded)
+        if hasattr(expander, 'empty_label'):
+            expander.empty_label.set_visible(expanded)
+    
+    def _on_delete_folder(self, button):
+        """Delete a folder (move bookmarks to unfiled)."""
+        folder_name = getattr(button, 'folder_name', None)
+        if not folder_name:
+            return
+        
+        # Count bookmarks in folder
+        folder_bookmarks = [bm for bm in self.bookmarks if bm.get('folder') == folder_name]
+        
+        dialog = Adw.MessageDialog(
+            transient_for=self,
+            heading=f"Delete '{folder_name}'?",
+            body=f"This folder contains {len(folder_bookmarks)} bookmark(s). They will be moved to Unfiled."
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("delete", "Delete")
+        dialog.set_response_appearance("delete", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
+        
+        dialog.folder_name = folder_name
+        dialog.connect("response", self._on_delete_folder_response)
+        dialog.present()
+    
+    def _on_delete_folder_response(self, dialog, response):
+        """Handle delete folder confirmation."""
+        if response == "delete":
+            folder_name = dialog.folder_name
+            
+            # Remove folder assignment from bookmarks
+            for bm in self.bookmarks:
+                if bm.get('folder') == folder_name:
+                    del bm['folder']
+            
+            # Remove folder from list
+            if folder_name in self.bookmark_folders:
+                self.bookmark_folders.remove(folder_name)
+            
+            self._save_bookmarks()
+            self._refresh_bookmarks_list()
+            self._refresh_bookmarks_bar()
+            self.show_toast(f"Folder '{folder_name}' deleted")
+    
+    def _create_bookmark_row(self, bm):
+        """Create a bookmark row for the list."""
+        # Check if this is a separator
+        if bm.get('type') == 'separator':
+            return self._create_separator_row(bm)
+        
+        row = Adw.ActionRow()
+        row.set_title(bm.get('title', 'Untitled'))
+        row.set_subtitle(bm.get('url', ''))
+        row.set_activatable(True)
+        row.set_tooltip_text(bm.get('url', ''))
+        
+        # Drag handle as first prefix
+        drag_handle = Gtk.Image.new_from_icon_name("list-drag-handle-symbolic")
+        drag_handle.add_css_class("dim-label")
+        row.add_prefix(drag_handle)
+        
+        # Favicon prefix
+        favicon = self._get_bookmark_favicon(bm.get('url', ''))
+        row.add_prefix(favicon)
+        
+        # Store bookmark data for drag/drop and handlers
+        row.bookmark_url = bm.get('url')
+        row.bookmark_data = bm
+        row.connect("activated", self._on_bookmark_activated)
+        
+        # Add drag source
+        drag_source = Gtk.DragSource()
+        drag_source.set_actions(Gdk.DragAction.MOVE)
+        drag_source.connect("prepare", self._on_bookmark_drag_prepare)
+        drag_source.connect("drag-begin", self._on_bookmark_drag_begin)
+        drag_source.connect("drag-end", self._on_drag_end)
+        row.add_controller(drag_source)
+        
+        # Add drop target for reordering
+        drop_target = Gtk.DropTarget.new(GObject.TYPE_STRING, Gdk.DragAction.MOVE)
+        drop_target.set_preload(True)
+        drop_target.target_bookmark = bm
+        drop_target.connect("accept", self._on_drop_accept)
+        drop_target.connect("drop", self._on_unified_drop)
+        drop_target.connect("enter", self._on_drop_enter)
+        drop_target.connect("leave", self._on_drop_leave)
+        row.add_controller(drop_target)
+        
+        # Edit button
+        edit_btn = Gtk.Button.new_from_icon_name("document-edit-symbolic")
+        edit_btn.set_valign(Gtk.Align.CENTER)
+        edit_btn.add_css_class("flat")
+        edit_btn.set_tooltip_text("Edit bookmark")
+        edit_btn.bookmark_url = bm.get('url')
+        edit_btn.bookmark_title = bm.get('title', '')
+        edit_btn.bookmark_folder = bm.get('folder')
+        edit_btn.connect("clicked", self._on_bookmark_edit)
+        row.add_suffix(edit_btn)
+        
+        # Delete button
+        delete_btn = Gtk.Button.new_from_icon_name("edit-delete-symbolic")
+        delete_btn.set_valign(Gtk.Align.CENTER)
+        delete_btn.add_css_class("flat")
+        delete_btn.set_tooltip_text("Remove bookmark")
+        delete_btn.bookmark_url = bm.get('url')
+        delete_btn.connect("clicked", self._on_bookmark_delete)
+        row.add_suffix(delete_btn)
+        
+        return row
+    
+    def _create_separator_row(self, bm):
+        """Create a separator row for the list."""
+        # Use ActionRow for consistent styling and hit area
+        row = Adw.ActionRow()
+        row.set_title("──────────────")
+        row.set_subtitle("Separator")
+        row.add_css_class("dim-label")
+        
+        # Drag handle as first prefix
+        drag_handle = Gtk.Image.new_from_icon_name("list-drag-handle-symbolic")
+        drag_handle.add_css_class("dim-label")
+        row.add_prefix(drag_handle)
+        
+        # Delete button
+        delete_btn = Gtk.Button.new_from_icon_name("edit-delete-symbolic")
+        delete_btn.set_valign(Gtk.Align.CENTER)
+        delete_btn.add_css_class("flat")
+        delete_btn.set_tooltip_text("Remove separator")
+        delete_btn.separator_data = bm
+        delete_btn.connect("clicked", self._on_separator_delete)
+        row.add_suffix(delete_btn)
+        
+        # Store separator data for drag
+        row.bookmark_data = bm
+        row.is_separator = True
+        
+        # Add drag source for reordering
+        drag_source = Gtk.DragSource()
+        drag_source.set_actions(Gdk.DragAction.MOVE)
+        drag_source.connect("prepare", self._on_separator_drag_prepare)
+        drag_source.connect("drag-begin", self._on_separator_drag_begin)
+        drag_source.connect("drag-end", self._on_drag_end)
+        row.add_controller(drag_source)
+        
+        # Add drop target so items can be dropped ON this separator
+        drop_target = Gtk.DropTarget.new(GObject.TYPE_STRING, Gdk.DragAction.MOVE)
+        drop_target.set_preload(True)
+        drop_target.separator_data = bm
+        drop_target.target_bookmark = bm  # For unified handler
+        drop_target.connect("accept", self._on_drop_accept)
+        drop_target.connect("drop", self._on_unified_drop)
+        drop_target.connect("enter", self._on_drop_enter)
+        drop_target.connect("leave", self._on_drop_leave)
+        row.add_controller(drop_target)
+        
+        return row
+    
+    def _on_separator_delete(self, button):
+        """Delete a separator."""
+        sep_data = getattr(button, 'separator_data', None)
+        if sep_data and sep_data in self.bookmarks:
+            self.bookmarks.remove(sep_data)
+            self._save_bookmarks()
+            self._refresh_bookmarks_list()
+            self._refresh_bookmarks_bar()
+            self.show_toast("Separator removed")
+    
+    def _on_separator_drag_prepare(self, source, x, y):
+        """Prepare separator for drag."""
+        try:
+            widget = source.get_widget()
+            sep_data = getattr(widget, 'bookmark_data', None)
+            if sep_data:
+                # Use a unique identifier for separator
+                self._dragging_bookmark_url = f"__separator__{id(sep_data)}"
+                self._dragging_separator = sep_data
+                # Use typed value that matches drop target expectation
+                value = GObject.Value(GObject.TYPE_STRING, "separator")
+                content = Gdk.ContentProvider.new_for_value(value)
+                return content
+        except Exception as e:
+            print(f"Separator drag prepare error: {e}")
+        return None
+    
+    def _on_separator_drag_begin(self, source, drag):
+        """Set drag icon for separator."""
+        try:
+            icon = Gtk.DragIcon.get_for_drag(drag)
+            label = Gtk.Label(label="── Separator ──")
+            label.add_css_class("card")
+            label.set_margin_top(8)
+            label.set_margin_bottom(8)
+            label.set_margin_start(8)
+            label.set_margin_end(8)
+            icon.set_child(label)
+        except Exception as e:
+            print(f"Separator drag begin error: {e}")
+    
+    def _on_separator_drop(self, drop_target, value, x, y):
+        """Handle item dropped on a separator - insert at separator's position."""
+        try:
+            url = getattr(self, '_dragging_bookmark_url', None)
+            dragged_sep = getattr(self, '_dragging_separator', None)
+            target_sep = getattr(drop_target, 'separator_data', None)
+            
+            
+            if not target_sep:
+                return False
+            
+            # Find what we're dragging
+            dragged_item = None
+            if dragged_sep and dragged_sep in self.bookmarks:
+                dragged_item = dragged_sep
+            elif url:
+                for bm in self.bookmarks:
+                    if bm.get('url') == url:
+                        dragged_item = bm
+                        break
+            
+            if not dragged_item:
+                return False
+            
+            if dragged_item == target_sep:
+                return False
+            
+            # Find target separator's position
+            try:
+                target_idx = self.bookmarks.index(target_sep)
+            except ValueError:
+                return False
+            
+            # Remove dragged item from current position
+            self.bookmarks.remove(dragged_item)
+            
+            # Remove folder (moving to unfiled)
+            if 'folder' in dragged_item:
+                del dragged_item['folder']
+            
+            # Recalculate target index after removal
+            try:
+                target_idx = self.bookmarks.index(target_sep)
+            except ValueError:
+                target_idx = len(self.bookmarks)
+            
+            # Insert at target position
+            self.bookmarks.insert(target_idx, dragged_item)
+            
+            self._save_bookmarks()
+            self._refresh_bookmarks_list()
+            self._refresh_bookmarks_bar()
+            self.show_toast("Reordered")
+            return True
+            
+        except Exception as e:
+            print(f"Separator drop error: {e}")
+        return False
+    
+    def _on_unified_drop(self, drop_target, value, x, y):
+        """Unified handler for dropping bookmarks or separators on any target."""
+        try:
+            url = getattr(self, '_dragging_bookmark_url', None)
+            dragged_sep = getattr(self, '_dragging_separator', None)
+            target_bm = getattr(drop_target, 'target_bookmark', None)
+            target_index = getattr(drop_target, 'target_index', 0)
+            
+            
+            if not target_bm:
+                return False
+            
+            # Find what we're dragging
+            dragged_item = None
+            if dragged_sep and dragged_sep in self.bookmarks:
+                dragged_item = dragged_sep
+            elif url:
+                for bm in self.bookmarks:
+                    if bm.get('url') == url:
+                        dragged_item = bm
+                        break
+            
+            if not dragged_item:
+                return False
+            
+            if dragged_item == target_bm:
+                return False
+            
+            # Find target's position
+            try:
+                target_idx = self.bookmarks.index(target_bm)
+            except ValueError:
+                return False
+            
+            # Remove dragged item
+            self.bookmarks.remove(dragged_item)
+            
+            # Remove folder assignment
+            if 'folder' in dragged_item:
+                del dragged_item['folder']
+            
+            # Recalculate target index after removal
+            try:
+                target_idx = self.bookmarks.index(target_bm)
+            except ValueError:
+                target_idx = len(self.bookmarks)
+            
+            # Insert at target position
+            self.bookmarks.insert(target_idx, dragged_item)
+            
+            self._save_bookmarks()
+            self._refresh_bookmarks_list()
+            self._refresh_bookmarks_bar()
+            self.show_toast("Reordered")
+            return True
+            
+        except Exception as e:
+            print(f"Unified drop error: {e}")
+        return False
+    
+    def _on_bookmark_drag_prepare(self, source, x, y):
+        """Prepare bookmark data for drag."""
+        try:
+            row = source.get_widget()
+            url = getattr(row, 'bookmark_url', '')
+            if url:
+                # Store dragged bookmark URL in instance for drop handler
+                self._dragging_bookmark_url = url
+                # Use GLib.Bytes for reliable transfer
+                value = GObject.Value(GObject.TYPE_STRING, url)
+                content = Gdk.ContentProvider.new_for_value(value)
+                return content
+        except Exception as e:
+            print(f"Drag prepare error: {e}")
+        return None
+    
+    def _on_bookmark_drag_begin(self, source, drag):
+        """Set drag icon when drag begins."""
+        try:
+            row = source.get_widget()
+            title = row.get_title() or "Bookmark"
+            # Use a simple icon for drag
+            icon = Gtk.DragIcon.get_for_drag(drag)
+            label = Gtk.Label(label=f"📑 {title[:20]}")
+            label.add_css_class("card")
+            label.set_margin_top(8)
+            label.set_margin_bottom(8)
+            label.set_margin_start(8)
+            label.set_margin_end(8)
+            icon.set_child(label)
+        except Exception as e:
+            print(f"Drag begin error: {e}")
+    
+    def _on_drag_end(self, source, drag, delete_data):
+        """Clean up after drag ends."""
+        self._dragging_bookmark_url = None
+        self._dragging_separator = None
+    
+    def _on_bar_bookmark_drag_prepare(self, source, x, y):
+        """Prepare bookmark data for drag from toolbar."""
+        try:
+            btn = source.get_widget()
+            url = getattr(btn, 'bookmark_url', '')
+            if url:
+                self._dragging_bookmark_url = url
+                value = GObject.Value(GObject.TYPE_STRING, url)
+                content = Gdk.ContentProvider.new_for_value(value)
+                return content
+        except Exception as e:
+            print(f"Bar drag prepare error: {e}")
+        return None
+    
+    def _on_bar_bookmark_drag_begin(self, source, drag):
+        """Set drag icon when drag begins from toolbar."""
+        try:
+            btn = source.get_widget()
+            title = getattr(btn, 'bookmark_title', 'Bookmark')
+            icon = Gtk.DragIcon.get_for_drag(drag)
+            label = Gtk.Label(label=f"📑 {title[:20]}")
+            label.add_css_class("card")
+            label.set_margin_top(8)
+            label.set_margin_bottom(8)
+            label.set_margin_start(8)
+            label.set_margin_end(8)
+            icon.set_child(label)
+        except Exception as e:
+            print(f"Bar drag begin error: {e}")
+    
+    def _on_popover_drag_prepare(self, source, x, y):
+        """Prepare bookmark data for drag from popover."""
+        try:
+            row = source.get_widget()
+            url = getattr(row, 'bookmark_url', '')
+            if url:
+                self._dragging_bookmark_url = url
+                value = GObject.Value(GObject.TYPE_STRING, url)
+                content = Gdk.ContentProvider.new_for_value(value)
+                return content
+        except Exception as e:
+            print(f"Popover drag prepare error: {e}")
+        return None
+    
+    def _on_popover_drag_begin(self, source, drag):
+        """Set drag icon and close popover when drag begins."""
+        try:
+            row = source.get_widget()
+            title = getattr(row, 'bookmark_title', None) or row.get_title() or "Bookmark"
+            
+            # Close the popover so it doesn't interfere
+            popover = getattr(source, 'popover', None)
+            if popover:
+                popover.popdown()
+            
+            # Set drag icon
+            icon = Gtk.DragIcon.get_for_drag(drag)
+            label = Gtk.Label(label=f"📑 {title[:20]}")
+            label.add_css_class("card")
+            label.set_margin_top(8)
+            label.set_margin_bottom(8)
+            label.set_margin_start(8)
+            label.set_margin_end(8)
+            icon.set_child(label)
+        except Exception as e:
+            print(f"Popover drag begin error: {e}")
+    
+    def _on_popover_drag_end(self, source, drag, delete_data):
+        """Clean up after popover drag ends."""
+        self._dragging_bookmark_url = None
+    
+    def _on_drop_enter(self, drop_target, x, y):
+        """Highlight drop target when drag enters."""
+        try:
+            widget = drop_target.get_widget()
+            widget.add_css_class("suggested-action")
+            folder_name = getattr(drop_target, 'folder_name', None)
+            sep_data = getattr(drop_target, 'separator_data', None)
+            target_index = getattr(drop_target, 'target_index', None)
+        except Exception as e:
+            pass
+        return Gdk.DragAction.MOVE
+    
+    def _on_drop_accept(self, drop_target, drop):
+        """Accept all drops - we handle filtering in drop handler."""
+        return True
+    
+    def _on_drop_leave(self, drop_target):
+        """Remove highlight when drag leaves."""
+        try:
+            widget = drop_target.get_widget()
+            widget.remove_css_class("suggested-action")
+        except:
+            pass
+    
+    def _on_bookmark_drop_to_folder(self, drop_target, value, x, y):
+        """Handle bookmark dropped on folder."""
+        try:
+            # Get URL from instance variable (more reliable than DnD value)
+            url = getattr(self, '_dragging_bookmark_url', None)
+            target_folder = getattr(drop_target, 'folder_name', None)
+            if not url:
+                return False
+            
+            # Find the bookmark
+            for bm in self.bookmarks:
+                if bm.get('url') == url:
+                    current_folder = bm.get('folder')
+                    
+                    # Don't do anything if dropping on same folder
+                    if current_folder == target_folder:
+                        return False
+                    
+                    # Update folder
+                    if target_folder:
+                        bm['folder'] = target_folder
+                        self.show_toast(f"Moved to {target_folder}")
+                    else:
+                        if 'folder' in bm:
+                            del bm['folder']
+                        self.show_toast("Moved to Unfiled")
+                    
+                    self._save_bookmarks()
+                    self._refresh_bookmarks_list()
+                    self._refresh_bookmarks_bar()
+                    return True
+        except Exception as e:
+            print(f"Drop error: {e}")
+        
+        return False
+    
+    def _on_bookmark_reorder_drop(self, drop_target, value, x, y):
+        """Handle bookmark or separator dropped for reordering in toolbar."""
+        try:
+            url = getattr(self, '_dragging_bookmark_url', None)
+            separator = getattr(self, '_dragging_separator', None)
+            target_index = getattr(drop_target, 'target_index', 0)
+            
+            
+            if not url and not separator:
+                return False
+            
+            # Find the dragged item
+            dragged_bm = None
+            
+            # Check if we're dragging a separator
+            if separator and separator in self.bookmarks:
+                dragged_bm = separator
+            elif url:
+                # Find by URL (regular bookmark)
+                for bm in self.bookmarks:
+                    if bm.get('url') == url:
+                        dragged_bm = bm
+                        break
+            
+            if dragged_bm is None:
+                return False
+            
+            # Check if already at target position (only for unfiled)
+            if not dragged_bm.get('folder'):
+                unfiled = [bm for bm in self.bookmarks if not bm.get('folder')]
+                try:
+                    current_idx = unfiled.index(dragged_bm)
+                    if current_idx == target_index:
+                        return False
+                except ValueError:
+                    pass
+            
+            # Remove from current position
+            self.bookmarks.remove(dragged_bm)
+            
+            # Remove folder assignment (moving to unfiled/toolbar)
+            if 'folder' in dragged_bm:
+                del dragged_bm['folder']
+            
+            # Find insertion point in main list
+            # Count unfiled bookmarks before target_index to find real position
+            unfiled_count = 0
+            insert_pos = 0
+            for i, bm in enumerate(self.bookmarks):
+                if not bm.get('folder'):
+                    if unfiled_count == target_index:
+                        insert_pos = i
+                        break
+                    unfiled_count += 1
+                insert_pos = i + 1
+            
+            self.bookmarks.insert(insert_pos, dragged_bm)
+            
+            self._save_bookmarks()
+            self._refresh_bookmarks_list()
+            self._refresh_bookmarks_bar()
+            self.show_toast("Reordered")
+            return True
+            
+        except Exception as e:
+            print(f"Reorder drop error: {e}")
+        
+        return False
+    
+    def _refresh_bookmarks_bar(self):
+        """Rebuild the bookmarks bar with bookmark buttons and folder menus."""
+        if not hasattr(self, 'bookmarks_bar'):
+            return
+        
+        # Clear existing buttons
+        while True:
+            child = self.bookmarks_bar.get_first_child()
+            if child is None:
+                break
+            self.bookmarks_bar.remove(child)
+        
+        # Add drop target to the bar itself (for dropping to unfiled)
+        # Note: We don't add a drop target to the bar itself anymore
+        # Each child widget (buttons, separators) has its own drop target
+        # This prevents the bar from intercepting drops meant for children
+        
+        if not self.bookmarks and not self.bookmark_folders:
+            # Show hint when empty
+            hint = Gtk.Label(label="Bookmarks will appear here (drag here to add)")
+            hint.add_css_class("dim-label")
+            self.bookmarks_bar.append(hint)
+            return
+        
+        items_added = 0
+        max_items = 12
+        
+        # Add folders as dropdown menus first
+        for folder_name in self.bookmark_folders:
+            if items_added >= max_items:
+                break
+            
+            folder_bookmarks = [bm for bm in self.bookmarks if bm.get('folder') == folder_name]
+            
+            # Create menu button for folder
+            menu_btn = Gtk.MenuButton()
+            menu_btn.add_css_class("flat")
+            menu_btn.set_label(f"📁 {folder_name}")
+            menu_btn.set_tooltip_text(f"{len(folder_bookmarks)} bookmarks - drop to add")
+            
+            # Add drop target to folder button
+            folder_drop = Gtk.DropTarget.new(GObject.TYPE_STRING, Gdk.DragAction.MOVE)
+            folder_drop.set_preload(True)
+            folder_drop.folder_name = folder_name
+            folder_drop.connect("accept", self._on_drop_accept)
+            folder_drop.connect("drop", self._on_bookmark_drop_to_folder)
+            folder_drop.connect("enter", self._on_drop_enter)
+            folder_drop.connect("leave", self._on_drop_leave)
+            menu_btn.add_controller(folder_drop)
+            
+            # Create popover with folder contents
+            popover = Gtk.Popover()
+            popover.set_autohide(False)  # Disable autohide so drag works
+            
+            if folder_bookmarks:
+                folder_list = Gtk.ListBox()
+                folder_list.set_selection_mode(Gtk.SelectionMode.NONE)
+                folder_list.add_css_class("boxed-list")
+                
+                for bm in folder_bookmarks:
+                    row = Adw.ActionRow()
+                    title = bm.get('title', 'Untitled')
+                    if len(title) > 30:
+                        title = title[:27] + "..."
+                    row.set_title(title)
+                    row.set_activatable(True)
+                    row.bookmark_url = bm.get('url')
+                    row.bookmark_title = bm.get('title', 'Untitled')
+                    row.folder_popover = popover
+                    row.connect("activated", self._on_folder_bookmark_clicked)
+                    
+                    # Add drag source to folder popover row
+                    drag_source = Gtk.DragSource()
+                    drag_source.set_actions(Gdk.DragAction.MOVE)
+                    drag_source.connect("prepare", self._on_popover_drag_prepare)
+                    drag_source.connect("drag-begin", self._on_popover_drag_begin)
+                    drag_source.connect("drag-end", self._on_popover_drag_end)
+                    drag_source.popover = popover  # Store reference
+                    row.add_controller(drag_source)
+                    
+                    folder_list.append(row)
+                
+                popover.set_child(folder_list)
+            else:
+                empty_label = Gtk.Label(label="Empty folder")
+                empty_label.add_css_class("dim-label")
+                empty_label.set_margin_top(12)
+                empty_label.set_margin_bottom(12)
+                empty_label.set_margin_start(12)
+                empty_label.set_margin_end(12)
+                popover.set_child(empty_label)
+            
+            menu_btn.set_popover(popover)
+            self.bookmarks_bar.append(menu_btn)
+            items_added += 1
+        
+        # Add unfiled bookmarks and separators
+        unfiled = [bm for bm in self.bookmarks if not bm.get('folder')]
+        bar_index = 0  # Track position for reordering
+        for bm in unfiled:
+            if items_added >= max_items:
+                break
+            
+            # Check if this is a separator
+            if bm.get('type') == 'separator':
+                # Use a button with separator appearance for proper hit area
+                sep_btn = Gtk.Button()
+                sep_btn.add_css_class("flat")
+                sep_btn.set_label("│")  # Vertical bar character
+                sep_btn.set_sensitive(True)
+                sep_btn.set_can_focus(False)
+                sep_btn.set_tooltip_text("Separator (drag to reorder)")
+                
+                # Store separator data for drag
+                sep_btn.bookmark_data = bm
+                sep_btn.is_separator = True
+                sep_btn.bookmark_index = bar_index
+                
+                # Add drag source
+                drag_source = Gtk.DragSource()
+                drag_source.set_actions(Gdk.DragAction.MOVE)
+                drag_source.connect("prepare", self._on_separator_drag_prepare)
+                drag_source.connect("drag-begin", self._on_separator_drag_begin)
+                drag_source.connect("drag-end", self._on_drag_end)
+                sep_btn.add_controller(drag_source)
+                
+                # Add drop target for reordering - use unified handler
+                drop_target = Gtk.DropTarget.new(GObject.TYPE_STRING, Gdk.DragAction.MOVE)
+                drop_target.set_preload(True)
+                drop_target.separator_data = bm
+                drop_target.target_index = bar_index
+                drop_target.target_bookmark = bm  # Store for unified handler
+                drop_target.connect("accept", self._on_drop_accept)
+                drop_target.connect("drop", self._on_unified_drop)
+                drop_target.connect("enter", self._on_drop_enter)
+                drop_target.connect("leave", self._on_drop_leave)
+                sep_btn.add_controller(drop_target)
+                
+                self.bookmarks_bar.append(sep_btn)
+                items_added += 1
+                bar_index += 1
+                continue
+            
+            btn = Gtk.Button()
+            btn.add_css_class("flat")
+            
+            # Shorten title for button
+            title = bm.get('title', 'Untitled')
+            if len(title) > 20:
+                title = title[:17] + "..."
+            btn.set_label(title)
+            btn.set_tooltip_text(bm.get('url', '') + " (drag to reorder)")
+            
+            btn.bookmark_url = bm.get('url')
+            btn.bookmark_title = bm.get('title', 'Untitled')
+            btn.bookmark_index = bar_index  # Track position for reordering
+            btn.bookmark_data = bm  # Store full data for drop handler
+            btn.connect("clicked", self._on_bookmarks_bar_clicked)
+            
+            # Add drag source to toolbar button
+            drag_source = Gtk.DragSource()
+            drag_source.set_actions(Gdk.DragAction.MOVE)
+            drag_source.connect("prepare", self._on_bar_bookmark_drag_prepare)
+            drag_source.connect("drag-begin", self._on_bar_bookmark_drag_begin)
+            drag_source.connect("drag-end", self._on_drag_end)
+            btn.add_controller(drag_source)
+            
+            # Add drop target for reordering - use unified handler
+            drop_target = Gtk.DropTarget.new(GObject.TYPE_STRING, Gdk.DragAction.MOVE)
+            drop_target.set_preload(True)
+            drop_target.target_index = bar_index
+            drop_target.target_bookmark = bm  # Store bookmark data
+            drop_target.connect("accept", self._on_drop_accept)
+            drop_target.connect("drop", self._on_unified_drop)
+            drop_target.connect("enter", self._on_drop_enter)
+            drop_target.connect("leave", self._on_drop_leave)
+            btn.add_controller(drop_target)
+            
+            self.bookmarks_bar.append(btn)
+            items_added += 1
+            bar_index += 1
+        
+        # Show "more" indicator if there are more items
+        total_items = len(self.bookmark_folders) + len(unfiled)
+        if total_items > max_items:
+            more_label = Gtk.Label(label=f"+{total_items - max_items} more")
+            more_label.add_css_class("dim-label")
+            self.bookmarks_bar.append(more_label)
+    
+    def _on_folder_bookmark_clicked(self, row):
+        """Navigate to bookmark clicked in folder popover."""
+        url = getattr(row, 'bookmark_url', None)
+        popover = getattr(row, 'folder_popover', None)
+        if url:
+            webview = self._get_current_browser_webview()
+            if webview:
+                webview.load_uri(url)
+        if popover:
+            popover.popdown()
+    
+    def _on_bookmarks_bar_clicked(self, button):
+        """Navigate to bookmark clicked in bar."""
+        url = getattr(button, 'bookmark_url', None)
+        if url:
+            webview = self._get_current_browser_webview()
+            if webview:
+                webview.load_uri(url)
+    
+    def _on_bookmark_activated(self, row):
+        """Navigate to clicked bookmark."""
+        url = getattr(row, 'bookmark_url', None)
+        if url:
+            webview = self._get_current_browser_webview()
+            if webview:
+                webview.load_uri(url)
+            self.bookmarks_popover.popdown()
+    
+    def _on_bookmark_delete(self, button):
+        """Delete a bookmark."""
+        url = getattr(button, 'bookmark_url', None)
+        if url:
+            self.bookmarks = [bm for bm in self.bookmarks if bm.get('url') != url]
+            self._save_bookmarks()
+            self._refresh_bookmarks_list()
+            self._refresh_bookmarks_bar()
+            self._update_bookmark_star()
+            self.show_toast("Bookmark removed")
+    
+    def _on_bookmark_new_folder(self, button):
+        """Show dialog to create a new folder."""
+        self.bookmarks_popover.popdown()
+        
+        dialog = Adw.MessageDialog(
+            transient_for=self,
+            heading="New Folder",
+            body="Enter folder name:"
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("create", "Create")
+        dialog.set_response_appearance("create", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("create")
+        dialog.set_close_response("cancel")
+        
+        # Folder name entry
+        name_entry = Gtk.Entry()
+        name_entry.set_placeholder_text("Folder name")
+        name_entry.set_margin_top(12)
+        name_entry.set_margin_bottom(12)
+        name_entry.set_margin_start(12)
+        name_entry.set_margin_end(12)
+        
+        dialog.set_extra_child(name_entry)
+        dialog.name_entry = name_entry
+        
+        dialog.connect("response", self._on_bookmark_new_folder_response)
+        dialog.present()
+    
+    def _on_bookmark_new_folder_response(self, dialog, response):
+        """Handle new folder dialog response."""
+        if response == "create":
+            name = dialog.name_entry.get_text().strip()
+            
+            if not name:
+                self.show_toast("Folder name is required")
+                return
+            
+            if name in self.bookmark_folders:
+                self.show_toast("Folder already exists")
+                return
+            
+            self.bookmark_folders.append(name)
+            self._save_bookmarks()
+            self._refresh_bookmarks_list()
+            self.show_toast(f"Folder '{name}' created")
+    
+    def _on_bookmark_add_separator(self, button):
+        """Add a separator to bookmarks."""
+        import time
+        separator = {
+            'type': 'separator',
+            'added': int(time.time())
+        }
+        self.bookmarks.append(separator)
+        self._save_bookmarks()
+        self._refresh_bookmarks_list()
+        self._refresh_bookmarks_bar()
+        self.show_toast("Separator added")
+    
+    def _on_bookmark_add_manual(self, button):
+        """Show dialog to manually add a bookmark."""
+        self.bookmarks_popover.popdown()
+        
+        dialog = Adw.MessageDialog(
+            transient_for=self,
+            heading="Add Bookmark",
+            body="Enter the bookmark details:"
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("add", "Add")
+        dialog.set_response_appearance("add", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("add")
+        dialog.set_close_response("cancel")
+        
+        # Create input fields
+        content_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        content_box.set_margin_top(12)
+        content_box.set_margin_bottom(12)
+        content_box.set_margin_start(12)
+        content_box.set_margin_end(12)
+        
+        # Title entry
+        title_entry = Gtk.Entry()
+        title_entry.set_placeholder_text("Title")
+        content_box.append(title_entry)
+        
+        # URL entry
+        url_entry = Gtk.Entry()
+        url_entry.set_placeholder_text("https://example.com")
+        content_box.append(url_entry)
+        
+        # Folder dropdown
+        folder_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        folder_label = Gtk.Label(label="Folder:")
+        folder_box.append(folder_label)
+        
+        folder_options = ["(None)"] + self.bookmark_folders
+        folder_model = Gtk.StringList.new(folder_options)
+        folder_dropdown = Gtk.DropDown(model=folder_model)
+        folder_dropdown.set_hexpand(True)
+        folder_box.append(folder_dropdown)
+        content_box.append(folder_box)
+        
+        dialog.set_extra_child(content_box)
+        
+        # Store references for response handler
+        dialog.title_entry = title_entry
+        dialog.url_entry = url_entry
+        dialog.folder_dropdown = folder_dropdown
+        dialog.folder_options = folder_options
+        
+        dialog.connect("response", self._on_bookmark_add_response)
+        dialog.present()
+    
+    def _on_bookmark_add_response(self, dialog, response):
+        """Handle add bookmark dialog response."""
+        if response == "add":
+            title = dialog.title_entry.get_text().strip()
+            url = dialog.url_entry.get_text().strip()
+            
+            # Get selected folder
+            folder = None
+            if hasattr(dialog, 'folder_dropdown'):
+                folder_idx = dialog.folder_dropdown.get_selected()
+                if folder_idx > 0:  # 0 is "(None)"
+                    folder = dialog.folder_options[folder_idx]
+            
+            if not url:
+                self.show_toast("URL is required")
+                return
+            
+            # Add https if missing
+            if url and not url.startswith('http://') and not url.startswith('https://'):
+                url = 'https://' + url
+            
+            if not title:
+                title = url
+            
+            # Check for duplicates
+            if any(bm.get('url') == url for bm in self.bookmarks):
+                self.show_toast("Bookmark already exists")
+                return
+            
+            import time
+            bookmark = {
+                'url': url,
+                'title': title,
+                'added': int(time.time())
+            }
+            if folder:
+                bookmark['folder'] = folder
+            
+            self.bookmarks.append(bookmark)
+            self._save_bookmarks()
+            self._refresh_bookmarks_list()
+            self._refresh_bookmarks_bar()
+            self.show_toast("Bookmark added")
+    
+    def _on_bookmark_edit(self, button):
+        """Show dialog to edit a bookmark."""
+        url = getattr(button, 'bookmark_url', None)
+        title = getattr(button, 'bookmark_title', '')
+        folder = getattr(button, 'bookmark_folder', None)
+        
+        if not url:
+            return
+        
+        self.bookmarks_popover.popdown()
+        
+        dialog = Adw.MessageDialog(
+            transient_for=self,
+            heading="Edit Bookmark",
+            body="Modify the bookmark details:"
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("save", "Save")
+        dialog.set_response_appearance("save", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("save")
+        dialog.set_close_response("cancel")
+        
+        # Create input fields
+        content_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        content_box.set_margin_top(12)
+        content_box.set_margin_bottom(12)
+        content_box.set_margin_start(12)
+        content_box.set_margin_end(12)
+        
+        # Title entry (pre-filled)
+        title_entry = Gtk.Entry()
+        title_entry.set_placeholder_text("Title")
+        title_entry.set_text(title)
+        content_box.append(title_entry)
+        
+        # URL entry (pre-filled)
+        url_entry = Gtk.Entry()
+        url_entry.set_placeholder_text("https://example.com")
+        url_entry.set_text(url)
+        content_box.append(url_entry)
+        
+        # Folder dropdown
+        folder_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        folder_label = Gtk.Label(label="Folder:")
+        folder_box.append(folder_label)
+        
+        folder_options = ["(None)"] + self.bookmark_folders
+        folder_model = Gtk.StringList.new(folder_options)
+        folder_dropdown = Gtk.DropDown(model=folder_model)
+        folder_dropdown.set_hexpand(True)
+        
+        # Select current folder
+        if folder and folder in folder_options:
+            folder_dropdown.set_selected(folder_options.index(folder))
+        
+        folder_box.append(folder_dropdown)
+        content_box.append(folder_box)
+        
+        dialog.set_extra_child(content_box)
+        
+        # Store references for response handler
+        dialog.title_entry = title_entry
+        dialog.url_entry = url_entry
+        dialog.original_url = url
+        dialog.folder_dropdown = folder_dropdown
+        dialog.folder_options = folder_options
+        
+        dialog.connect("response", self._on_bookmark_edit_response)
+        dialog.present()
+    
+    def _on_bookmark_edit_response(self, dialog, response):
+        """Handle edit bookmark dialog response."""
+        if response == "save":
+            new_title = dialog.title_entry.get_text().strip()
+            new_url = dialog.url_entry.get_text().strip()
+            original_url = dialog.original_url
+            
+            # Get selected folder
+            new_folder = None
+            if hasattr(dialog, 'folder_dropdown'):
+                folder_idx = dialog.folder_dropdown.get_selected()
+                if folder_idx > 0:  # 0 is "(None)"
+                    new_folder = dialog.folder_options[folder_idx]
+            
+            if not new_url:
+                self.show_toast("URL is required")
+                return
+            
+            # Add https if missing
+            if new_url and not new_url.startswith('http://') and not new_url.startswith('https://'):
+                new_url = 'https://' + new_url
+            
+            if not new_title:
+                new_title = new_url
+            
+            # Check for duplicates (if URL changed)
+            if new_url != original_url and any(bm.get('url') == new_url for bm in self.bookmarks):
+                self.show_toast("Bookmark with that URL already exists")
+                return
+            
+            # Update the bookmark
+            for bm in self.bookmarks:
+                if bm.get('url') == original_url:
+                    bm['url'] = new_url
+                    bm['title'] = new_title
+                    if new_folder:
+                        bm['folder'] = new_folder
+                    elif 'folder' in bm:
+                        del bm['folder']  # Remove folder if set to (None)
+                    break
+            
+            self._save_bookmarks()
+            self._refresh_bookmarks_list()
+            self._refresh_bookmarks_bar()
+            self._update_bookmark_star()
+            self.show_toast("Bookmark updated")
+    
+    def _on_bookmarks_import(self, button):
+        """Import bookmarks from HTML file (Firefox/Chrome format)."""
+        self.bookmarks_popover.popdown()
+        
+        dialog = Gtk.FileDialog()
+        dialog.set_title("Import Bookmarks")
+        
+        # Filter for HTML files
+        filter_html = Gtk.FileFilter()
+        filter_html.set_name("HTML Bookmark Files")
+        filter_html.add_mime_type("text/html")
+        filter_html.add_pattern("*.html")
+        filter_html.add_pattern("*.htm")
+        
+        filter_all = Gtk.FileFilter()
+        filter_all.set_name("All Files")
+        filter_all.add_pattern("*")
+        
+        filters = Gio.ListStore.new(Gtk.FileFilter)
+        filters.append(filter_html)
+        filters.append(filter_all)
+        dialog.set_filters(filters)
+        dialog.set_default_filter(filter_html)
+        
+        dialog.open(self, None, self._on_bookmarks_import_response)
+    
+    def _on_bookmarks_import_response(self, dialog, result):
+        """Handle import file selection."""
+        import re
+        
+        try:
+            file = dialog.open_finish(result)
+            if not file:
+                return
+            
+            filepath = file.get_path()
+            
+            with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read()
+            
+            # Parse Netscape bookmark format: <A HREF="url"...>Title</A>
+            pattern = r'<A\s+HREF="([^"]+)"[^>]*>([^<]+)</A>'
+            matches = re.findall(pattern, content, re.IGNORECASE)
+            
+            if not matches:
+                self.show_toast("No bookmarks found in file")
+                return
+            
+            # Get existing URLs to avoid duplicates
+            existing_urls = {bm.get('url') for bm in self.bookmarks}
+            
+            import time
+            now = int(time.time())
+            imported = 0
+            for url, title in matches:
+                if url not in existing_urls:
+                    self.bookmarks.append({
+                        'url': url,
+                        'title': title.strip(),
+                        'added': now
+                    })
+                    existing_urls.add(url)
+                    imported += 1
+            
+            if imported > 0:
+                self._save_bookmarks()
+                self._refresh_bookmarks_list()
+                self._refresh_bookmarks_bar()
+                self.show_toast(f"Imported {imported} bookmarks")
+            else:
+                self.show_toast("All bookmarks already exist")
+                
+        except Exception as e:
+            print(f"Import error: {e}")
+            self.show_toast("Failed to import bookmarks")
+    
+    def _on_bookmarks_export(self, button):
+        """Export bookmarks to HTML file (Firefox/Chrome compatible)."""
+        self.bookmarks_popover.popdown()
+        
+        if not self.bookmarks:
+            self.show_toast("No bookmarks to export")
+            return
+        
+        dialog = Gtk.FileDialog()
+        dialog.set_title("Export Bookmarks")
+        dialog.set_initial_name("bookmarks.html")
+        
+        dialog.save(self, None, self._on_bookmarks_export_response)
+    
+    def _on_bookmarks_export_response(self, dialog, result):
+        """Handle export file selection."""
+        from html import escape
+        from datetime import datetime
+        
+        try:
+            file = dialog.save_finish(result)
+            if not file:
+                return
+            
+            filepath = file.get_path()
+            
+            # Ensure .html extension
+            if not filepath.lower().endswith('.html') and not filepath.lower().endswith('.htm'):
+                filepath += '.html'
+            
+            # Generate Netscape bookmark format (compatible with all browsers)
+            timestamp = int(datetime.now().timestamp())
+            
+            html = '''<!DOCTYPE NETSCAPE-Bookmark-file-1>
+<!-- This is an automatically generated file.
+     It will be read and overwritten.
+     DO NOT EDIT! -->
+<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">
+<TITLE>Bookmarks</TITLE>
+<H1>Bookmarks</H1>
+<DL><p>
+    <DT><H3 ADD_DATE="{timestamp}" LAST_MODIFIED="{timestamp}">Tux Assistant Bookmarks</H3>
+    <DL><p>
+'''.format(timestamp=timestamp)
+            
+            for bm in self.bookmarks:
+                title = escape(bm.get('title', 'Untitled'))
+                url = escape(bm.get('url', ''))
+                html += f'        <DT><A HREF="{url}" ADD_DATE="{timestamp}">{title}</A>\n'
+            
+            html += '''    </DL><p>
+</DL><p>
+'''
+            
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(html)
+            
+            self.show_toast(f"Exported {len(self.bookmarks)} bookmarks")
+            
+        except Exception as e:
+            print(f"Export error: {e}")
+            self.show_toast("Failed to export bookmarks")
+    
+    def _on_bookmarks_clear_all(self, button):
+        """Clear all bookmarks with confirmation."""
+        self.bookmarks_popover.popdown()
+        
+        if not self.bookmarks:
+            self.show_toast("No bookmarks to clear")
+            return
+        
+        # Create confirmation dialog
+        dialog = Adw.MessageDialog(
+            transient_for=self,
+            heading="Clear All Bookmarks?",
+            body=f"This will delete all {len(self.bookmarks)} bookmarks. This cannot be undone."
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("clear", "Clear All")
+        dialog.set_response_appearance("clear", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
+        dialog.connect("response", self._on_bookmarks_clear_response)
+        dialog.present()
+    
+    def _on_bookmarks_clear_response(self, dialog, response):
+        """Handle clear all confirmation response."""
+        if response == "clear":
+            count = len(self.bookmarks)
+            folder_count = len(self.bookmark_folders)
+            self.bookmarks = []
+            self.bookmark_folders = []
+            self._save_bookmarks()
+            self._refresh_bookmarks_list()
+            self._refresh_bookmarks_bar()
+            self._update_bookmark_star()
+            msg = f"Cleared {count} bookmarks"
+            if folder_count:
+                msg += f" and {folder_count} folders"
+            self.show_toast(msg)
     
     def _on_browser_load_changed(self, webview, event):
         """Update URL bar when page loads."""
@@ -1228,6 +3193,8 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             uri = webview.get_uri()
             if uri and hasattr(self, 'browser_url_entry'):
                 self.browser_url_entry.set_text(uri)
+            # Update bookmark star for current URL
+            self._update_bookmark_star()
     
     def _on_browser_create_window(self, webview, navigation_action):
         """Handle links that try to open new windows - open in default browser."""
@@ -1622,8 +3589,6 @@ echo "Installation complete!"
     
     def create_main_page(self) -> Adw.NavigationPage:
         """Create the main navigation page with dynamically discovered modules."""
-        from .core import get_hardware_info
-        from .ui.tux_fetch import TuxFetchSidebar
         
         page = Adw.NavigationPage(title="Tux Assistant")
         
@@ -1650,9 +3615,32 @@ echo "Installation complete!"
         content_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
         clamp.set_child(content_box)
         
+        # Search bar (at the top)
+        search_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        search_box.set_margin_top(8)
+        search_box.set_margin_bottom(8)
+        
+        self.search_entry = Gtk.SearchEntry()
+        self.search_entry.set_placeholder_text("Search Tux Assistant...")
+        self.search_entry.set_hexpand(True)
+        self.search_entry.connect("activate", self._on_search_activated)
+        self.search_entry.connect("search-changed", self._on_search_changed)
+        search_box.append(self.search_entry)
+        
+        content_box.append(search_box)
+        
         # System info banner (compact version for left side)
         info_banner = self.create_system_info_banner()
         content_box.append(info_banner)
+        
+        # Search results container (hidden by default)
+        self.search_results_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        self.search_results_box.set_visible(False)
+        content_box.append(self.search_results_box)
+        
+        # Module content box (will be hidden during search)
+        self.modules_content_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
+        content_box.append(self.modules_content_box)
         
         # Dynamically create module groups based on registered modules
         for category in ModuleRegistry.get_categories():
@@ -1660,7 +3648,7 @@ echo "Installation complete!"
             
             if modules:
                 group = self.create_module_group_from_registry(category.value, modules)
-                content_box.append(group)
+                self.modules_content_box.append(group)
         
         # "I'm Done" section at the bottom
         done_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
@@ -1686,7 +3674,10 @@ echo "Installation complete!"
         hint_label.add_css_class("dim-label")
         done_box.append(hint_label)
         
-        # RIGHT SIDE: Sidebar with Tux Tunes launcher, fixed TuxFetch, scrollable area below
+        # SIDEBAR DISABLED - Tux Tunes moved to header bar
+        # Keeping code for potential future use
+        """
+        # RIGHT SIDE: Sidebar with Tux Tunes launcher
         sidebar_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         sidebar_box.set_size_request(300, -1)  # Fixed width
         sidebar_box.add_css_class("tux-sidebar")
@@ -1725,11 +3716,6 @@ echo "Installation complete!"
         
         sidebar_box.append(tux_tunes_btn)
         
-        # MIDDLE: Fixed TuxFetch panel
-        hardware = get_hardware_info()
-        tux_fetch = TuxFetchSidebar(self.distro, self.desktop, hardware)
-        sidebar_box.append(tux_fetch)
-        
         # Separator between fixed and scrollable
         sidebar_sep = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
         sidebar_sep.add_css_class("sidebar-separator")
@@ -1762,9 +3748,7 @@ echo "Installation complete!"
         
         # Connect to window size changes to show/hide panel
         self.connect("notify::default-width", self._on_width_changed_for_panel)
-        
-        return page
-        done_box.append(hint_label)
+        """
         
         return page
     
@@ -1896,6 +3880,16 @@ echo "Installation complete!"
         
         # Store reference for refresh
         self.hw_row = hw_row
+        
+        # System Fetch row (fastfetch)
+        fetch_row = Adw.ActionRow()
+        fetch_row.set_title("System Fetch")
+        fetch_row.set_subtitle("Show detailed system info in terminal (fastfetch)")
+        fetch_row.add_prefix(Gtk.Image.new_from_icon_name("utilities-terminal-symbolic"))
+        fetch_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        fetch_row.set_activatable(True)
+        fetch_row.connect("activated", self._on_fastfetch_clicked)
+        banner.add(fetch_row)
         
         return banner
     
@@ -2077,6 +4071,53 @@ read'''
         # Keep checking for a bit (up to 60 seconds)
         return True
     
+    def _on_fastfetch_clicked(self, row):
+        """Launch fastfetch in the user's terminal."""
+        import shutil
+        import subprocess
+        import os
+        
+        # Check if fastfetch is installed
+        if not shutil.which('fastfetch'):
+            self.show_toast("fastfetch not installed - install it with your package manager")
+            return
+        
+        # Create script (same approach as developer_tools.py)
+        script_content = '''#!/bin/bash
+fastfetch
+echo
+read -p "Press Enter to close..."
+'''
+        
+        # Write script to fixed temp path (like developer_tools.py does)
+        script_path = '/tmp/tux-fastfetch.sh'
+        with open(script_path, 'w') as f:
+            f.write(script_content)
+        os.chmod(script_path, 0o755)
+        
+        # Find and launch terminal - EXACT copy from developer_tools.py
+        terminals = [
+            ('ptyxis', ['ptyxis', '-e', 'bash', script_path]),  # Fedora 43+ default
+            ('kgx', ['kgx', '-e', 'bash', script_path]),  # GNOME Console
+            ('gnome-terminal', ['gnome-terminal', '--', 'bash', script_path]),
+            ('konsole', ['konsole', '-e', 'bash', script_path]),
+            ('xfce4-terminal', ['xfce4-terminal', '-e', f'bash {script_path}']),
+            ('tilix', ['tilix', '-e', f'bash {script_path}']),
+            ('alacritty', ['alacritty', '-e', 'bash', script_path]),
+            ('kitty', ['kitty', 'bash', script_path]),
+            ('xterm', ['xterm', '-e', f'bash {script_path}']),
+        ]
+        
+        for term_name, term_cmd in terminals:
+            try:
+                if subprocess.run(['which', term_name], capture_output=True).returncode == 0:
+                    subprocess.Popen(term_cmd)
+                    return
+            except Exception:
+                continue
+        
+        self.show_toast("No supported terminal found")
+    
     def create_module_group_from_registry(self, title: str, modules: list) -> Gtk.Widget:
         """
         Create a group of module buttons from registry modules.
@@ -2108,6 +4149,167 @@ read'''
             group.add(row)
         
         return group
+    
+    # =========================================================================
+    # Search Functionality
+    # =========================================================================
+    
+    def _build_search_index(self) -> list:
+        """Build searchable index from all modules."""
+        search_items = []
+        
+        for category in ModuleRegistry.get_categories():
+            modules = ModuleRegistry.get_modules_by_category(category)
+            for mod in modules:
+                # Add module with keywords
+                keywords = [
+                    mod.name.lower(),
+                    mod.id.lower(),
+                    mod.description.lower() if mod.description else "",
+                    category.value.lower(),
+                ]
+                
+                # Add common search terms for each module
+                module_keywords = {
+                    "gaming": ["steam", "lutris", "proton", "wine", "games", "play"],
+                    "software_center": ["install", "apps", "software", "packages", "flatpak", "snap"],
+                    "system_maintenance": ["update", "clean", "cache", "startup", "services"],
+                    "networking_simple": ["wifi", "network", "internet", "connection", "vpn", "samba"],
+                    "hardware_manager": ["printer", "bluetooth", "drivers", "sound", "audio"],
+                    "desktop_enhancements": ["theme", "icon", "font", "wallpaper", "gnome", "kde", "extensions"],
+                    "backup_restore": ["backup", "restore", "timeshift", "snapshot"],
+                    "setup_tools": ["codecs", "drivers", "nvidia", "setup"],
+                    "media_server": ["plex", "jellyfin", "media", "server", "dvd"],
+                    "developer_tools": ["git", "ssh", "code", "programming", "aur", "deb", "rpm"],
+                    "help_learning": ["help", "tutorial", "learn", "troubleshoot", "guide"],
+                    "repo_management": ["repository", "repo", "ppa", "copr", "packman", "multilib"],
+                }
+                
+                if mod.id in module_keywords:
+                    keywords.extend(module_keywords[mod.id])
+                
+                search_items.append({
+                    "module": mod,
+                    "keywords": " ".join(keywords),
+                    "name": mod.name,
+                    "description": mod.description or "",
+                    "icon": mod.icon,
+                })
+        
+        return search_items
+    
+    def _on_search_changed(self, entry):
+        """Handle search text changes - show/hide results."""
+        query = entry.get_text().strip().lower()
+        
+        if not query:
+            # Clear search, show modules
+            self.search_results_box.set_visible(False)
+            self.modules_content_box.set_visible(True)
+            # Clear old results
+            while child := self.search_results_box.get_first_child():
+                self.search_results_box.remove(child)
+            return
+        
+        # Show search results, hide modules
+        self.search_results_box.set_visible(True)
+        self.modules_content_box.set_visible(False)
+        
+        # Clear old results
+        while child := self.search_results_box.get_first_child():
+            self.search_results_box.remove(child)
+        
+        # Search
+        search_index = self._build_search_index()
+        matches = []
+        
+        for item in search_index:
+            if query in item["keywords"]:
+                matches.append(item)
+        
+        if matches:
+            results_group = Adw.PreferencesGroup()
+            results_group.set_title(f"Results for \"{entry.get_text().strip()}\"")
+            
+            for match in matches[:10]:  # Limit to 10 results
+                row = Adw.ActionRow()
+                row.set_title(match["name"])
+                row.set_subtitle(match["description"])
+                row.set_activatable(True)
+                row.add_prefix(Gtk.Image.new_from_icon_name(match["icon"]))
+                row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+                row.connect("activated", self.on_module_clicked, match["module"])
+                results_group.add(row)
+            
+            self.search_results_box.append(results_group)
+        else:
+            # No results - show web search option
+            no_results = Adw.PreferencesGroup()
+            no_results.set_title("No matching features found")
+            no_results.set_description(f"Press Enter to search the web for \"{entry.get_text().strip()}\"")
+            
+            web_row = Adw.ActionRow()
+            web_row.set_title("Search DuckDuckGo")
+            web_row.set_subtitle(f"Search the web for: {entry.get_text().strip()}")
+            web_row.set_activatable(True)
+            web_row.add_prefix(Gtk.Image.new_from_icon_name("web-browser-symbolic"))
+            web_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+            web_row.connect("activated", lambda r: self._do_web_search(entry.get_text().strip()))
+            no_results.add(web_row)
+            
+            self.search_results_box.append(no_results)
+    
+    def _on_search_activated(self, entry):
+        """Handle Enter key in search - navigate to first result or web search."""
+        query = entry.get_text().strip().lower()
+        
+        if not query:
+            return
+        
+        # Check for matches
+        search_index = self._build_search_index()
+        matches = [item for item in search_index if query in item["keywords"]]
+        
+        if matches:
+            # Navigate to first match
+            mod = matches[0]["module"]
+            if mod.page_class:
+                page = mod.page_class(self)
+                self.navigation_view.push(page)
+                entry.set_text("")
+                self.search_results_box.set_visible(False)
+                self.modules_content_box.set_visible(True)
+        else:
+            # No matches - do web search
+            self._do_web_search(entry.get_text().strip())
+    
+    def _do_web_search(self, query: str):
+        """Open web search in internal browser."""
+        import urllib.parse
+        
+        search_url = f"https://duckduckgo.com/?q={urllib.parse.quote(query + ' linux')}"
+        
+        if WEBKIT_AVAILABLE and hasattr(self, 'browser_panel'):
+            # Use internal browser
+            if not self.browser_panel_visible:
+                self.browser_toggle_btn.set_active(True)
+            
+            # Load search URL
+            webview = self._get_current_browser_webview()
+            if webview:
+                webview.load_uri(search_url)
+            
+            self.show_toast(f"Searching: {query}")
+        else:
+            # Fallback to external browser
+            import subprocess
+            subprocess.Popen(['xdg-open', search_url])
+            self.show_toast(f"Opening search in browser...")
+        
+        # Clear search
+        self.search_entry.set_text("")
+        self.search_results_box.set_visible(False)
+        self.modules_content_box.set_visible(True)
     
     def show_toast(self, message: str, timeout: int = 3):
         """Show a toast notification."""

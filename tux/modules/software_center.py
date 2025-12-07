@@ -3034,6 +3034,12 @@ class AppInstallDialog(Adw.Dialog):
             GLib.idle_add(self._installation_complete)
             return
         
+        # Ensure helper is executable
+        try:
+            os.chmod(helper_path, 0o755)
+        except:
+            pass
+        
         GLib.idle_add(self.append_output, "Requesting authentication...", "info")
         GLib.idle_add(self.append_output, "")
         

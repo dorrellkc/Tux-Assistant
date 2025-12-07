@@ -11,6 +11,7 @@ from .registry import (
 # Explicit imports so all modules are guaranteed to be loaded when
 # the application starts. This avoids relying solely on implicit
 # discovery and ensures @register_module decorators are executed.
+from . import repo_management  # First in Setup - everything depends on repos
 from . import system_maintenance
 from . import backup_restore
 from . import gaming

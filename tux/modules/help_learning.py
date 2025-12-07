@@ -1,5 +1,5 @@
 """
-Tux Assistant - Help &amp; Learning Module
+Tux Assistant - Help and Learning Module
 
 Interactive tutorials, troubleshooter, and guided help for Linux beginners.
 
@@ -546,8 +546,8 @@ TROUBLESHOOT_ITEMS = [
 # =============================================================================
 
 QUICK_TASKS = [
-    QuickTask("play_dvd", "Play a DVD", "media-optical-dvd-symbolic", "media_server", 
-              "Install DVD playback support and media player"),
+    QuickTask("play_dvd", "Play a DVD", "media-optical-dvd-symbolic", "software_center:media", 
+              "Install VLC or other media player with DVD support"),
     QuickTask("connect_wifi", "Connect to WiFi", "network-wireless-symbolic", "networking_simple",
               "Open WiFi settings to connect to a network"),
     QuickTask("print_doc", "Print a document", "printer-symbolic", "hardware_manager",
@@ -570,12 +570,12 @@ QUICK_TASKS = [
 
 
 # =============================================================================
-# Help &amp; Learning Module
+# Help and Learning Module
 # =============================================================================
 
 @register_module(
     id="help_learning",
-    name="Help &amp; Learning",
+    name="Help and Learning",
     description="Tutorials, troubleshooting, and guided help",
     icon="help-browser-symbolic",
     category=ModuleCategory.SYSTEM,
@@ -585,7 +585,7 @@ class HelpLearningPage(Adw.NavigationPage):
     """Help and learning center for Linux beginners."""
     
     def __init__(self, window: 'LinuxToolkitWindow'):
-        super().__init__(title="Help &amp; Learning")
+        super().__init__(title="Help and Learning")
         
         self.window = window
         self.distro = get_distro()
@@ -776,6 +776,7 @@ class HelpLearningPage(Adw.NavigationPage):
     
     def _on_quick_task(self, row, task: QuickTask):
         """Handle quick task selection."""
+        print(f"[Help] Quick task clicked: {task.title} -> {task.action}")
         if task.action.startswith("troubleshoot_"):
             # It's a troubleshoot item
             item_id = task.action.replace("troubleshoot_", "")
@@ -783,6 +784,9 @@ class HelpLearningPage(Adw.NavigationPage):
                 if item.id == item_id:
                     self._show_troubleshooter(item)
                     return
+        elif ":" in task.action:
+            # Deep link: module:subcategory (e.g., software_center:media)
+            self._navigate_deep(task.action)
         else:
             # It's a module - navigate to it
             self._navigate_to_module(task.action)
@@ -837,16 +841,62 @@ class HelpLearningPage(Adw.NavigationPage):
     
     def _navigate_to_module(self, module_id: str):
         """Navigate to a module."""
-        from ..modules.registry import get_all_modules
+        from ..modules.registry import ModuleRegistry
         
-        modules = get_all_modules()
+        modules = ModuleRegistry.get_all_modules()
         for mod in modules:
             if mod.id == module_id:
-                page = mod.page_class(self.window)
-                self.window.navigation_view.push(page)
+                try:
+                    page = mod.page_class(self.window)
+                    self.window.navigation_view.push(page)
+                except Exception as e:
+                    print(f"[Help] Error loading module '{module_id}': {e}")
+                    self.window.show_toast(f"Error loading module: {e}")
                 return
         
+        print(f"[Help] Module '{module_id}' not found in registry")
         self.window.show_toast(f"Module '{module_id}' not found")
+    
+    def _navigate_deep(self, action: str):
+        """Navigate to a module and then to a specific subcategory.
+        
+        Format: module_id:category_id (e.g., software_center:media)
+        """
+        parts = action.split(":", 1)
+        if len(parts) != 2:
+            self._navigate_to_module(action)
+            return
+        
+        module_id, category_id = parts
+        
+        # Handle software_center deep links
+        if module_id == "software_center":
+            try:
+                from .software_center import build_catalog, CategoryPage
+                from ..core.distro import get_distro
+                
+                # Find the category
+                catalog = build_catalog()
+                category = None
+                for cat in catalog:
+                    if cat.id == category_id:
+                        category = cat
+                        break
+                
+                if category:
+                    # Navigate directly to the category page
+                    distro = get_distro()
+                    page = CategoryPage(self.window, category, distro)
+                    self.window.navigation_view.push(page)
+                else:
+                    print(f"[Help] Category '{category_id}' not found in software center")
+                    self._navigate_to_module(module_id)
+            except Exception as e:
+                print(f"[Help] Error navigating to {action}: {e}")
+                self._navigate_to_module(module_id)
+        else:
+            # For other modules, just navigate to the module
+            self._navigate_to_module(module_id)
     
     def execute_action(self, action_id: str):
         """Execute a tutorial/troubleshooter action."""

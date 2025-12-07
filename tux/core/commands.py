@@ -336,6 +336,8 @@ def get_terminal_commands(script_path: str) -> list:
     The script_path will be executed in the terminal.
     """
     return [
+        # Fedora 43+ default
+        ('ptyxis', ['ptyxis', '-e', 'bash', script_path]),
         # KDE
         ('konsole', ['konsole', '-e', 'bash', script_path]),
         # GNOME (new)
@@ -371,7 +373,7 @@ def get_terminal_commands(script_path: str) -> list:
 def find_terminal() -> Optional[str]:
     """Find the first available terminal emulator."""
     terminals = [
-        'konsole', 'kgx', 'gnome-console', 'gnome-terminal',
+        'ptyxis', 'konsole', 'kgx', 'gnome-console', 'gnome-terminal',
         'xfce4-terminal', 'mate-terminal', 'qterminal', 'lxterminal',
         'tilix', 'terminator', 'alacritty', 'kitty', 'foot', 'wezterm',
         'sakura', 'terminology', 'urxvt', 'rxvt', 'st', 'xterm'

@@ -1045,6 +1045,8 @@ read'''
     def _run_in_terminal(self, script: str):
         """Run a script in a terminal window."""
         terminals = [
+            ('ptyxis', ['ptyxis', '-e', 'bash', '-c', script]),  # Fedora 43+
+            ('kgx', ['kgx', '-e', 'bash', '-c', script]),  # GNOME Console
             ('konsole', ['konsole', '-e', 'bash', '-c', script]),
             ('gnome-terminal', ['gnome-terminal', '--', 'bash', '-c', script]),
             ('xfce4-terminal', ['xfce4-terminal', '-e', f'bash -c \'{script}\'']),

@@ -2113,6 +2113,12 @@ class AlternativeSourceInstallDialog(Adw.Dialog):
             GLib.idle_add(self._installation_complete, False)
             return
         
+        # Ensure helper is executable
+        try:
+            os.chmod(helper_path, 0o755)
+        except:
+            pass
+        
         # Build command
         cmd_args = ['--enable-source', source_type]
         if repo_id:
@@ -3371,6 +3377,8 @@ read -p "Press Enter to close..."
         
         # Find terminal and run - comprehensive list for all distros/desktops
         terminals = [
+            # Fedora 43+ default
+            ('ptyxis', ['ptyxis', '-e', 'bash', script_path]),
             # KDE
             ('konsole', ['konsole', '-e', 'bash', script_path]),
             # GNOME (new)
@@ -4306,6 +4314,12 @@ class InstallationDialog(Adw.Dialog):
                 GLib.idle_add(self.append_output, f"  {p}", "error")
             GLib.idle_add(self._installation_complete)
             return
+        
+        # Ensure helper is executable (fixes permission denied on .run installs)
+        try:
+            os.chmod(helper_path, 0o755)
+        except:
+            pass
         
         GLib.idle_add(self.append_output, f"Using helper: {helper_path}", "info")
         GLib.idle_add(self.append_output, "Requesting authentication...", "info")

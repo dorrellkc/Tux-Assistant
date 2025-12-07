@@ -505,6 +505,50 @@ class DeveloperToolsPage(Adw.NavigationPage):
         
         suse_group.add(suse_row)
         
+        # ═══ Build All Packages ═══
+        build_all_group = Adw.PreferencesGroup()
+        build_all_group.set_title("📦 Build All Release Packages")
+        build_all_group.set_description("Create all packages in one go for distribution")
+        content_box.append(build_all_group)
+        
+        build_all_row = Adw.ActionRow()
+        build_all_row.set_title("Build Complete Release")
+        build_all_row.set_subtitle(".run + .deb + Fedora .rpm + openSUSE .rpm")
+        build_all_row.add_prefix(Gtk.Image.new_from_icon_name("folder-download-symbolic"))
+        
+        build_all_btn = Gtk.Button(label=f"Build All v{version}")
+        build_all_btn.add_css_class("suggested-action")
+        build_all_btn.set_valign(Gtk.Align.CENTER)
+        build_all_btn.connect("clicked", self._on_build_all_packages)
+        build_all_row.add_suffix(build_all_btn)
+        
+        build_all_group.add(build_all_row)
+        
+        build_all_info = Adw.ActionRow()
+        build_all_info.set_title("Output Location")
+        build_all_info.set_subtitle(f"~/Tux-Assistant-Releases/v{version}/")
+        build_all_info.add_prefix(Gtk.Image.new_from_icon_name("folder-symbolic"))
+        build_all_group.add(build_all_info)
+        
+        # ═══ Publish Full Release ═══
+        full_release_group = Adw.PreferencesGroup()
+        full_release_group.set_title("🚀 Publish Full Release")
+        full_release_group.set_description("Push to GitHub and upload all packages as release assets")
+        content_box.append(full_release_group)
+        
+        full_release_row = Adw.ActionRow()
+        full_release_row.set_title("Publish Complete Release")
+        full_release_row.set_subtitle("Commit → Push → Build All → Create GitHub Release")
+        full_release_row.add_prefix(Gtk.Image.new_from_icon_name("send-to-symbolic"))
+        
+        full_release_btn = Gtk.Button(label=f"Publish v{version}")
+        full_release_btn.add_css_class("destructive-action")
+        full_release_btn.set_valign(Gtk.Align.CENTER)
+        full_release_btn.connect("clicked", self._on_full_release_all)
+        full_release_row.add_suffix(full_release_btn)
+        
+        full_release_group.add(full_release_row)
+        
         # Help link (small, at bottom)
         help_row = Adw.ActionRow()
         help_row.set_title("Need help?")
@@ -969,6 +1013,161 @@ post_remove() {
 }
 '''
     
+    def _generate_metainfo_tux_assistant(self, version: str) -> str:
+        """Generate AppStream metainfo for Tux Assistant."""
+        return f'''<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.tuxassistant.app</id>
+  <name>Tux Assistant</name>
+  <summary>Linux system configuration and setup tool</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <developer id="com.tuxassistant">
+    <name>Christopher Dorrell</name>
+  </developer>
+  <description>
+    <p>
+      Tux Assistant is a comprehensive GTK4/Libadwaita system configuration 
+      and management application for Linux. It simplifies post-installation 
+      setup, software installation, system maintenance, and configuration 
+      across multiple distributions.
+    </p>
+    <p>Features include:</p>
+    <ul>
+      <li>System setup wizards and configuration tools</li>
+      <li>Software center with curated applications</li>
+      <li>Gaming setup (Steam, Lutris, gaming utilities)</li>
+      <li>Desktop enhancements and theming</li>
+      <li>Network configuration and sharing</li>
+      <li>Hardware management</li>
+      <li>System maintenance and cleanup</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">com.tuxassistant.app.desktop</launchable>
+  <url type="homepage">https://github.com/dorrellkc/Tux-Assistant</url>
+  <url type="bugtracker">https://github.com/dorrellkc/Tux-Assistant/issues</url>
+  <provides>
+    <binary>tux-assistant</binary>
+  </provides>
+  <requires>
+    <display_length compare="ge">768</display_length>
+  </requires>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+    <control>touch</control>
+  </supports>
+  <categories>
+    <category>System</category>
+    <category>Settings</category>
+    <category>Utility</category>
+  </categories>
+  <keywords>
+    <keyword>linux</keyword>
+    <keyword>setup</keyword>
+    <keyword>configuration</keyword>
+    <keyword>system</keyword>
+    <keyword>install</keyword>
+  </keywords>
+  <releases>
+    <release version="{version}" date="{datetime.now().strftime('%Y-%m-%d')}">
+      <description>
+        <p>Latest release of Tux Assistant</p>
+      </description>
+    </release>
+  </releases>
+  <content_rating type="oars-1.1" />
+</component>
+'''
+    
+    def _generate_metainfo_tux_tunes(self, version: str) -> str:
+        """Generate AppStream metainfo for Tux Tunes."""
+        return f'''<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.tuxassistant.tuxtunes</id>
+  <name>Tux Tunes</name>
+  <summary>Internet radio player with smart recording</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <developer id="com.tuxassistant">
+    <name>Christopher Dorrell</name>
+  </developer>
+  <description>
+    <p>
+      Tux Tunes is a modern internet radio player built with GTK4 and 
+      Libadwaita. Listen to thousands of radio stations from around the 
+      world with a beautiful, native Linux interface.
+    </p>
+    <p>Features include:</p>
+    <ul>
+      <li>Browse and search internet radio stations</li>
+      <li>Smart recording with automatic song detection</li>
+      <li>Station favorites and history</li>
+      <li>Audio visualization</li>
+      <li>Clean, modern interface</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">com.tuxassistant.tuxtunes.desktop</launchable>
+  <url type="homepage">https://github.com/dorrellkc/Tux-Assistant</url>
+  <url type="bugtracker">https://github.com/dorrellkc/Tux-Assistant/issues</url>
+  <provides>
+    <binary>tux-tunes</binary>
+  </provides>
+  <requires>
+    <display_length compare="ge">600</display_length>
+  </requires>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+    <control>touch</control>
+  </supports>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Audio</category>
+    <category>Music</category>
+    <category>Player</category>
+  </categories>
+  <keywords>
+    <keyword>radio</keyword>
+    <keyword>internet</keyword>
+    <keyword>streaming</keyword>
+    <keyword>music</keyword>
+    <keyword>recording</keyword>
+  </keywords>
+  <releases>
+    <release version="{version}" date="{datetime.now().strftime('%Y-%m-%d')}">
+      <description>
+        <p>Latest release of Tux Tunes</p>
+      </description>
+    </release>
+  </releases>
+  <content_rating type="oars-1.1" />
+</component>
+'''
+    
+    def _generate_post_install_script(self) -> str:
+        """Generate post-install script for DEB/RPM packages."""
+        return '''#!/bin/bash
+# Post-install script for Tux Assistant
+
+# Update icon cache
+if [ -x /usr/bin/gtk-update-icon-cache ]; then
+    gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor 2>/dev/null || true
+fi
+
+# Update desktop database
+if [ -x /usr/bin/update-desktop-database ]; then
+    update-desktop-database -q /usr/share/applications 2>/dev/null || true
+fi
+
+# Make launchers executable (just in case)
+chmod +x /usr/local/bin/tux-assistant 2>/dev/null || true
+chmod +x /usr/local/bin/tux-tunes 2>/dev/null || true
+chmod +x /usr/bin/tux-helper 2>/dev/null || true
+
+exit 0
+'''
+    
     def _do_aur_publish(self, dialog, response, version):
         """Execute AUR publish workflow."""
         if response != "publish":
@@ -1405,9 +1604,10 @@ post_remove() {
                 helper_dir = os.path.join(staging_dir, "usr", "bin")
                 desktop_dir = os.path.join(staging_dir, "usr", "share", "applications")
                 polkit_dir = os.path.join(staging_dir, "usr", "share", "polkit-1", "actions")
+                metainfo_dir = os.path.join(staging_dir, "usr", "share", "metainfo")
                 icon_base = os.path.join(staging_dir, "usr", "share", "icons", "hicolor")
                 
-                for d in [opt_dir, bin_dir, helper_dir, desktop_dir, polkit_dir]:
+                for d in [opt_dir, bin_dir, helper_dir, desktop_dir, polkit_dir, metainfo_dir]:
                     os.makedirs(d, exist_ok=True)
                 
                 # Copy application files to /opt/tux-assistant
@@ -1433,6 +1633,13 @@ post_remove() {
                 shutil.copy2(os.path.join(src_dir, "tux-helper"), opt_dir)
                 shutil.copy2(os.path.join(src_dir, "VERSION"), opt_dir)
                 
+                # Make key Python files executable
+                tux_tunes_py = os.path.join(opt_dir, "tux", "apps", "tux_tunes", "tux-tunes.py")
+                if os.path.exists(tux_tunes_py):
+                    os.chmod(tux_tunes_py, 0o755)
+                os.chmod(os.path.join(opt_dir, "tux-assistant.py"), 0o755)
+                os.chmod(os.path.join(opt_dir, "tux-helper"), 0o755)
+                
                 # Create launcher scripts
                 tux_launcher = os.path.join(bin_dir, "tux-assistant")
                 with open(tux_launcher, "w") as f:
@@ -1457,6 +1664,18 @@ post_remove() {
                 
                 # Copy polkit policy
                 shutil.copy2(os.path.join(src_dir, "data", "com.tuxassistant.helper.policy"), polkit_dir)
+                
+                # Generate and write AppStream metainfo files
+                with open(os.path.join(metainfo_dir, "com.tuxassistant.app.metainfo.xml"), "w") as f:
+                    f.write(self._generate_metainfo_tux_assistant(version))
+                with open(os.path.join(metainfo_dir, "com.tuxassistant.tuxtunes.metainfo.xml"), "w") as f:
+                    f.write(self._generate_metainfo_tux_tunes(version))
+                
+                # Create post-install script
+                post_install_script = os.path.join(staging_dir, "post-install.sh")
+                with open(post_install_script, "w") as f:
+                    f.write(self._generate_post_install_script())
+                os.chmod(post_install_script, 0o755)
                 
                 # Install icons at multiple sizes
                 icon_svg = os.path.join(src_dir, "assets", "icon.svg")
@@ -1493,6 +1712,8 @@ post_remove() {
                     "-a", "x86_64",
                     "-p", output_file,
                     "-C", staging_dir,
+                    "--after-install", post_install_script,
+                    "--exclude", "post-install.sh",
                 ]
                 
                 # Add dependencies
@@ -1545,6 +1766,456 @@ post_remove() {
             subprocess.Popen(["xdg-open", folder_path])
         except Exception:
             pass  # Silently fail if can't open folder
+    
+    # =========================================================================
+    # Build All Packages
+    # =========================================================================
+    
+    def _on_build_all_packages(self, button):
+        """Handle Build All Packages button click."""
+        version = self._get_ta_version()
+        
+        dialog = Adw.AlertDialog()
+        dialog.set_heading(f"Build All v{version} Packages?")
+        dialog.set_body(
+            "This will create:\n\n"
+            f"  • Tux-Assistant-v{version}.run\n"
+            f"  • tux-assistant_{version}_amd64.deb\n"
+            f"  • tux-assistant-{version}-1.fc.x86_64.rpm\n"
+            f"  • tux-assistant-{version}-1.suse.x86_64.rpm\n\n"
+            f"Output: ~/Tux-Assistant-Releases/v{version}/\n\n"
+            "This may take a few minutes."
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("build", "Build All")
+        dialog.set_response_appearance("build", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("build")
+        dialog.connect("response", self._do_build_all_packages, version)
+        dialog.present(self.window)
+    
+    def _do_build_all_packages(self, dialog, response, version):
+        """Execute building all packages."""
+        if response != "build":
+            return
+        
+        self.window.show_toast("Building all packages...")
+        
+        def do_build_all():
+            try:
+                import shutil
+                import glob
+                
+                # Create release directory
+                release_dir = os.path.expanduser(f"~/Tux-Assistant-Releases/v{version}")
+                os.makedirs(release_dir, exist_ok=True)
+                
+                # Track success
+                built = []
+                failed = []
+                
+                # ═══ 1. Build .run ═══
+                GLib.idle_add(self.window.show_toast, "Building .run installer...")
+                build_script = os.path.join(self.ta_repo_path, 'scripts', 'build-run.sh')
+                
+                if os.path.exists(build_script):
+                    os.chmod(build_script, 0o755)
+                    result = subprocess.run(
+                        ['bash', build_script],
+                        cwd=self.ta_repo_path,
+                        capture_output=True, text=True, timeout=180
+                    )
+                    
+                    run_file = os.path.join(self.ta_repo_path, 'dist', f'Tux-Assistant-v{version}.run')
+                    if result.returncode == 0 and os.path.exists(run_file):
+                        shutil.copy2(run_file, release_dir)
+                        built.append(".run")
+                    else:
+                        failed.append(".run")
+                else:
+                    failed.append(".run (script missing)")
+                
+                # ═══ 2. Build DEB and RPMs using fpm ═══
+                pkg_configs = [
+                    {
+                        "type": "deb",
+                        "name": "Debian/Ubuntu",
+                        "ext": "deb",
+                        "filename": f"tux-assistant_{version}_amd64.deb",
+                        "deps": "python3, python3-gi, gir1.2-gtk-4.0, libadwaita-1-0, gir1.2-adw-1, gstreamer1.0-tools, gir1.2-gst-plugins-base-1.0, gstreamer1.0-plugins-good",
+                        "iteration": None
+                    },
+                    {
+                        "type": "fedora",
+                        "name": "Fedora",
+                        "ext": "rpm",
+                        "filename": f"tux-assistant-{version}-1.fc.x86_64.rpm",
+                        "deps": "python3, python3-gobject, gtk4, libadwaita, gstreamer1, gstreamer1-plugins-base, gstreamer1-plugins-good",
+                        "iteration": "1.fc"
+                    },
+                    {
+                        "type": "suse",
+                        "name": "openSUSE",
+                        "ext": "rpm",
+                        "filename": f"tux-assistant-{version}-1.suse.x86_64.rpm",
+                        "deps": "python3, python3-gobject, gtk4, typelib-1_0-Gtk-4_0, libadwaita, typelib-1_0-Adw-1, gstreamer, gstreamer-plugins-base, gstreamer-plugins-good",
+                        "iteration": "1.suse"
+                    }
+                ]
+                
+                # Find fpm
+                fpm_path = self._find_fpm_path()
+                if not fpm_path:
+                    GLib.idle_add(self.window.show_toast, "Installing fpm...")
+                    subprocess.run(['gem', 'install', '--user-install', 'fpm'], 
+                                   capture_output=True, timeout=120)
+                    fpm_path = self._find_fpm_path()
+                
+                if not fpm_path:
+                    GLib.idle_add(self.window.show_toast, "fpm not found - DEB/RPM skipped")
+                    failed.extend([".deb", "Fedora .rpm", "openSUSE .rpm"])
+                else:
+                    # Build each package type
+                    for pkg in pkg_configs:
+                        GLib.idle_add(self.window.show_toast, f"Building {pkg['name']} package...")
+                        
+                        success = self._build_single_package(
+                            fpm_path, version, release_dir, pkg
+                        )
+                        
+                        if success:
+                            built.append(f".{pkg['ext']} ({pkg['type']})")
+                        else:
+                            failed.append(f".{pkg['ext']} ({pkg['type']})")
+                
+                # Report results
+                if built:
+                    GLib.idle_add(self.window.show_toast, f"🎉 Built: {', '.join(built)}")
+                    GLib.idle_add(self._open_package_folder, release_dir)
+                
+                if failed:
+                    GLib.idle_add(self.window.show_toast, f"Failed: {', '.join(failed)}")
+                    
+            except Exception as e:
+                import traceback
+                print(f"Build all error: {traceback.format_exc()}")
+                GLib.idle_add(self.window.show_toast, f"Error: {str(e)[:50]}")
+        
+        threading.Thread(target=do_build_all, daemon=True).start()
+    
+    def _find_fpm_path(self) -> str:
+        """Find fpm executable."""
+        # Check PATH
+        result = subprocess.run(['which', 'fpm'], capture_output=True, text=True)
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+        
+        # Check gem user dir
+        try:
+            gem_result = subprocess.run(
+                ['ruby', '-e', 'puts Gem.user_dir'],
+                capture_output=True, text=True, timeout=10
+            )
+            if gem_result.returncode == 0:
+                gem_dir = gem_result.stdout.strip()
+                fpm_path = os.path.join(gem_dir, 'bin', 'fpm')
+                if os.path.isfile(fpm_path):
+                    return fpm_path
+                # Try glob
+                import glob
+                matches = glob.glob(os.path.join(gem_dir, 'gems', 'fpm-*', 'bin', 'fpm'))
+                if matches:
+                    return matches[0]
+        except:
+            pass
+        
+        return ""
+    
+    def _build_single_package(self, fpm_path: str, version: str, output_dir: str, pkg: dict) -> bool:
+        """Build a single package type. Returns True on success."""
+        try:
+            import shutil
+            import tempfile
+            
+            staging_dir = tempfile.mkdtemp(prefix=f"tux-{pkg['type']}-")
+            
+            # Create directory structure
+            opt_dir = os.path.join(staging_dir, "opt", "tux-assistant")
+            bin_dir = os.path.join(staging_dir, "usr", "local", "bin")
+            helper_dir = os.path.join(staging_dir, "usr", "bin")
+            desktop_dir = os.path.join(staging_dir, "usr", "share", "applications")
+            polkit_dir = os.path.join(staging_dir, "usr", "share", "polkit-1", "actions")
+            metainfo_dir = os.path.join(staging_dir, "usr", "share", "metainfo")
+            icon_base = os.path.join(staging_dir, "usr", "share", "icons", "hicolor")
+            
+            for d in [opt_dir, bin_dir, helper_dir, desktop_dir, polkit_dir, metainfo_dir]:
+                os.makedirs(d, exist_ok=True)
+            
+            src_dir = self.ta_repo_path
+            
+            # Copy app files
+            shutil.copytree(os.path.join(src_dir, "tux"), os.path.join(opt_dir, "tux"))
+            shutil.copytree(os.path.join(src_dir, "assets"), os.path.join(opt_dir, "assets"))
+            shutil.copy2(os.path.join(src_dir, "tux-assistant.py"), opt_dir)
+            shutil.copy2(os.path.join(src_dir, "tux-helper"), opt_dir)
+            shutil.copy2(os.path.join(src_dir, "VERSION"), opt_dir)
+            
+            # Make executables
+            os.chmod(os.path.join(opt_dir, "tux-assistant.py"), 0o755)
+            os.chmod(os.path.join(opt_dir, "tux-helper"), 0o755)
+            tux_tunes = os.path.join(opt_dir, "tux", "apps", "tux_tunes", "tux-tunes.py")
+            if os.path.exists(tux_tunes):
+                os.chmod(tux_tunes, 0o755)
+            
+            # Create launchers
+            with open(os.path.join(bin_dir, "tux-assistant"), "w") as f:
+                f.write("#!/bin/bash\npython3 /opt/tux-assistant/tux-assistant.py \"$@\"\n")
+            os.chmod(os.path.join(bin_dir, "tux-assistant"), 0o755)
+            
+            with open(os.path.join(bin_dir, "tux-tunes"), "w") as f:
+                f.write("#!/bin/bash\npython3 /opt/tux-assistant/tux/apps/tux_tunes/tux-tunes.py \"$@\"\n")
+            os.chmod(os.path.join(bin_dir, "tux-tunes"), 0o755)
+            
+            with open(os.path.join(helper_dir, "tux-helper"), "w") as f:
+                f.write("#!/bin/bash\nexec /opt/tux-assistant/tux-helper \"$@\"\n")
+            os.chmod(os.path.join(helper_dir, "tux-helper"), 0o755)
+            
+            # Copy desktop files
+            shutil.copy2(os.path.join(src_dir, "data", "com.tuxassistant.app.desktop"), desktop_dir)
+            shutil.copy2(os.path.join(src_dir, "data", "com.tuxassistant.tuxtunes.desktop"), desktop_dir)
+            
+            # Copy polkit
+            shutil.copy2(os.path.join(src_dir, "data", "com.tuxassistant.helper.policy"), polkit_dir)
+            
+            # Generate metainfo
+            with open(os.path.join(metainfo_dir, "com.tuxassistant.app.metainfo.xml"), "w") as f:
+                f.write(self._generate_metainfo_tux_assistant(version))
+            with open(os.path.join(metainfo_dir, "com.tuxassistant.tuxtunes.metainfo.xml"), "w") as f:
+                f.write(self._generate_metainfo_tux_tunes(version))
+            
+            # Create post-install script
+            post_install = os.path.join(staging_dir, "post-install.sh")
+            with open(post_install, "w") as f:
+                f.write(self._generate_post_install_script())
+            os.chmod(post_install, 0o755)
+            
+            # Copy icons
+            icon_svg = os.path.join(src_dir, "assets", "icon.svg")
+            tunes_svg = os.path.join(src_dir, "assets", "tux-tunes.svg")
+            for size in ["16x16", "24x24", "32x32", "48x48", "64x64", "128x128", "256x256", "scalable"]:
+                icon_dir = os.path.join(icon_base, size, "apps")
+                os.makedirs(icon_dir, exist_ok=True)
+                shutil.copy2(icon_svg, os.path.join(icon_dir, "tux-assistant.svg"))
+                shutil.copy2(tunes_svg, os.path.join(icon_dir, "tux-tunes.svg"))
+            
+            # Build with fpm
+            output_file = os.path.join(output_dir, pkg["filename"])
+            if os.path.exists(output_file):
+                os.remove(output_file)
+            
+            fpm_cmd = [
+                fpm_path,
+                "-s", "dir",
+                "-t", pkg["ext"],
+                "-n", "tux-assistant",
+                "-v", version,
+                "--description", "GTK4/Libadwaita Linux system configuration tool",
+                "--url", "https://github.com/dorrellkc/Tux-Assistant",
+                "--maintainer", "Christopher Dorrell <dorrellkc@gmail.com>",
+                "--license", "All Rights Reserved",
+                "-a", "x86_64",
+                "-p", output_file,
+                "-C", staging_dir,
+                "--after-install", post_install,
+                "--exclude", "post-install.sh",
+            ]
+            
+            for dep in pkg["deps"].split(", "):
+                fpm_cmd.extend(["-d", dep.strip()])
+            
+            if pkg["iteration"]:
+                fpm_cmd.extend(["--iteration", pkg["iteration"]])
+            
+            fpm_cmd.append(".")
+            
+            result = subprocess.run(fpm_cmd, capture_output=True, text=True, timeout=120)
+            
+            shutil.rmtree(staging_dir, ignore_errors=True)
+            
+            return result.returncode == 0 and os.path.exists(output_file)
+            
+        except Exception as e:
+            print(f"Build {pkg['type']} failed: {e}")
+            return False
+    
+    # =========================================================================
+    # Publish Full Release (with all packages)
+    # =========================================================================
+    
+    def _on_full_release_all(self, button):
+        """Handle Publish Full Release button click."""
+        # Check SSH first
+        ssh_status = self._check_ssh_agent_status()
+        if "Unlocked" not in ssh_status:
+            self.window.show_toast("Please unlock SSH key first")
+            return
+        
+        # Check gh CLI
+        gh_check = subprocess.run(['which', 'gh'], capture_output=True)
+        if gh_check.returncode != 0:
+            dialog = Adw.AlertDialog()
+            dialog.set_heading("GitHub CLI Required")
+            dialog.set_body(
+                "Install 'gh' and authenticate:\n\n"
+                "Fedora: sudo dnf install gh\n"
+                "Arch: sudo pacman -S github-cli\n\n"
+                "Then run: gh auth login"
+            )
+            dialog.add_response("ok", "OK")
+            dialog.present(self.window)
+            return
+        
+        version = self._get_ta_version()
+        
+        dialog = Adw.AlertDialog()
+        dialog.set_heading(f"Publish Full v{version} Release?")
+        dialog.set_body(
+            "This will:\n\n"
+            "1. Commit all changes to GitHub\n"
+            "2. Push to main branch\n"
+            "3. Build ALL packages (.run, .deb, 2x .rpm)\n"
+            "4. Create GitHub Release with all assets\n\n"
+            "⚠️ This publishes to the world!"
+        )
+        
+        entry = Gtk.Entry()
+        entry.set_text(f"Release v{version}")
+        entry.set_placeholder_text("Commit/release message")
+        entry.set_margin_top(12)
+        entry.set_margin_start(12)
+        entry.set_margin_end(12)
+        dialog.set_extra_child(entry)
+        
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("publish", "Publish Everything")
+        dialog.set_response_appearance("publish", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_default_response("cancel")
+        
+        dialog.connect("response", self._do_full_release_all, entry, version)
+        dialog.present(self.window)
+    
+    def _do_full_release_all(self, dialog, response, entry, version):
+        """Execute the full release workflow with all packages."""
+        if response != "publish":
+            return
+        
+        commit_msg = entry.get_text().strip() or f"Release v{version}"
+        self.window.show_toast("Starting full release...")
+        
+        def do_full_release():
+            try:
+                import shutil
+                ssh_env = self._get_ssh_env()
+                release_dir = os.path.expanduser(f"~/Tux-Assistant-Releases/v{version}")
+                os.makedirs(release_dir, exist_ok=True)
+                
+                # ═══ 1. Git commit ═══
+                GLib.idle_add(self.window.show_toast, "Committing changes...")
+                subprocess.run(['git', 'add', '.'], cwd=self.ta_repo_path, timeout=30)
+                commit_result = subprocess.run(
+                    ['git', 'commit', '-m', commit_msg],
+                    cwd=self.ta_repo_path, capture_output=True, text=True, timeout=30
+                )
+                # OK if nothing to commit
+                
+                # ═══ 2. Git push ═══
+                GLib.idle_add(self.window.show_toast, "Pushing to GitHub...")
+                push_result = subprocess.run(
+                    ['git', 'push', 'origin', 'main'],
+                    cwd=self.ta_repo_path, env=ssh_env,
+                    capture_output=True, text=True, timeout=60
+                )
+                if push_result.returncode != 0:
+                    GLib.idle_add(self.window.show_toast, f"Push failed: {push_result.stderr[:50]}")
+                    return
+                
+                # ═══ 3. Build .run ═══
+                GLib.idle_add(self.window.show_toast, "Building .run installer...")
+                build_script = os.path.join(self.ta_repo_path, 'scripts', 'build-run.sh')
+                if os.path.exists(build_script):
+                    os.chmod(build_script, 0o755)
+                    subprocess.run(['bash', build_script], cwd=self.ta_repo_path,
+                                   capture_output=True, timeout=180)
+                    run_file = os.path.join(self.ta_repo_path, 'dist', f'Tux-Assistant-v{version}.run')
+                    if os.path.exists(run_file):
+                        shutil.copy2(run_file, release_dir)
+                
+                # ═══ 4. Build DEB and RPMs ═══
+                fpm_path = self._find_fpm_path()
+                if fpm_path:
+                    pkg_configs = [
+                        {"type": "deb", "name": "DEB", "ext": "deb",
+                         "filename": f"tux-assistant_{version}_amd64.deb",
+                         "deps": "python3, python3-gi, gir1.2-gtk-4.0, libadwaita-1-0, gir1.2-adw-1, gstreamer1.0-tools, gir1.2-gst-plugins-base-1.0, gstreamer1.0-plugins-good",
+                         "iteration": None},
+                        {"type": "fedora", "name": "Fedora RPM", "ext": "rpm",
+                         "filename": f"tux-assistant-{version}-1.fc.x86_64.rpm",
+                         "deps": "python3, python3-gobject, gtk4, libadwaita, gstreamer1, gstreamer1-plugins-base, gstreamer1-plugins-good",
+                         "iteration": "1.fc"},
+                        {"type": "suse", "name": "openSUSE RPM", "ext": "rpm",
+                         "filename": f"tux-assistant-{version}-1.suse.x86_64.rpm",
+                         "deps": "python3, python3-gobject, gtk4, typelib-1_0-Gtk-4_0, libadwaita, typelib-1_0-Adw-1, gstreamer, gstreamer-plugins-base, gstreamer-plugins-good",
+                         "iteration": "1.suse"}
+                    ]
+                    
+                    for pkg in pkg_configs:
+                        GLib.idle_add(self.window.show_toast, f"Building {pkg['name']}...")
+                        self._build_single_package(fpm_path, version, release_dir, pkg)
+                
+                # ═══ 5. Create GitHub Release ═══
+                GLib.idle_add(self.window.show_toast, "Creating GitHub Release...")
+                
+                # Gather all built files
+                release_files = []
+                for f in os.listdir(release_dir):
+                    filepath = os.path.join(release_dir, f)
+                    if os.path.isfile(filepath):
+                        release_files.append(filepath)
+                
+                if not release_files:
+                    GLib.idle_add(self.window.show_toast, "No packages built!")
+                    return
+                
+                # Build release notes
+                file_list = "\n".join([f"- {os.path.basename(f)}" for f in release_files])
+                release_notes = f"{commit_msg}\n\n**Downloads:**\n{file_list}\n\n" \
+                               f"**Install .run:**\n```\nchmod +x Tux-Assistant-v{version}.run\n" \
+                               f"./Tux-Assistant-v{version}.run\n```"
+                
+                # Create release with all files
+                gh_cmd = [
+                    'gh', 'release', 'create', f'v{version}',
+                    '--title', f'Tux Assistant v{version}',
+                    '--notes', release_notes
+                ] + release_files
+                
+                release_result = subprocess.run(
+                    gh_cmd, cwd=self.ta_repo_path, env=ssh_env,
+                    capture_output=True, text=True, timeout=300
+                )
+                
+                if release_result.returncode == 0:
+                    GLib.idle_add(self.window.show_toast, f"🎉 Published v{version} with {len(release_files)} files!")
+                    GLib.idle_add(self._open_package_folder, release_dir)
+                else:
+                    error = release_result.stderr[:80] if release_result.stderr else "Unknown error"
+                    GLib.idle_add(self.window.show_toast, f"Release failed: {error}")
+                    
+            except Exception as e:
+                import traceback
+                print(f"Full release error: {traceback.format_exc()}")
+                GLib.idle_add(self.window.show_toast, f"Error: {str(e)[:50]}")
+        
+        threading.Thread(target=do_full_release, daemon=True).start()
     
     def _show_fpm_path_dialog(self, gem_bin_dir: str):
         """Show dialog with fpm PATH instructions."""
