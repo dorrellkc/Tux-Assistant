@@ -1233,7 +1233,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         if WEBKIT_AVAILABLE:
             # Browser toggle button
             self.browser_toggle_btn = Gtk.ToggleButton()
-            self.browser_toggle_btn.set_icon_name("web-browser-symbolic")
+            self.browser_toggle_btn.set_icon_name("applications-internet-symbolic")
             self.browser_toggle_btn.set_tooltip_text("Toggle Web Browser")
             self.browser_toggle_btn.add_css_class("claude-toggle-btn")
             self.browser_toggle_btn.connect("toggled", self._on_browser_toggle)
@@ -1335,7 +1335,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         panel_header.append(title_box)
         
         # External browser button
-        external_btn = Gtk.Button.new_from_icon_name("web-browser-symbolic")
+        external_btn = Gtk.Button.new_from_icon_name("applications-internet-symbolic")
         external_btn.set_tooltip_text("Open in external browser")
         external_btn.connect("clicked", self._on_claude_external)
         panel_header.append(external_btn)
@@ -3261,7 +3261,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         import os
         
         # Default icon
-        icon = Gtk.Image.new_from_icon_name("web-browser-symbolic")
+        icon = Gtk.Image.new_from_icon_name("applications-internet-symbolic")
         icon.set_pixel_size(24)
         
         if not url:
@@ -8252,32 +8252,83 @@ echo "Installation complete!"
             self.get_application().quit()
     
     def _on_tux_tunes_clicked(self, button):
-        """Launch Tux Tunes application."""
+        """Launch Tux Tunes application with self-healing and clear error messages."""
         import subprocess
         import os
+        import stat
         
-        # Try to find and launch Tux Tunes
+        # Try to find Tux Tunes
         app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         tux_tunes_script = os.path.join(app_dir, 'tux', 'apps', 'tux_tunes', 'tux-tunes.py')
         
-        if os.path.exists(tux_tunes_script):
-            try:
-                subprocess.Popen(['python3', tux_tunes_script], 
-                               start_new_session=True,
-                               stdout=subprocess.DEVNULL,
-                               stderr=subprocess.DEVNULL)
-            except Exception as e:
-                # Show error toast
-                toast = Adw.Toast(title=f"Failed to launch Tux Tunes: {e}")
-                toast.set_timeout(3)
-                # Find toast overlay if available
-                pass
-        else:
-            # Show not found message
+        if not os.path.exists(tux_tunes_script):
             dialog = Adw.MessageDialog(
                 transient_for=self,
                 heading="Tux Tunes Not Found",
-                body="Could not locate the Tux Tunes application."
+                body="Could not locate the Tux Tunes application.\n\nTry reinstalling Tux Assistant."
+            )
+            dialog.add_response("ok", "OK")
+            dialog.present()
+            return
+        
+        # Check and fix execute permission if needed (self-healing)
+        if not os.access(tux_tunes_script, os.X_OK):
+            try:
+                # Try to fix it ourselves first
+                os.chmod(tux_tunes_script, os.stat(tux_tunes_script).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+            except PermissionError:
+                # Need elevated privileges - use pkexec
+                try:
+                    subprocess.run(['pkexec', 'chmod', '+x', tux_tunes_script], check=True)
+                except Exception:
+                    pass  # We'll try launching anyway since we use python3
+        
+        # Launch with error capture (don't hide errors!)
+        try:
+            # Use a pipe to capture any immediate startup errors
+            process = subprocess.Popen(
+                ['python3', tux_tunes_script],
+                start_new_session=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
+            
+            # Give it a moment to fail if it's going to
+            import time
+            time.sleep(0.3)
+            
+            # Check if it died immediately
+            if process.poll() is not None:
+                # Process ended - get the error
+                _, stderr = process.communicate(timeout=1)
+                error_msg = stderr.decode('utf-8', errors='replace').strip()
+                
+                # Parse common errors into user-friendly messages
+                if 'No module named' in error_msg:
+                    module = error_msg.split("No module named")[-1].strip().strip("'\"")
+                    friendly_msg = f"Missing Python module: {module}\n\nInstall it with your package manager."
+                elif 'Gst' in error_msg or 'GStreamer' in error_msg:
+                    friendly_msg = "GStreamer is not installed.\n\nInstall: gstreamer, gst-plugins-base, gst-plugins-good"
+                elif 'Gtk' in error_msg or 'gi.repository' in error_msg:
+                    friendly_msg = "GTK libraries not found.\n\nInstall: python-gobject, gtk4, libadwaita"
+                else:
+                    # Show raw error but truncated
+                    friendly_msg = error_msg[:200] if error_msg else "Unknown error - check terminal for details"
+                
+                dialog = Adw.MessageDialog(
+                    transient_for=self,
+                    heading="Tux Tunes Failed to Start",
+                    body=friendly_msg
+                )
+                dialog.add_response("ok", "OK")
+                dialog.present()
+            # else: it's running! Success, no message needed
+                
+        except Exception as e:
+            dialog = Adw.MessageDialog(
+                transient_for=self,
+                heading="Failed to Launch Tux Tunes",
+                body=f"Error: {str(e)}\n\nTry running from terminal:\npython3 {tux_tunes_script}"
             )
             dialog.add_response("ok", "OK")
             dialog.present()
@@ -8726,7 +8777,7 @@ read -p "Press Enter to close..."
             web_row.set_title("Search DuckDuckGo")
             web_row.set_subtitle(f"Search the web for: {entry.get_text().strip()}")
             web_row.set_activatable(True)
-            web_row.add_prefix(Gtk.Image.new_from_icon_name("web-browser-symbolic"))
+            web_row.add_prefix(Gtk.Image.new_from_icon_name("applications-internet-symbolic"))
             web_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
             web_row.connect("activated", lambda r: self._do_web_search(entry.get_text().strip()))
             no_results.add(web_row)
