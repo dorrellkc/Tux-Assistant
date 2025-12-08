@@ -595,6 +595,14 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             'sponsor,selfpromo,interaction,intro,outro')  # Default categories to skip
         print(f"[SponsorBlock] Initialized: enabled={self.sponsorblock_enabled}, categories={self.sponsorblock_categories}")
         
+        # Read Aloud (TTS) settings
+        self.tts_voice = browser_settings.get('tts_voice', 'en-US-ChristopherNeural')
+        self.tts_rate = browser_settings.get('tts_rate', '+0%')  # -50% to +100%
+        self.tts_process = None  # Track running TTS process
+        self.tts_playing = False  # Track if TTS is actively playing/generating
+        self.tts_audio_file = None  # Track temp audio file
+        print(f"[TTS] Initialized: voice={self.tts_voice}, rate={self.tts_rate}")
+        
         # Initialize content filter store for ad blocking
         self.content_filter_store = None
         self.content_filters = []  # List of compiled filters
@@ -1081,7 +1089,9 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             'search_engine': 'DuckDuckGo',
             'default_zoom': 1.0,
             'sponsorblock_enabled': True,
-            'sponsorblock_categories': 'sponsor,selfpromo,interaction,intro,outro'
+            'sponsorblock_categories': 'sponsor,selfpromo,interaction,intro,outro',
+            'tts_voice': 'en-US-ChristopherNeural',
+            'tts_rate': '+0%'
         }
         
         try:
@@ -1112,6 +1122,10 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
                                 settings['sponsorblock_enabled'] = value.lower() == 'true'
                             elif key == 'sponsorblock_categories':
                                 settings['sponsorblock_categories'] = value
+                            elif key == 'tts_voice':
+                                settings['tts_voice'] = value
+                            elif key == 'tts_rate':
+                                settings['tts_rate'] = value
         except:
             pass
         return settings
@@ -1968,16 +1982,22 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         
         # Create settings popover
         self.settings_popover = Gtk.Popover()
-        self.settings_popover.set_size_request(350, -1)
         self.settings_popover.set_autohide(True)
         settings_btn.set_popover(self.settings_popover)
+        
+        # Wrap in scrolled window for long content
+        settings_scroll = Gtk.ScrolledWindow()
+        settings_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        settings_scroll.set_max_content_height(450)
+        settings_scroll.set_propagate_natural_height(True)
+        self.settings_popover.set_child(settings_scroll)
         
         settings_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         settings_box.set_margin_top(12)
         settings_box.set_margin_bottom(12)
         settings_box.set_margin_start(12)
         settings_box.set_margin_end(12)
-        self.settings_popover.set_child(settings_box)
+        settings_scroll.set_child(settings_box)
         
         # Title
         settings_title = Gtk.Label(label="Browser Settings")
@@ -2045,6 +2065,95 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         
         settings_box.append(Gtk.Separator())
         
+        # === Read Aloud Section ===
+        tts_label = Gtk.Label(label="Read Aloud")
+        tts_label.add_css_class("heading")
+        tts_label.set_xalign(0)
+        settings_box.append(tts_label)
+        
+        # Voice selection
+        voice_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        voice_label = Gtk.Label(label="Voice")
+        voice_label.set_xalign(0)
+        voice_label.set_hexpand(True)
+        voice_row.append(voice_label)
+        
+        self.tts_voice_dropdown = Gtk.DropDown()
+        # US English voices - mix of male/female
+        tts_voices = Gtk.StringList.new([
+            "Christopher (Male)",
+            "Guy (Male)", 
+            "Eric (Male)",
+            "Roger (Male)",
+            "Jenny (Female)",
+            "Aria (Female)",
+            "Michelle (Female)",
+            "Ana (Female, Child)"
+        ])
+        self.tts_voice_dropdown.set_model(tts_voices)
+        
+        # Voice name mapping
+        self.tts_voice_map = {
+            0: 'en-US-ChristopherNeural',
+            1: 'en-US-GuyNeural',
+            2: 'en-US-EricNeural', 
+            3: 'en-US-RogerNeural',
+            4: 'en-US-JennyNeural',
+            5: 'en-US-AriaNeural',
+            6: 'en-US-MichelleNeural',
+            7: 'en-US-AnaNeural'
+        }
+        self.tts_voice_reverse_map = {v: k for k, v in self.tts_voice_map.items()}
+        
+        # Set current voice
+        current_voice = self._load_browser_settings().get('tts_voice', 'en-US-ChristopherNeural')
+        self.tts_voice_dropdown.set_selected(self.tts_voice_reverse_map.get(current_voice, 0))
+        self.tts_voice_dropdown.connect("notify::selected", self._on_tts_voice_changed)
+        voice_row.append(self.tts_voice_dropdown)
+        settings_box.append(voice_row)
+        
+        # Speed selection
+        speed_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        speed_label = Gtk.Label(label="Speed")
+        speed_label.set_xalign(0)
+        speed_label.set_hexpand(True)
+        speed_row.append(speed_label)
+        
+        self.tts_speed_dropdown = Gtk.DropDown()
+        tts_speeds = Gtk.StringList.new(["Slower", "Normal", "Faster", "Fast"])
+        self.tts_speed_dropdown.set_model(tts_speeds)
+        
+        self.tts_speed_map = {0: '-25%', 1: '+0%', 2: '+25%', 3: '+50%'}
+        self.tts_speed_reverse_map = {v: k for k, v in self.tts_speed_map.items()}
+        
+        current_rate = self._load_browser_settings().get('tts_rate', '+0%')
+        self.tts_speed_dropdown.set_selected(self.tts_speed_reverse_map.get(current_rate, 1))
+        self.tts_speed_dropdown.connect("notify::selected", self._on_tts_speed_changed)
+        speed_row.append(self.tts_speed_dropdown)
+        settings_box.append(speed_row)
+        
+        # Test button
+        test_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        test_btn = Gtk.Button(label="Test Voice")
+        test_btn.set_icon_name("audio-speakers-symbolic")
+        test_btn.connect("clicked", self._on_tts_test_clicked)
+        test_row.append(test_btn)
+        
+        self.tts_stop_btn = Gtk.Button(label="Stop")
+        self.tts_stop_btn.set_icon_name("media-playback-stop-symbolic")
+        self.tts_stop_btn.connect("clicked", self._on_tts_stop_clicked)
+        self.tts_stop_btn.set_sensitive(False)
+        test_row.append(self.tts_stop_btn)
+        settings_box.append(test_row)
+        
+        # Hint label
+        tts_hint = Gtk.Label(label="Select text, then Ctrl+Shift+R to read aloud")
+        tts_hint.add_css_class("dim-label")
+        tts_hint.set_xalign(0)
+        settings_box.append(tts_hint)
+        
+        settings_box.append(Gtk.Separator())
+        
         # === Data Management Section ===
         data_label = Gtk.Label(label="Clear Browsing Data")
         data_label.add_css_class("heading")
@@ -2080,6 +2189,20 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         clear_all_btn.connect("clicked", self._on_clear_all_clicked)
         clear_box.append(clear_all_btn)
         
+        # Read Article button (TTS)
+        self.read_article_btn = Gtk.Button.new_from_icon_name("audio-speakers-symbolic")
+        self.read_article_btn.set_tooltip_text("Read article aloud")
+        self.read_article_btn.connect("clicked", self._on_read_article_clicked)
+        nav_toolbar.append(self.read_article_btn)
+        
+        # Stop Reading button (TTS) - initially hidden
+        self.stop_reading_btn = Gtk.Button.new_from_icon_name("media-playback-stop-symbolic")
+        self.stop_reading_btn.set_tooltip_text("Stop reading")
+        self.stop_reading_btn.add_css_class("destructive-action")
+        self.stop_reading_btn.connect("clicked", self._on_stop_reading_clicked)
+        self.stop_reading_btn.set_visible(False)
+        nav_toolbar.append(self.stop_reading_btn)
+        
         nav_toolbar.append(settings_btn)
         
         # New tab button
@@ -2087,6 +2210,13 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         new_tab_btn.set_tooltip_text("New tab (Ctrl+T)")
         new_tab_btn.connect("clicked", lambda b: self._browser_new_tab())
         nav_toolbar.append(new_tab_btn)
+        
+        # Expand/collapse browser (hide/show sidebar)
+        self.browser_expand_btn = Gtk.Button.new_from_icon_name("view-fullscreen-symbolic")
+        self.browser_expand_btn.set_tooltip_text("Expand browser (hide sidebar)")
+        self.browser_expand_btn.connect("clicked", self._on_browser_expand_toggle)
+        nav_toolbar.append(self.browser_expand_btn)
+        self.browser_expanded = False
         
         # Bookmarks bar (like Firefox/Chrome) - in scrollable container
         self.bookmarks_bar_container = Gtk.ScrolledWindow()
@@ -2253,11 +2383,18 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
                     self._browser_next_tab()
                 return True
             elif keyval == Gdk.KEY_r or keyval == Gdk.KEY_R:
-                # Ctrl+R: Reload
-                webview = self._get_current_browser_webview()
-                if webview:
-                    webview.reload()
-                return True
+                if shift:
+                    # Ctrl+Shift+R: Read selection aloud
+                    webview = self._get_current_browser_webview()
+                    if webview:
+                        self._read_selection_aloud(webview)
+                    return True
+                else:
+                    # Ctrl+R: Reload
+                    webview = self._get_current_browser_webview()
+                    if webview:
+                        webview.reload()
+                    return True
             elif keyval == Gdk.KEY_d or keyval == Gdk.KEY_D:
                 # Ctrl+D: Bookmark current page
                 self._on_bookmark_toggle(None)
@@ -2285,6 +2422,10 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         
         # Escape to close find bar
         if keyval == Gdk.KEY_Escape:
+            # Stop TTS playback first
+            if self.tts_process:
+                self._stop_read_aloud()
+                return True
             if hasattr(self, 'find_bar') and self.find_bar.get_visible():
                 self._hide_find_bar()
                 return True
@@ -2292,6 +2433,12 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             if self.is_fullscreen():
                 self.unfullscreen()
                 return True
+        
+        # F10: Toggle browser expand (hide/show sidebar)
+        if keyval == Gdk.KEY_F10:
+            if hasattr(self, 'browser_expand_btn'):
+                self._on_browser_expand_toggle(self.browser_expand_btn)
+            return True
         
         # F11: Toggle fullscreen (also handled at window level, but just in case)
         if keyval == Gdk.KEY_F11:
@@ -2526,6 +2673,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         webview.connect("create", self._on_browser_create_window)
         webview.connect("notify::title", self._on_browser_title_changed)
         webview.connect("decide-policy", self._on_browser_decide_policy)
+        webview.connect("context-menu", self._on_browser_context_menu)
         
         # Capture JavaScript console output for debugging
         try:
@@ -2730,6 +2878,14 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             # Hide browser
             button.remove_css_class("active")
             
+            # Restore sidebar if it was hidden
+            if hasattr(self, 'browser_expanded') and self.browser_expanded:
+                self.browser_expanded = False
+                self.navigation_view.set_visible(True)
+                if hasattr(self, 'browser_expand_btn'):
+                    self.browser_expand_btn.set_icon_name("view-fullscreen-symbolic")
+                    self.browser_expand_btn.set_tooltip_text("Expand browser (hide sidebar)")
+            
             if self.browser_is_docked:
                 self.main_paned.set_end_child(None)
                 self.docked_panel = None
@@ -2801,6 +2957,21 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         webview = self._get_current_browser_webview()
         if webview:
             webview.load_uri(self.browser_home_url)
+    
+    def _on_browser_expand_toggle(self, button):
+        """Toggle browser expanded view (hide/show sidebar)."""
+        self.browser_expanded = not self.browser_expanded
+        
+        if self.browser_expanded:
+            # Hide the sidebar (navigation view)
+            self.navigation_view.set_visible(False)
+            self.browser_expand_btn.set_icon_name("view-restore-symbolic")
+            self.browser_expand_btn.set_tooltip_text("Restore sidebar")
+        else:
+            # Show the sidebar
+            self.navigation_view.set_visible(True)
+            self.browser_expand_btn.set_icon_name("view-fullscreen-symbolic")
+            self.browser_expand_btn.set_tooltip_text("Expand browser (hide sidebar)")
     
     def _on_browser_url_activate(self, entry):
         """Handle URL entry activation."""
@@ -6034,6 +6205,464 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             self._apply_zoom_to_all_tabs(zoom)
             self._save_zoom_level(zoom)
     
+    def _on_tts_voice_changed(self, dropdown, pspec):
+        """Handle TTS voice change."""
+        selected = dropdown.get_selected()
+        if selected in self.tts_voice_map:
+            self.tts_voice = self.tts_voice_map[selected]
+            self._save_browser_settings(tts_voice=self.tts_voice)
+            print(f"[TTS] Voice changed to: {self.tts_voice}")
+    
+    def _on_tts_speed_changed(self, dropdown, pspec):
+        """Handle TTS speed change."""
+        selected = dropdown.get_selected()
+        if selected in self.tts_speed_map:
+            self.tts_rate = self.tts_speed_map[selected]
+            self._save_browser_settings(tts_rate=self.tts_rate)
+            print(f"[TTS] Speed changed to: {self.tts_rate}")
+    
+    def _on_tts_test_clicked(self, button):
+        """Test the TTS voice."""
+        test_text = "Hello! This is a test of the Read Aloud feature in Tux Assistant. How does this voice sound to you?"
+        self._read_aloud(test_text)
+    
+    def _on_tts_stop_clicked(self, button):
+        """Stop TTS playback."""
+        self._stop_read_aloud()
+    
+    def _read_aloud(self, text):
+        """Read text aloud using edge-tts with chunking and caching."""
+        import subprocess
+        import tempfile
+        import shutil
+        import hashlib
+        import threading
+        
+        # Stop any existing playback
+        self._stop_read_aloud()
+        
+        # Check if edge-tts is available
+        if not shutil.which('edge-tts'):
+            self._show_toast("edge-tts not found. Install with: pip install edge-tts")
+            return
+        
+        # Check for audio player
+        player = None
+        for p in ['mpv', 'ffplay', 'vlc', 'paplay']:
+            if shutil.which(p):
+                player = p
+                break
+        
+        if not player:
+            self._show_toast("No audio player found. Install mpv or vlc.")
+            return
+        
+        # Setup cache directory
+        cache_dir = os.path.join(self.CONFIG_DIR, 'tts_cache')
+        os.makedirs(cache_dir, exist_ok=True)
+        
+        # Update UI - show stop button, hide play button
+        if hasattr(self, 'tts_stop_btn'):
+            self.tts_stop_btn.set_sensitive(True)
+        if hasattr(self, 'stop_reading_btn'):
+            self.stop_reading_btn.set_visible(True)
+        if hasattr(self, 'read_article_btn'):
+            self.read_article_btn.set_visible(False)
+        
+        # Track state for this playback session
+        self.tts_playing = True
+        self.tts_audio_file = "playing"  # Marker that we're active
+        
+        def get_cache_path(chunk_text):
+            """Generate cache path for a text chunk."""
+            cache_key = f"{self.tts_voice}_{self.tts_rate}_{chunk_text}"
+            cache_hash = hashlib.md5(cache_key.encode()).hexdigest()
+            return os.path.join(cache_dir, f"{cache_hash}.mp3")
+        
+        def generate_chunk(chunk_text, output_path):
+            """Generate audio for a single chunk."""
+            cmd = [
+                'edge-tts',
+                '--voice', self.tts_voice,
+                '--rate', self.tts_rate,
+                '--text', chunk_text,
+                '--write-media', output_path
+            ]
+            result = subprocess.run(cmd, capture_output=True, timeout=120)
+            return result.returncode == 0
+        
+        def play_audio(audio_path):
+            """Play an audio file and wait for completion."""
+            if player == 'mpv':
+                play_cmd = ['mpv', '--no-video', '--really-quiet', audio_path]
+            elif player == 'ffplay':
+                play_cmd = ['ffplay', '-nodisp', '-autoexit', '-loglevel', 'quiet', audio_path]
+            elif player == 'vlc':
+                play_cmd = ['vlc', '--intf', 'dummy', '--play-and-exit', audio_path]
+            else:
+                play_cmd = ['paplay', audio_path]
+            
+            self.tts_process = subprocess.Popen(play_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self.tts_process.wait()
+            self.tts_process = None
+        
+        def split_into_chunks(full_text, max_chunk_size=1500):
+            """Split text into chunks at sentence boundaries."""
+            chunks = []
+            
+            # Split by paragraphs first
+            paragraphs = full_text.split('\n\n')
+            current_chunk = ""
+            
+            for para in paragraphs:
+                para = para.strip()
+                if not para:
+                    continue
+                
+                # If adding this paragraph exceeds limit, save current and start new
+                if len(current_chunk) + len(para) > max_chunk_size and current_chunk:
+                    chunks.append(current_chunk.strip())
+                    current_chunk = para
+                else:
+                    current_chunk += " " + para if current_chunk else para
+            
+            # Don't forget the last chunk
+            if current_chunk.strip():
+                chunks.append(current_chunk.strip())
+            
+            # If we only have one big chunk, try splitting by sentences
+            if len(chunks) == 1 and len(chunks[0]) > max_chunk_size:
+                text = chunks[0]
+                chunks = []
+                sentences = []
+                
+                # Simple sentence splitting
+                import re
+                sentence_endings = re.split(r'(?<=[.!?])\s+', text)
+                current_chunk = ""
+                
+                for sentence in sentence_endings:
+                    if len(current_chunk) + len(sentence) > max_chunk_size and current_chunk:
+                        chunks.append(current_chunk.strip())
+                        current_chunk = sentence
+                    else:
+                        current_chunk += " " + sentence if current_chunk else sentence
+                
+                if current_chunk.strip():
+                    chunks.append(current_chunk.strip())
+            
+            return chunks if chunks else [full_text]
+        
+        def stream_and_play():
+            """Generate and play chunks in a streaming fashion."""
+            try:
+                chunks = split_into_chunks(text)
+                total_chunks = len(chunks)
+                
+                if total_chunks == 1:
+                    GLib.idle_add(self._show_toast, "Generating audio...")
+                else:
+                    GLib.idle_add(self._show_toast, f"Reading {total_chunks} sections...")
+                
+                for i, chunk in enumerate(chunks):
+                    # Check if we should stop
+                    if not self.tts_playing:
+                        return
+                    
+                    cache_path = get_cache_path(chunk)
+                    
+                    # Check cache first
+                    if os.path.exists(cache_path):
+                        # Cache hit - play immediately
+                        if total_chunks > 1:
+                            GLib.idle_add(self._show_toast, f"Playing {i+1}/{total_chunks} (cached)")
+                    else:
+                        # Cache miss - generate
+                        if total_chunks > 1:
+                            GLib.idle_add(self._show_toast, f"Generating {i+1}/{total_chunks}...")
+                        else:
+                            GLib.idle_add(self._show_toast, "Generating...")
+                        
+                        # Generate to temp file first, then move to cache
+                        temp_path = cache_path + ".tmp"
+                        if not generate_chunk(chunk, temp_path):
+                            GLib.idle_add(self._show_toast, "TTS generation failed")
+                            return
+                        
+                        # Check again if we should stop
+                        if not self.tts_playing:
+                            try:
+                                os.remove(temp_path)
+                            except:
+                                pass
+                            return
+                        
+                        # Move to cache
+                        try:
+                            shutil.move(temp_path, cache_path)
+                        except:
+                            cache_path = temp_path  # Use temp if move fails
+                        
+                        if total_chunks == 1:
+                            GLib.idle_add(self._show_toast, "Playing...")
+                    
+                    # Play this chunk
+                    if not self.tts_playing:
+                        return
+                    
+                    play_audio(cache_path)
+                    
+            except subprocess.TimeoutExpired:
+                GLib.idle_add(self._show_toast, "TTS generation timed out")
+            except Exception as e:
+                GLib.idle_add(self._show_toast, f"TTS error: {str(e)[:50]}")
+            finally:
+                self.tts_playing = False
+                GLib.idle_add(self._tts_playback_finished)
+        
+        # Run in background thread
+        thread = threading.Thread(target=stream_and_play, daemon=True)
+        thread.start()
+    
+    def _stop_read_aloud(self):
+        """Stop current TTS playback."""
+        import signal
+        import os as os_module
+        
+        # Signal to stop streaming
+        self.tts_playing = False
+        
+        if self.tts_process:
+            try:
+                # Try SIGKILL for immediate stop
+                self.tts_process.kill()
+                try:
+                    self.tts_process.wait(timeout=1)
+                except:
+                    pass
+            except:
+                pass
+            finally:
+                self.tts_process = None
+        
+        if self.tts_audio_file:
+            try:
+                if os_module.path.exists(self.tts_audio_file):
+                    os_module.remove(self.tts_audio_file)
+                self.tts_audio_file = None
+            except:
+                pass
+        
+        # Update UI
+        if hasattr(self, 'tts_stop_btn'):
+            self.tts_stop_btn.set_sensitive(False)
+        if hasattr(self, 'stop_reading_btn'):
+            self.stop_reading_btn.set_visible(False)
+        if hasattr(self, 'read_article_btn'):
+            self.read_article_btn.set_visible(True)
+    
+    def _on_stop_reading_clicked(self, button):
+        """Handle stop reading button click."""
+        self._stop_read_aloud()
+        self._show_toast("Reading stopped")
+    
+    def _tts_playback_finished(self):
+        """Called when TTS playback finishes."""
+        self.tts_process = None
+        self.tts_playing = False
+        self.tts_audio_file = None
+        
+        if hasattr(self, 'tts_stop_btn'):
+            self.tts_stop_btn.set_sensitive(False)
+        if hasattr(self, 'stop_reading_btn'):
+            self.stop_reading_btn.set_visible(False)
+        if hasattr(self, 'read_article_btn'):
+            self.read_article_btn.set_visible(True)
+    
+    def _on_browser_context_menu(self, webview, context_menu, event, hit_test_result=None):
+        """Handle browser context menu to add Read Aloud option."""
+        try:
+            # Add separator before our items
+            context_menu.append(WebKit.ContextMenuItem.new_separator())
+            
+            # Create a simple action for Read Aloud
+            # Use Gtk.Action approach that works with WebKit context menus
+            read_action = Gio.SimpleAction.new("tux-read-aloud", None)
+            read_action.connect("activate", lambda a, p: self._read_selection_aloud(webview))
+            
+            # Register the action with the application
+            app = self.get_application()
+            if app:
+                app.add_action(read_action)
+            
+            # Try the new WebKit 4.1+ API first
+            try:
+                # For WebKit2GTK 4.1+, use the GAction approach
+                read_item = WebKit.ContextMenuItem.new_from_gaction(
+                    read_action,
+                    "🔊 Read Selection Aloud",
+                    None
+                )
+                context_menu.append(read_item)
+            except:
+                # Fallback: Create with stock action and modify
+                pass
+            
+            # Add Stop option if currently playing
+            if self.tts_process:
+                stop_action = Gio.SimpleAction.new("tux-stop-reading", None)
+                stop_action.connect("activate", lambda a, p: self._stop_read_aloud())
+                if app:
+                    app.add_action(stop_action)
+                
+                try:
+                    stop_item = WebKit.ContextMenuItem.new_from_gaction(
+                        stop_action,
+                        "⏹️ Stop Reading",
+                        None
+                    )
+                    context_menu.append(stop_item)
+                except:
+                    pass
+                    
+        except Exception as e:
+            print(f"[TTS] Context menu error: {e}")
+        
+        return False  # Don't block the menu
+    
+    def _read_selection_aloud(self, webview):
+        """Get selected text from webview and read it aloud."""
+        js_code = "window.getSelection().toString();"
+        
+        def on_js_result(source_object, result, user_data=None):
+            try:
+                js_result = source_object.evaluate_javascript_finish(result)
+                if js_result:
+                    text = None
+                    if hasattr(js_result, 'to_string'):
+                        text = js_result.to_string()
+                    elif hasattr(js_result, 'is_string') and js_result.is_string():
+                        text = js_result.to_string()
+                    elif hasattr(js_result, 'get_string'):
+                        text = js_result.get_string()
+                    
+                    if text and text.strip():
+                        self._read_aloud(text.strip())
+                    else:
+                        self._show_toast("No text selected")
+                else:
+                    self._show_toast("No text selected")
+            except Exception as e:
+                print(f"[TTS] Error: {e}")
+                self._show_toast("Could not get selected text")
+        
+        try:
+            if hasattr(webview, 'evaluate_javascript'):
+                webview.evaluate_javascript(js_code, -1, None, None, None, on_js_result)
+            elif hasattr(webview, 'run_javascript'):
+                webview.run_javascript(js_code, None, on_js_result, None)
+        except Exception as e:
+            print(f"[TTS] JavaScript execution failed: {e}")
+
+    def _on_read_article_clicked(self, button):
+        """Handle read article button click."""
+        webview = self._get_current_browser_webview()
+        if webview:
+            self._read_article_aloud(webview)
+        else:
+            self._show_toast("No page loaded")
+
+    def _read_article_aloud(self, webview):
+        """Extract main article content from page and read it aloud."""
+        # JavaScript to extract article content
+        # Priority: <article>, common article classes, element with most <p> text
+        js_code = """
+        (function() {
+            // Helper to get text content, stripping scripts/styles
+            function getCleanText(el) {
+                if (!el) return '';
+                var clone = el.cloneNode(true);
+                // Remove scripts, styles, nav, footer, aside, ads
+                var remove = clone.querySelectorAll('script, style, nav, footer, aside, .ad, .ads, .advertisement, .social-share, .comments, .related-posts, [role="complementary"], [role="navigation"]');
+                remove.forEach(function(r) { r.remove(); });
+                return clone.textContent.trim().replace(/\\s+/g, ' ');
+            }
+            
+            // Try <article> element first
+            var article = document.querySelector('article');
+            if (article) {
+                var text = getCleanText(article);
+                if (text.length > 200) return text;
+            }
+            
+            // Try common article content selectors
+            var selectors = [
+                '.article-body', '.article-content', '.post-content', '.entry-content',
+                '.story-body', '.story-content', '.content-body', '.main-content',
+                '[itemprop="articleBody"]', '[role="article"]', '.post-body',
+                '.article__body', '.article__content', '#article-body', '#story-body'
+            ];
+            
+            for (var i = 0; i < selectors.length; i++) {
+                var el = document.querySelector(selectors[i]);
+                if (el) {
+                    var text = getCleanText(el);
+                    if (text.length > 200) return text;
+                }
+            }
+            
+            // Fallback: find element with most paragraph text
+            var main = document.querySelector('main') || document.body;
+            var paragraphs = main.querySelectorAll('p');
+            var texts = [];
+            paragraphs.forEach(function(p) {
+                var t = p.textContent.trim();
+                if (t.length > 50) texts.push(t);
+            });
+            
+            if (texts.length > 0) {
+                return texts.join(' ');
+            }
+            
+            return '';
+        })();
+        """
+        
+        def on_js_result(source_object, result, user_data=None):
+            try:
+                js_result = source_object.evaluate_javascript_finish(result)
+                if js_result:
+                    text = None
+                    if hasattr(js_result, 'to_string'):
+                        text = js_result.to_string()
+                    elif hasattr(js_result, 'is_string') and js_result.is_string():
+                        text = js_result.to_string()
+                    elif hasattr(js_result, 'get_string'):
+                        text = js_result.get_string()
+                    
+                    if text and text.strip() and len(text.strip()) > 50:
+                        # Limit to reasonable length (avoid reading entire page)
+                        article_text = text.strip()
+                        if len(article_text) > 15000:
+                            article_text = article_text[:15000] + "... Article truncated."
+                        self._show_toast(f"Reading article ({len(article_text)} chars)")
+                        self._read_aloud(article_text)
+                    else:
+                        self._show_toast("Could not find article content")
+                else:
+                    self._show_toast("Could not find article content")
+            except Exception as e:
+                print(f"[TTS] Article extraction error: {e}")
+                self._show_toast("Could not extract article")
+        
+        try:
+            if hasattr(webview, 'evaluate_javascript'):
+                webview.evaluate_javascript(js_code, -1, None, None, None, on_js_result)
+            elif hasattr(webview, 'run_javascript'):
+                webview.run_javascript(js_code, None, on_js_result, None)
+        except Exception as e:
+            print(f"[TTS] JavaScript execution failed: {e}")
+
     def _on_clear_history_clicked(self, button):
         """Clear browsing history."""
         try:
