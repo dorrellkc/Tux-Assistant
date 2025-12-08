@@ -589,6 +589,12 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         self.block_trackers = browser_settings.get('block_trackers', True)
         self.pages_protected = 0  # Track protected pages this session
         
+        # SponsorBlock settings
+        self.sponsorblock_enabled = browser_settings.get('sponsorblock_enabled', True)
+        self.sponsorblock_categories = browser_settings.get('sponsorblock_categories', 
+            'sponsor,selfpromo,interaction,intro,outro')  # Default categories to skip
+        print(f"[SponsorBlock] Initialized: enabled={self.sponsorblock_enabled}, categories={self.sponsorblock_categories}")
+        
         # Initialize content filter store for ad blocking
         self.content_filter_store = None
         self.content_filters = []  # List of compiled filters
@@ -1073,7 +1079,9 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             'block_trackers': True,
             'homepage': 'https://duckduckgo.com',
             'search_engine': 'DuckDuckGo',
-            'default_zoom': 1.0
+            'default_zoom': 1.0,
+            'sponsorblock_enabled': True,
+            'sponsorblock_categories': 'sponsor,selfpromo,interaction,intro,outro'
         }
         
         try:
@@ -1100,6 +1108,10 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
                                 settings['search_engine'] = value
                             elif key == 'default_zoom':
                                 settings['default_zoom'] = float(value)
+                            elif key == 'sponsorblock_enabled':
+                                settings['sponsorblock_enabled'] = value.lower() == 'true'
+                            elif key == 'sponsorblock_categories':
+                                settings['sponsorblock_categories'] = value
         except:
             pass
         return settings
@@ -1935,6 +1947,18 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         trackers_row.append(self.trackers_switch)
         privacy_box.append(trackers_row)
         
+        # SponsorBlock toggle
+        sponsorblock_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        sponsorblock_label = Gtk.Label(label="SponsorBlock (YouTube)")
+        sponsorblock_label.set_hexpand(True)
+        sponsorblock_label.set_xalign(0)
+        sponsorblock_row.append(sponsorblock_label)
+        self.sponsorblock_switch = Gtk.Switch()
+        self.sponsorblock_switch.set_active(self.sponsorblock_enabled)
+        self.sponsorblock_switch.connect("notify::active", self._on_sponsorblock_toggled)
+        sponsorblock_row.append(self.sponsorblock_switch)
+        privacy_box.append(sponsorblock_row)
+        
         nav_toolbar.append(privacy_btn)
         
         # Settings button
@@ -2502,6 +2526,17 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         webview.connect("create", self._on_browser_create_window)
         webview.connect("notify::title", self._on_browser_title_changed)
         webview.connect("decide-policy", self._on_browser_decide_policy)
+        
+        # Capture JavaScript console output for debugging
+        try:
+            # Try the WebKit2GTK 4.1+ API
+            if hasattr(webview, 'get_inspector'):
+                settings = webview.get_settings()
+                if hasattr(settings, 'set_enable_write_console_messages_to_stdout'):
+                    settings.set_enable_write_console_messages_to_stdout(True)
+                    print("[Browser] Console output enabled")
+        except Exception as e:
+            print(f"[Browser] Console capture setup failed: {e}")
         
         # Close bookmarks popover when clicking on webview
         click_controller = Gtk.GestureClick()
@@ -5968,6 +6003,11 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         self.block_trackers = switch.get_active()
         self._save_browser_settings(block_trackers=self.block_trackers)
     
+    def _on_sponsorblock_toggled(self, switch, pspec):
+        """Handle SponsorBlock toggle."""
+        self.sponsorblock_enabled = switch.get_active()
+        self._save_browser_settings(sponsorblock_enabled=self.sponsorblock_enabled)
+    
     def _on_homepage_changed(self, entry):
         """Handle homepage change."""
         homepage = entry.get_text().strip()
@@ -6317,6 +6357,11 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             # Inject ad-hiding JavaScript after page loads
             if self.block_ads:
                 self._inject_ad_hiding_js(webview)
+            
+            # Inject SponsorBlock for ALL YouTube pages (handles SPA navigation internally)
+            if self.sponsorblock_enabled and uri and 'youtube.com' in uri:
+                print(f"[SponsorBlock] YouTube page detected, injecting monitor script")
+                self._inject_sponsorblock_monitor(webview)
     
     def _inject_ad_hiding_js(self, webview):
         """Inject JavaScript to hide ads after page load."""
@@ -6492,6 +6537,343 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             self._update_blocked_count()
         except Exception as e:
             print(f"JS injection failed: {e}")
+    
+    def _inject_sponsorblock_monitor(self, webview):
+        """Inject self-contained SponsorBlock monitor for YouTube."""
+        
+        categories = self.sponsorblock_categories
+        
+        js_code = f"""
+        (function() {{
+            // Prevent multiple injections
+            if (window._tuxSponsorBlockMonitor) {{
+                console.log('[Tux SponsorBlock] Already running');
+                return;
+            }}
+            window._tuxSponsorBlockMonitor = true;
+            
+            console.log('[Tux SponsorBlock] Monitor script starting...');
+            
+            // ============================================
+            // YOUTUBE AD AUTO-SKIP (based on community research)
+            // ============================================
+            let adSkipAttempts = 0;
+            let wasInAd = false;
+            
+            function isAdPlaying() {{
+                return document.querySelector('.ad-showing') !== null ||
+                       document.querySelector('.ad-interrupting') !== null ||
+                       document.querySelector('.ytp-ad-player-overlay') !== null;
+            }}
+            
+            function trySkipAd() {{
+                // Skip button selectors (YouTube changes these - updated Dec 2024)
+                const skipSelectors = [
+                    '.ytp-skip-ad-button',
+                    '.ytp-ad-skip-button', 
+                    '.ytp-ad-skip-button-modern',
+                    '.ytp-ad-skip-button-text',
+                    'button.ytp-ad-skip-button',
+                    '.ytp-ad-skip-button-slot button',
+                    '.videoAdUiSkipButton',
+                    'button[aria-label^="Skip ad"]',
+                    'button[aria-label^="Skip Ad"]'
+                ];
+                
+                for (const selector of skipSelectors) {{
+                    const skipBtn = document.querySelector(selector);
+                    if (skipBtn && skipBtn.offsetParent !== null) {{
+                        console.log('[Tux AdSkip] Found skip button: ' + selector);
+                        skipBtn.click();
+                        
+                        return true;
+                    }}
+                }}
+                return false;
+            }}
+            
+            function trySeekPastAd() {{
+                // For unskippable ads - seek to end
+                const video = document.querySelector('video');
+                if (video && isAdPlaying() && video.duration && isFinite(video.duration)) {{
+                    // Only for short ads (< 2 minutes)
+                    if (video.duration < 120) {{
+                        try {{
+                            // Seek to just before end (0.1 seconds)
+                            video.currentTime = video.duration - 0.1;
+                            console.log('[Tux AdSkip] Seeked to end of ad');
+                            return true;
+                        }} catch(e) {{
+                            console.log('[Tux AdSkip] Seek failed: ' + e);
+                        }}
+                    }}
+                }}
+                return false;
+            }}
+            
+            function closeOverlayAds() {{
+                // Close overlay/banner ads
+                const closeSelectors = [
+                    '.ytp-ad-overlay-close-button',
+                    '.ytp-ad-overlay-close-container',
+                    '[class*="ad-overlay-close"]'
+                ];
+                
+                closeSelectors.forEach(selector => {{
+                    const btn = document.querySelector(selector);
+                    if (btn && btn.offsetParent !== null) {{
+                        try {{ 
+                            btn.click(); 
+                            console.log('[Tux AdSkip] Closed overlay ad');
+                        }} catch(e) {{}}
+                    }}
+                }});
+            }}
+            
+            function handleAds() {{
+                const inAd = isAdPlaying();
+                
+                if (inAd) {{
+                    adSkipAttempts++;
+                    
+                    if (adSkipAttempts <= 3) {{
+                    }}
+                    
+                    // Try methods in order:
+                    // 1. Click skip button (if available)
+                    if (!trySkipAd()) {{
+                        // 2. Try seeking to end (for unskippable)
+                        if (adSkipAttempts > 2) {{
+                            trySeekPastAd();
+                        }}
+                    }}
+                    
+                    // 3. Always try to close overlays
+                    closeOverlayAds();
+                    
+                    wasInAd = true;
+                }} else {{
+                    if (wasInAd) {{
+                        console.log('[Tux AdSkip] Ad finished');
+                        wasInAd = false;
+                    }}
+                    adSkipAttempts = 0;
+                }}
+            }}
+            
+            // Check for ads frequently (every 300ms)
+            setInterval(handleAds, 300);
+            
+            // Also use MutationObserver for instant detection
+            const adObserver = new MutationObserver(handleAds);
+            const player = document.querySelector('#movie_player');
+            if (player) {{
+                adObserver.observe(player, {{ 
+                    attributes: true, 
+                    attributeFilter: ['class'],
+                    subtree: true 
+                }});
+            }}
+            
+            // ============================================
+            // SPONSORBLOCK (in-video sponsor skipping)
+            // ============================================
+            const CATEGORIES = '{categories}'.split(',').map(c => c.trim());
+            let currentVideoId = null;
+            let segments = [];
+            let skippedSegments = new Set();
+            let videoElement = null;
+            let lastUrl = location.href;
+            
+            function isWatchPage() {{
+                return location.href.includes('/watch') || location.href.includes('youtu.be/');
+            }}
+            
+            function getVideoId() {{
+                if (!isWatchPage()) return null;
+                
+                const urlMatch = location.href.match(/[?&]v=([a-zA-Z0-9_-]{{11}})/);
+                if (urlMatch) return urlMatch[1];
+                
+                const shortMatch = location.href.match(/youtu\\.be\\/([a-zA-Z0-9_-]{{11}})/);
+                if (shortMatch) return shortMatch[1];
+                
+                const shortsMatch = location.href.match(/\\/shorts\\/([a-zA-Z0-9_-]{{11}})/);
+                if (shortsMatch) return shortsMatch[1];
+                
+                return null;
+            }}
+            
+            async function fetchSegments(videoId) {{
+                const categoryParams = CATEGORIES.map(c => 'category=' + c).join('&');
+                const url = 'https://sponsor.ajay.app/api/skipSegments?videoID=' + videoId + '&' + categoryParams;
+                
+                
+                try {{
+                    const response = await fetch(url);
+                    if (response.status === 404) {{
+                        return [];
+                    }}
+                    if (!response.ok) {{
+                        return [];
+                    }}
+                    const data = await response.json();
+                    return data;
+                }} catch (e) {{
+                    return [];
+                }}
+            }}
+            
+            function formatTime(seconds) {{
+                const mins = Math.floor(seconds / 60);
+                const secs = Math.floor(seconds % 60);
+                return mins + ':' + secs.toString().padStart(2, '0');
+            }}
+            
+            function showSkipNotification(category, duration) {{
+                let notification = document.getElementById('tux-sponsorblock-notification');
+                if (!notification) {{
+                    notification = document.createElement('div');
+                    notification.id = 'tux-sponsorblock-notification';
+                    notification.style.cssText = `
+                        position: fixed;
+                        bottom: 80px;
+                        right: 20px;
+                        background: rgba(0, 0, 0, 0.9);
+                        color: #00d400;
+                        padding: 12px 20px;
+                        border-radius: 8px;
+                        font-family: -apple-system, BlinkMacSystemFont, 'Roboto', sans-serif;
+                        font-size: 14px;
+                        font-weight: 500;
+                        z-index: 999999;
+                        transition: opacity 0.3s;
+                    `;
+                    document.body.appendChild(notification);
+                }}
+                
+                const names = {{
+                    'sponsor': 'Sponsor',
+                    'selfpromo': 'Self-Promo', 
+                    'interaction': 'Interaction',
+                    'intro': 'Intro',
+                    'outro': 'Outro',
+                    'preview': 'Preview',
+                    'filler': 'Filler'
+                }};
+                
+                notification.textContent = '🛡️ Skipped ' + (names[category] || category) + ' (' + Math.round(duration) + 's)';
+                notification.style.opacity = '1';
+                
+                setTimeout(() => {{ notification.style.opacity = '0'; }}, 3000);
+            }}
+            
+            function checkAndSkip() {{
+                // Don't skip during YouTube ads
+                if (isAdPlaying()) return;
+                if (!videoElement || !segments.length) return;
+                
+                const currentTime = videoElement.currentTime;
+                
+                // Log position every 10 seconds
+                const timeKey = Math.floor(currentTime / 10);
+                if (timeKey !== window._sbLastTimeKey && segments.length > 0) {{
+                    window._sbLastTimeKey = timeKey;
+                    const seg = segments[0];
+                }}
+                
+                for (const segment of segments) {{
+                    const start = segment.segment[0];
+                    const end = segment.segment[1];
+                    const uuid = segment.UUID;
+                    
+                    if (currentTime >= start && currentTime < end - 0.5) {{
+                        if (!skippedSegments.has(uuid)) {{
+                            console.log('[Tux SponsorBlock] SKIPPING ' + segment.category + ' from ' + formatTime(start) + ' to ' + formatTime(end));
+                            videoElement.currentTime = end;
+                            skippedSegments.add(uuid);
+                            showSkipNotification(segment.category, end - start);
+                            return;
+                        }}
+                    }}
+                }}
+            }}
+            
+            async function checkForVideo() {{
+                if (!isWatchPage()) {{
+                    return;
+                }}
+                
+                const videoId = getVideoId();
+                if (!videoId) {{
+                    return;
+                }}
+                
+                const video = document.querySelector('#movie_player video') || 
+                              document.querySelector('video.html5-main-video') ||
+                              document.querySelector('video');
+                
+                if (video && video !== videoElement) {{
+                    console.log('[Tux SponsorBlock] Found video element');
+                    videoElement = video;
+                    video.addEventListener('timeupdate', checkAndSkip);
+                }}
+                
+                if (videoId && videoId !== currentVideoId) {{
+                    console.log('[Tux SponsorBlock] New video: ' + videoId);
+                    currentVideoId = videoId;
+                    skippedSegments.clear();
+                    window._sbLastTimeKey = -1;
+                    
+                    segments = await fetchSegments(videoId);
+                    
+                    if (segments.length > 0) {{
+                        let info = '';
+                        segments.forEach(s => {{
+                            info += s.category + ' ' + formatTime(s.segment[0]) + '-' + formatTime(s.segment[1]) + ' ';
+                        }});
+                    }}
+                }}
+            }}
+            
+            function checkNavigation() {{
+                if (location.href !== lastUrl) {{
+                    console.log('[Tux SponsorBlock] Navigation detected');
+                    lastUrl = location.href;
+                    currentVideoId = null;
+                    videoElement = null;
+                    skippedSegments.clear();
+                    setTimeout(checkForVideo, 300);
+                }}
+            }}
+            
+            setInterval(checkForVideo, 2000);
+            setInterval(checkNavigation, 500);
+            setTimeout(checkForVideo, 1000);
+            
+            document.addEventListener('yt-navigate-finish', () => {{
+                console.log('[Tux SponsorBlock] yt-navigate-finish event');
+                currentVideoId = null;
+                videoElement = null;
+                setTimeout(checkForVideo, 500);
+            }});
+            
+            new MutationObserver(checkNavigation).observe(document.body, {{
+                childList: true, 
+                subtree: true
+            }});
+            
+        }})();
+        """
+        
+        try:
+            if hasattr(webview, 'evaluate_javascript'):
+                webview.evaluate_javascript(js_code, -1, None, None, None, None, None)
+            elif hasattr(webview, 'run_javascript'):
+                webview.run_javascript(js_code, None, None, None)
+            print("[SponsorBlock] Monitor script injected")
+        except Exception as e:
+            print(f"[SponsorBlock] Injection failed: {e}")
     
     def _on_browser_create_window(self, webview, navigation_action):
         """Handle links that try to open new windows - open in default browser."""

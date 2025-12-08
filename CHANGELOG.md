@@ -2,6 +2,85 @@
 
 All notable changes to Tux Assistant will be documented in this file.
 
+## [0.9.166] - 2025-12-07
+
+### Fixed - SponsorBlock Complete Rewrite
+- **Now injects on ALL YouTube pages** - not just watch pages
+- **Properly handles SPA navigation** - when you click a video from a channel, it now works
+- **Checks if on watch page** before trying to find segments
+- **Listens for yt-navigate-finish** - YouTube's internal navigation event
+- **Multiple navigation detection methods** - MutationObserver + URL polling + YouTube events
+- **Clearer debug messages** - Shows "Not a watch page" when on channel/search/etc.
+- **Better video element reset** - Resets when navigating between videos
+
+### How it works now:
+1. Script injects when you visit ANY youtube.com page
+2. Script continuously monitors for URL changes
+3. When URL contains `/watch`, it fetches segments and attaches to video
+4. Skip happens automatically when video reaches segment
+
+## [0.9.165] - 2025-12-07
+
+### Fixed
+- **SponsorBlock watch pages only** - Only inject on youtube.com/watch pages, not channel pages
+- **Better video element selection** - Target #movie_player video specifically
+- **Clearer debug output** - Shows segment times with start-end format
+- **Improved skip logging** - Shows "Playing: X:XX | Segment at: Y:YY-Z:ZZ" every 10 seconds
+
+### Changed
+- Debug box now shows full segment time ranges
+- Terminal shows attached video element for debugging
+
+## [0.9.164] - 2025-12-07
+
+### Added
+- **SponsorBlock time tracking** - Shows current time vs next segment time every 5 seconds
+- **Better video detection** - Checks for video element more frequently
+
+## [0.9.163] - 2025-12-07
+
+### Added
+- **SponsorBlock visual debugger** - Green debug box in top-left corner of YouTube
+  - Shows exactly what the script is doing in real-time
+  - Will tell us if video ID is detected
+  - Will show if API fetch succeeds/fails
+  - Will show segment count when found
+  - Helps diagnose why skipping isn't working
+
+## [0.9.162] - 2025-12-07
+
+### Fixed
+- **SponsorBlock complete rewrite** - Now fully JavaScript-based!
+  - Injects a monitor script that runs continuously on YouTube
+  - Detects video ID from URL OR from YouTube's internal player data
+  - Handles SPA navigation (clicking videos from channel pages)
+  - Fetches segments via JavaScript fetch() instead of Python
+  - Monitors every second for new videos
+  - Works on /watch, /shorts, and embedded videos
+  - No longer requires page reload to detect videos
+
+## [0.9.161] - 2025-12-07
+
+### Fixed
+- **SponsorBlock debugging** - Added extensive logging to diagnose detection issues
+  - Logs URL checking on every page load
+  - Logs SponsorBlock enabled/disabled state
+  - Improved YouTube URL patterns (www., m., shorts)
+  - JS console logs showing video detection attempts
+  - Fixed urllib.error import for proper HTTP error handling
+
+## [0.9.160] - 2025-12-07
+
+### Added
+- **SponsorBlock Integration** 🎉 - Auto-skip YouTube sponsor segments!
+  - Uses free SponsorBlock API (sponsor.ajay.app)
+  - Skips: Sponsors, Self-promo, Interaction reminders, Intros, Outros
+  - Visual notification when skipping ("🛡️ Skipped Sponsor (30s)")
+  - Toggle in Privacy Shield popover
+  - Runs automatically on any YouTube video page
+  - Background API fetch (non-blocking)
+  - Handles YouTube SPA navigation
+
 ## [0.9.159] - 2025-12-07
 
 ### Added
