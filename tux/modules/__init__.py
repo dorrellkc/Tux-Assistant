@@ -16,11 +16,14 @@ from . import system_maintenance
 from . import backup_restore
 from . import gaming
 from . import hardware_manager
+from . import printer_wizard     # Printer detection and setup
 from . import desktop_enhancements
 from . import software_center
 from . import networking
 from . import setup_tools
 from . import developer_tools
+from . import media_server       # Plex/Jellyfin/Emby setup
+from . import nextcloud_setup    # Nextcloud client and server setup
 
 from . import tux_tunes
 from . import help_learning
