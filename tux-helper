@@ -476,7 +476,7 @@ FEDORA_RPMFUSION_PACKAGES = {
 
 def check_fedora_rpmfusion_enabled() -> dict:
     """Check if RPM Fusion repositories are enabled on Fedora."""
-    result = {'free': False, 'nonfree': False}
+    result = {'free': False, 'nonfree': False, 'free_tainted': False, 'nonfree_tainted': False}
     try:
         proc = subprocess.run(
             ['dnf', 'repolist', '--enabled'],
@@ -485,6 +485,8 @@ def check_fedora_rpmfusion_enabled() -> dict:
         output = proc.stdout.lower()
         result['free'] = 'rpmfusion-free' in output
         result['nonfree'] = 'rpmfusion-nonfree' in output
+        result['free_tainted'] = 'rpmfusion-free-tainted' in output
+        result['nonfree_tainted'] = 'rpmfusion-nonfree-tainted' in output
     except:
         pass
     return result
@@ -497,8 +499,14 @@ def get_fedora_version() -> str:
     except:
         return '40'  # Default
 
-def enable_fedora_rpmfusion(enable_free=True, enable_nonfree=True) -> bool:
-    """Enable RPM Fusion repositories on Fedora."""
+def enable_fedora_rpmfusion(enable_free=True, enable_nonfree=True, enable_tainted=False) -> bool:
+    """Enable RPM Fusion repositories on Fedora.
+    
+    Args:
+        enable_free: Enable RPM Fusion Free repository
+        enable_nonfree: Enable RPM Fusion Non-Free repository  
+        enable_tainted: Enable tainted repos (needed for libdvdcss)
+    """
     version = get_fedora_version()
     
     emit_status("info", f"Adding RPM Fusion repositories for Fedora {version}...")
@@ -526,6 +534,30 @@ def enable_fedora_rpmfusion(enable_free=True, enable_nonfree=True) -> bool:
                 emit_output(f"Warning: {result.stderr}")
                 return False
         
+        # Enable tainted repos if requested (for libdvdcss)
+        # These are installed as packages AFTER the base repos are enabled
+        # Check what base repos are AVAILABLE (not what we're enabling this call)
+        if enable_tainted:
+            repos = check_fedora_rpmfusion_enabled()
+            tainted_packages = []
+            
+            # Add tainted for whichever base repos exist
+            if repos['free'] or enable_free:
+                tainted_packages.append('rpmfusion-free-release-tainted')
+            if repos['nonfree'] or enable_nonfree:
+                tainted_packages.append('rpmfusion-nonfree-release-tainted')
+            
+            if tainted_packages:
+                emit_status("info", "Enabling tainted repositories for DVD support...")
+                result = subprocess.run(
+                    ['dnf', 'install', '-y'] + tainted_packages,
+                    capture_output=True, text=True, timeout=120
+                )
+                
+                if result.returncode != 0 and 'already installed' not in result.stdout.lower():
+                    emit_output(f"Warning: Could not enable tainted repos: {result.stderr}")
+                    # Don't fail completely, main repos are still enabled
+        
         return True
         
     except Exception as e:
@@ -540,16 +572,25 @@ def ensure_fedora_rpmfusion_for_packages(packages: list[str]) -> None:
                                                          'akmod-nvidia', 'xorg-x11-drv-nvidia'])
                         for pkg in packages)
     
+    # libdvdcss specifically needs the tainted repo
+    needs_tainted = any(pkg == 'libdvdcss' or pkg.startswith('libdvdcss') for pkg in packages)
+    
     if not needs_rpmfusion:
         return
     
     repos = check_fedora_rpmfusion_enabled()
     
-    if not repos['free'] or not repos['nonfree']:
+    # Check if we actually need to enable anything
+    need_free = not repos['free']
+    need_nonfree = not repos['nonfree']
+    need_tainted_enable = needs_tainted and not repos['free_tainted']
+    
+    if need_free or need_nonfree or need_tainted_enable:
         emit_status("info", "Multimedia packages require RPM Fusion repositories...")
         enable_fedora_rpmfusion(
-            enable_free=not repos['free'],
-            enable_nonfree=not repos['nonfree']
+            enable_free=need_free,
+            enable_nonfree=need_nonfree,
+            enable_tainted=need_tainted_enable
         )
 
 
@@ -888,6 +929,30 @@ def install_special_app(app_id: str, family: str) -> int:
         return 1
 
 
+def get_surfshark_versions() -> list:
+    """
+    Try to get latest Surfshark version from Debian repo, fall back to known versions.
+    Implements invisible fallback - user never sees if dynamic lookup fails.
+    """
+    try:
+        # Try fetching from Debian Packages file
+        result = subprocess.run(
+            ['curl', '-fsSL', 'https://downloads.surfshark.com/linux/debian/dists/stable/main/binary-amd64/Packages'],
+            capture_output=True, text=True, timeout=15
+        )
+        if result.returncode == 0 and result.stdout:
+            for line in result.stdout.split('\n'):
+                if line.startswith('Version: '):
+                    version = line.split(': ')[1].strip()
+                    # Return dynamic version first, then fallbacks
+                    return [version, '3.7.0-7023', '3.6.0', '3.5.4', '3.5.3']
+    except Exception:
+        pass
+    
+    # Fallback to known working versions (newest first)
+    return ['3.7.0-7023', '3.6.0', '3.5.4', '3.5.3', '3.5.0']
+
+
 def install_surfshark(family: str) -> int:
     """
     Install Surfshark VPN with full setup.
@@ -955,8 +1020,8 @@ def install_surfshark(family: str) -> int:
                     emit_status("error", "Failed to install alien")
                     return 1
             
-            # Step 2: Download Surfshark .deb
-            versions = ['3.6.0', '3.5.4', '3.5.3', '3.5.0', '3.4.0']
+            # Step 2: Download Surfshark .deb (dynamic version lookup with fallback)
+            versions = get_surfshark_versions()
             base_url = 'https://ocean.surfshark.com/debian/pool/main/s'
             deb_file = None
             

@@ -376,11 +376,11 @@ ALTERNATIVE_SOURCES: dict[str, dict[str, PackageSource]] = {
     # =========================================================================
     
     "libdvdcss": {
-        # DVD decryption - requires special repos
+        # DVD decryption - requires special repos (tainted)
         "fedora": PackageSource(
             SourceType.RPMFUSION,
-            "rpmfusion-free",
-            note="Requires RPM Fusion Free"
+            "rpmfusion-free-tainted",
+            note="Requires RPM Fusion Free Tainted repo"
         ),
     },
     

@@ -87,21 +87,65 @@ detect_distro() {
         DISTRO_NAME="${NAME}"
         DISTRO_FAMILY=""
         
-        # Determine package manager family
-        if command -v pacman &>/dev/null; then
-            DISTRO_FAMILY="arch"
-            PKG_INSTALL="pacman -S --noconfirm --needed"
-        elif command -v apt &>/dev/null; then
-            DISTRO_FAMILY="debian"
-            PKG_INSTALL="apt install -y"
-        elif command -v dnf &>/dev/null; then
-            DISTRO_FAMILY="fedora"
-            PKG_INSTALL="dnf install -y"
-        elif command -v zypper &>/dev/null; then
-            DISTRO_FAMILY="opensuse"
-            PKG_INSTALL="zypper install -y"
-        else
-            DISTRO_FAMILY="unknown"
+        # First, try to determine family from os-release ID/ID_LIKE (most reliable)
+        case "${ID}" in
+            arch|manjaro|endeavouros|garuda|cachyos)
+                DISTRO_FAMILY="arch"
+                PKG_INSTALL="pacman -S --noconfirm --needed"
+                ;;
+            opensuse*|suse*)
+                DISTRO_FAMILY="opensuse"
+                PKG_INSTALL="zypper install -y"
+                ;;
+            fedora|rhel|centos|rocky|alma|nobara)
+                DISTRO_FAMILY="fedora"
+                PKG_INSTALL="dnf install -y"
+                ;;
+            debian|ubuntu|linuxmint|pop|zorin|elementary|kali)
+                DISTRO_FAMILY="debian"
+                PKG_INSTALL="apt install -y"
+                ;;
+        esac
+        
+        # If ID didn't match, check ID_LIKE
+        if [ -z "$DISTRO_FAMILY" ] && [ -n "${ID_LIKE}" ]; then
+            case "${ID_LIKE}" in
+                *arch*)
+                    DISTRO_FAMILY="arch"
+                    PKG_INSTALL="pacman -S --noconfirm --needed"
+                    ;;
+                *suse*|*opensuse*)
+                    DISTRO_FAMILY="opensuse"
+                    PKG_INSTALL="zypper install -y"
+                    ;;
+                *fedora*|*rhel*)
+                    DISTRO_FAMILY="fedora"
+                    PKG_INSTALL="dnf install -y"
+                    ;;
+                *debian*|*ubuntu*)
+                    DISTRO_FAMILY="debian"
+                    PKG_INSTALL="apt install -y"
+                    ;;
+            esac
+        fi
+        
+        # Fall back to package manager detection only if os-release didn't help
+        if [ -z "$DISTRO_FAMILY" ]; then
+            if command -v pacman &>/dev/null; then
+                DISTRO_FAMILY="arch"
+                PKG_INSTALL="pacman -S --noconfirm --needed"
+            elif command -v zypper &>/dev/null; then
+                DISTRO_FAMILY="opensuse"
+                PKG_INSTALL="zypper install -y"
+            elif command -v dnf &>/dev/null; then
+                DISTRO_FAMILY="fedora"
+                PKG_INSTALL="dnf install -y"
+            elif command -v apt &>/dev/null; then
+                DISTRO_FAMILY="debian"
+                PKG_INSTALL="apt install -y"
+            else
+                DISTRO_FAMILY="unknown"
+            fi
         fi
     else
         DISTRO_FAMILY="unknown"
