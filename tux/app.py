@@ -1265,7 +1265,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         if WEBKIT_AVAILABLE:
             # Browser toggle button
             self.browser_toggle_btn = Gtk.ToggleButton()
-            self.browser_toggle_btn.set_icon_name("globe-symbolic")
+            self.browser_toggle_btn.set_icon_name("web-browser-symbolic")
             self.browser_toggle_btn.set_tooltip_text("Toggle Web Browser")
             self.browser_toggle_btn.add_css_class("claude-toggle-btn")
             self.browser_toggle_btn.connect("toggled", self._on_browser_toggle)
@@ -1367,7 +1367,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         panel_header.append(title_box)
         
         # External browser button
-        external_btn = Gtk.Button.new_from_icon_name("globe-symbolic")
+        external_btn = Gtk.Button.new_from_icon_name("web-browser-symbolic")
         external_btn.set_tooltip_text("Open in external browser")
         external_btn.connect("clicked", self._on_claude_external)
         panel_header.append(external_btn)
@@ -3358,7 +3358,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         import os
         
         # Default icon
-        icon = Gtk.Image.new_from_icon_name("globe-symbolic")
+        icon = Gtk.Image.new_from_icon_name("web-browser-symbolic")
         icon.set_pixel_size(24)
         
         if not url:
@@ -8929,7 +8929,7 @@ read -p "Press Enter to close..."
             web_row.set_title("Search DuckDuckGo")
             web_row.set_subtitle(f"Search the web for: {entry.get_text().strip()}")
             web_row.set_activatable(True)
-            web_row.add_prefix(Gtk.Image.new_from_icon_name("globe-symbolic"))
+            web_row.add_prefix(Gtk.Image.new_from_icon_name("web-browser-symbolic"))
             web_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
             web_row.connect("activated", lambda r: self._do_web_search(entry.get_text().strip()))
             no_results.add(web_row)
