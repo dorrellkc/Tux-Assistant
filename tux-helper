@@ -944,13 +944,21 @@ def get_surfshark_versions() -> list:
             for line in result.stdout.split('\n'):
                 if line.startswith('Version: '):
                     version = line.split(': ')[1].strip()
-                    # Return dynamic version first, then fallbacks
-                    return [version, '3.7.0-7023', '3.6.0', '3.5.4', '3.5.3']
+                    versions = [version]
+                    # If version has build number (e.g., 3.7.0-7023), also try without it
+                    if '-' in version:
+                        base_version = version.split('-')[0]
+                        versions.append(base_version)
+                    # Add known fallbacks
+                    versions.extend(['3.7.0', '3.6.0', '3.5.4', '3.5.3'])
+                    # Remove duplicates while preserving order
+                    seen = set()
+                    return [v for v in versions if not (v in seen or seen.add(v))]
     except Exception:
         pass
     
     # Fallback to known working versions (newest first)
-    return ['3.7.0-7023', '3.6.0', '3.5.4', '3.5.3', '3.5.0']
+    return ['3.7.0', '3.6.0', '3.5.4', '3.5.3', '3.5.0']
 
 
 def install_surfshark(family: str) -> int:

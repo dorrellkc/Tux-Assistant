@@ -253,14 +253,16 @@ class TuxAssistantApp(Adw.Application):
     def __init__(self):
         super().__init__(
             application_id=APP_ID,
-            flags=Gio.ApplicationFlags.DEFAULT_FLAGS
+            flags=Gio.ApplicationFlags.HANDLES_OPEN
         )
         
         self.window = None
+        self._pending_urls = []  # URLs to open after window is ready
         
         # Connect signals
         self.connect('activate', self.on_activate)
         self.connect('startup', self.on_startup)
+        self.connect('open', self.on_open)
     
     def on_startup(self, app):
         """Called when the application starts."""
@@ -293,6 +295,36 @@ class TuxAssistantApp(Adw.Application):
             self.window = TuxAssistantWindow(application=self)
         
         self.window.present()
+        
+        # Open any pending URLs after a brief delay (let browser initialize)
+        if self._pending_urls:
+            GLib.timeout_add(500, self._open_pending_urls)
+    
+    def on_open(self, app, files, n_files, hint):
+        """Handle files/URLs passed to the application."""
+        for gfile in files:
+            uri = gfile.get_uri()
+            # Check if it's a web URL
+            if uri.startswith('http://') or uri.startswith('https://'):
+                self._pending_urls.append(uri)
+        
+        # Activate the window (will also open pending URLs)
+        self.activate()
+    
+    def _open_pending_urls(self):
+        """Open pending URLs in the browser."""
+        if self.window and self._pending_urls:
+            for url in self._pending_urls:
+                try:
+                    if hasattr(self.window, '_browser_new_tab'):
+                        # Show browser if needed
+                        if hasattr(self.window, '_show_browser_docked'):
+                            self.window._show_browser_docked()
+                        self.window._browser_new_tab(url)
+                except Exception as e:
+                    print(f"Error opening URL {url}: {e}")
+            self._pending_urls.clear()
+        return False  # Don't repeat
     
     def create_actions(self):
         """Create application actions."""
@@ -2189,6 +2221,33 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         clear_all_btn.connect("clicked", self._on_clear_all_clicked)
         clear_box.append(clear_all_btn)
         
+        settings_box.append(Gtk.Separator())
+        
+        # === Default Browser Section ===
+        default_label = Gtk.Label(label="System Integration")
+        default_label.add_css_class("heading")
+        default_label.set_xalign(0)
+        settings_box.append(default_label)
+        
+        # Status label
+        self.default_browser_status = Gtk.Label()
+        self.default_browser_status.set_xalign(0)
+        self.default_browser_status.add_css_class("dim-label")
+        self._update_default_browser_status()
+        settings_box.append(self.default_browser_status)
+        
+        # Set as default button
+        set_default_btn = Gtk.Button(label="Set as Default Browser")
+        set_default_btn.set_icon_name("web-browser-symbolic")
+        set_default_btn.connect("clicked", self._on_set_default_browser_clicked)
+        settings_box.append(set_default_btn)
+        
+        # Hint
+        default_hint = Gtk.Label(label="External links will open in Tux Browser")
+        default_hint.add_css_class("dim-label")
+        default_hint.set_xalign(0)
+        settings_box.append(default_hint)
+        
         # Read Article button (TTS)
         self.read_article_btn = Gtk.Button.new_from_icon_name("audio-speakers-symbolic")
         self.read_article_btn.set_tooltip_text("Read article aloud")
@@ -2822,13 +2881,44 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
     
     def _on_browser_tab_close(self, tab_view, page):
         """Handle tab close request."""
-        # Don't allow closing the last tab
+        # If this is the last tab, close the browser panel instead
         if tab_view.get_n_pages() <= 1:
-            tab_view.close_page_finish(page, False)  # Deny close
+            tab_view.close_page_finish(page, False)  # Deny the tab close
+            # Close the browser panel entirely
+            self._close_browser_panel()
             return True
         
         tab_view.close_page_finish(page, True)  # Confirm close
         return True
+    
+    def _close_browser_panel(self):
+        """Close the browser panel and return to main view."""
+        # Update toggle button state (block handler to prevent recursion)
+        if hasattr(self, 'browser_toggle_btn') and self.browser_toggle_btn.get_active():
+            self.browser_toggle_btn.handler_block_by_func(self._on_browser_toggle)
+            self.browser_toggle_btn.set_active(False)
+            self.browser_toggle_btn.remove_css_class("active")
+            self.browser_toggle_btn.handler_unblock_by_func(self._on_browser_toggle)
+        
+        # Remove browser panel
+        if self.browser_is_docked:
+            self.main_paned.set_end_child(None)
+            self.docked_panel = None
+            self.browser_is_docked = False
+        
+        if self.browser_window:
+            self.browser_window.close()
+            self.browser_window = None
+        
+        self.browser_panel_visible = False
+        
+        # Restore sidebar if it was hidden
+        if hasattr(self, 'browser_expanded') and self.browser_expanded:
+            self.browser_expanded = False
+            self.navigation_view.set_visible(True)
+            if hasattr(self, 'browser_expand_btn'):
+                self.browser_expand_btn.set_icon_name("view-fullscreen-symbolic")
+                self.browser_expand_btn.set_tooltip_text("Expand browser (hide sidebar)")
     
     def _on_browser_title_changed(self, webview, param):
         """Update tab title when page title changes."""
@@ -2906,6 +2996,13 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         self.docked_panel = 'browser'
         self.browser_is_docked = True
         self.browser_panel_visible = True
+        
+        # Sync toggle button state (block handler to prevent recursion)
+        if hasattr(self, 'browser_toggle_btn') and not self.browser_toggle_btn.get_active():
+            self.browser_toggle_btn.handler_block_by_func(self._on_browser_toggle)
+            self.browser_toggle_btn.set_active(True)
+            self.browser_toggle_btn.add_css_class("active")
+            self.browser_toggle_btn.handler_unblock_by_func(self._on_browser_toggle)
         
         # Give browser most of the space - leave ~250px for navigation
         # This makes the browser the star of the show
@@ -6755,6 +6852,61 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
                 pass
             
             self._show_toast("All browsing data cleared")
+    
+    def _update_default_browser_status(self):
+        """Update the default browser status label."""
+        try:
+            result = subprocess.run(
+                ['xdg-settings', 'get', 'default-web-browser'],
+                capture_output=True, text=True, timeout=5
+            )
+            current = result.stdout.strip()
+            
+            if 'tuxassistant' in current.lower() or 'tux-assistant' in current.lower():
+                if hasattr(self, 'default_browser_status'):
+                    self.default_browser_status.set_label("✓ Tux Browser is your default browser")
+                    self.default_browser_status.remove_css_class("dim-label")
+                    self.default_browser_status.add_css_class("success")
+            else:
+                if hasattr(self, 'default_browser_status'):
+                    self.default_browser_status.set_label(f"Current: {current or 'Unknown'}")
+                    self.default_browser_status.remove_css_class("success")
+                    self.default_browser_status.add_css_class("dim-label")
+        except Exception as e:
+            if hasattr(self, 'default_browser_status'):
+                self.default_browser_status.set_label("Could not detect default browser")
+    
+    def _on_set_default_browser_clicked(self, button):
+        """Set Tux Assistant as the default web browser."""
+        try:
+            # The desktop file should be installed at standard locations
+            desktop_file = "com.tuxassistant.app.desktop"
+            
+            # Try to set as default browser using xdg-settings
+            result = subprocess.run(
+                ['xdg-settings', 'set', 'default-web-browser', desktop_file],
+                capture_output=True, text=True, timeout=10
+            )
+            
+            if result.returncode == 0:
+                self._show_toast("Tux Browser set as default!")
+                self._update_default_browser_status()
+            else:
+                # Try alternative: xdg-mime for http/https
+                subprocess.run([
+                    'xdg-mime', 'default', desktop_file, 
+                    'x-scheme-handler/http', 'x-scheme-handler/https'
+                ], timeout=10)
+                
+                self._show_toast("Tux Browser set as default!")
+                self._update_default_browser_status()
+                
+        except subprocess.TimeoutExpired:
+            self._show_toast("Setting default browser timed out")
+        except FileNotFoundError:
+            self._show_toast("xdg-settings not found - install xdg-utils")
+        except Exception as e:
+            self._show_toast(f"Error: {str(e)[:50]}")
     
     def _show_toast(self, message):
         """Show a toast notification."""

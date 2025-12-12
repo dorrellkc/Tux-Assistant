@@ -20,9 +20,48 @@ import urllib.request
 import urllib.parse
 import json
 import re
+import os
 from dataclasses import dataclass
 from typing import Optional, List
 from datetime import datetime
+
+
+# Config file for widget settings
+WIDGET_CONFIG_DIR = os.path.expanduser("~/.config/tux-assistant")
+WIDGET_CONFIG_FILE = os.path.join(WIDGET_CONFIG_DIR, "widget.conf")
+
+
+def load_widget_config() -> dict:
+    """Load widget configuration from file."""
+    defaults = {
+        "temp_unit": "fahrenheit",  # or "celsius"
+        "location": "",  # Empty = auto-detect
+        "headlines_count": 4,
+        "refresh_interval": 15,  # minutes
+        "enabled_sources": ["Phoronix", "OMG! Ubuntu", "9to5Linux", "It's FOSS", 
+                           "GamingOnLinux", "FOSS Force", "Brutalist Report"],
+    }
+    
+    try:
+        os.makedirs(WIDGET_CONFIG_DIR, exist_ok=True)
+        if os.path.exists(WIDGET_CONFIG_FILE):
+            with open(WIDGET_CONFIG_FILE, 'r') as f:
+                saved = json.load(f)
+                defaults.update(saved)
+    except Exception as e:
+        print(f"[Widget] Config load error: {e}")
+    
+    return defaults
+
+
+def save_widget_config(config: dict):
+    """Save widget configuration to file."""
+    try:
+        os.makedirs(WIDGET_CONFIG_DIR, exist_ok=True)
+        with open(WIDGET_CONFIG_FILE, 'w') as f:
+            json.dump(config, f, indent=2)
+    except Exception as e:
+        print(f"[Widget] Config save error: {e}")
 
 
 # =============================================================================
@@ -66,6 +105,11 @@ class WeatherService:
     def get_weather(self, location: str = "") -> Optional[Weather]:
         """Get current weather using Open-Meteo."""
         try:
+            # Load config for settings
+            config = load_widget_config()
+            temp_unit = config.get("temp_unit", "fahrenheit")
+            config_location = config.get("location", "")
+            
             # Check cache
             if self.cache and self.cache_time:
                 elapsed = (datetime.now() - self.cache_time).total_seconds()
@@ -78,10 +122,11 @@ class WeatherService:
                 print("[Weather] curl not found!")
                 return None
             
-            # Step 1: Get location (lat/lon)
-            if location:
+            # Step 1: Get location (lat/lon) - config location takes priority
+            use_location = config_location or location
+            if use_location:
                 # User specified location - use geocoding
-                lat, lon, city, region = self._geocode_location(curl_path, location)
+                lat, lon, city, region = self._geocode_location(curl_path, use_location)
             else:
                 # Auto-detect from IP using ip-api.com (more accurate than wttr.in)
                 lat, lon, city, region = self._get_ip_location(curl_path)
@@ -93,13 +138,13 @@ class WeatherService:
             location_str = f"{city}, {region}" if city else "Unknown Location"
             print(f"[Weather] Location: {location_str} ({lat}, {lon})")
             
-            # Step 2: Get weather from Open-Meteo
+            # Step 2: Get weather from Open-Meteo (respect temp unit setting)
             url = (
                 f"https://api.open-meteo.com/v1/forecast?"
                 f"latitude={lat}&longitude={lon}"
                 f"&current=temperature_2m,relative_humidity_2m,weather_code"
                 f"&daily=weather_code,temperature_2m_max,temperature_2m_min"
-                f"&temperature_unit=fahrenheit"
+                f"&temperature_unit={temp_unit}"
                 f"&timezone=auto"
                 f"&forecast_days=3"
             )
@@ -147,8 +192,11 @@ class WeatherService:
                     'low': f"{int(lows[i])}°" if i < len(lows) else "--°"
                 })
             
+            # Use correct temperature unit symbol
+            unit_symbol = "°F" if temp_unit == "fahrenheit" else "°C"
+            
             weather = Weather(
-                temperature=f"{int(temp)}°F" if temp != '--' else "--°F",
+                temperature=f"{int(temp)}{unit_symbol}" if temp != '--' else f"--{unit_symbol}",
                 condition=self._code_to_condition(weather_code),
                 icon=self._code_to_icon(weather_code),
                 location=location_str,
@@ -291,6 +339,8 @@ class NewsService:
         ("9to5Linux", "https://9to5linux.com/feed"),
         ("It's FOSS", "https://itsfoss.com/feed"),
         ("GamingOnLinux", "https://www.gamingonlinux.com/article_rss.php"),
+        ("FOSS Force", "https://fossforce.com/feed/"),
+        ("Brutalist Report", "https://brutalist.report/feed/tech.rss"),
     ]
     
     def __init__(self):
@@ -300,17 +350,26 @@ class NewsService:
     
     def get_linux_news(self, max_items: int = 5) -> List[NewsItem]:
         """Fetch Linux news from RSS feeds."""
+        # Load config for enabled sources
+        config = load_widget_config()
+        enabled_sources = config.get("enabled_sources", [s[0] for s in self.LINUX_FEEDS])
+        headlines_count = config.get("headlines_count", max_items)
+        
         cache_key = "linux"
         
         # Check cache
         if cache_key in self.cache and cache_key in self.cache_time:
             elapsed = (datetime.now() - self.cache_time[cache_key]).total_seconds()
             if elapsed < self.cache_duration:
-                return self.cache[cache_key][:max_items]
+                return self.cache[cache_key][:headlines_count]
         
         items = []
         
-        for source_name, feed_url in self.LINUX_FEEDS[:3]:  # Limit sources
+        # Filter to only enabled sources
+        active_feeds = [(name, url) for name, url in self.LINUX_FEEDS if name in enabled_sources]
+        
+        # Fetch from each enabled source (limit to 4 sources for performance)
+        for source_name, feed_url in active_feeds[:4]:
             try:
                 items.extend(self._fetch_rss(feed_url, source_name, max_per_feed=2))
             except Exception as e:
@@ -318,7 +377,7 @@ class NewsService:
                 continue
         
         # Sort by recency (if we had timestamps) and limit
-        items = items[:max_items]
+        items = items[:headlines_count]
         
         # Cache
         self.cache[cache_key] = items
@@ -520,9 +579,9 @@ class WeatherCard(Gtk.Box):
 
 
 class NewsCard(Gtk.Box):
-    """News headlines card."""
+    """News headlines card with search."""
     
-    def __init__(self, title: str, icon: str = "📰"):
+    def __init__(self, title: str, icon: str = "📰", url_callback=None):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self.add_css_class("card")
         self.set_margin_start(4)
@@ -530,10 +589,12 @@ class NewsCard(Gtk.Box):
         
         self.title = title
         self.icon = icon
+        self._all_items = []  # Store all items for filtering
+        self._url_callback = url_callback  # Callback to open URLs (e.g., in Tux Browser)
         self._build_ui()
     
     def _build_ui(self):
-        # Header
+        # Header with title and search toggle
         header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         header.set_margin_start(8)
         header.set_margin_end(8)
@@ -544,7 +605,34 @@ class NewsCard(Gtk.Box):
         title_label = Gtk.Label(label=f"{self.icon} {self.title}")
         title_label.add_css_class("heading")
         title_label.set_xalign(0)
+        title_label.set_hexpand(True)
         header.append(title_label)
+        
+        # Search toggle button
+        self.search_btn = Gtk.ToggleButton()
+        self.search_btn.set_icon_name("system-search-symbolic")
+        self.search_btn.add_css_class("flat")
+        self.search_btn.add_css_class("circular")
+        self.search_btn.set_tooltip_text("Search news")
+        self.search_btn.connect("toggled", self._on_search_toggled)
+        header.append(self.search_btn)
+        
+        # Search bar (hidden by default)
+        self.search_revealer = Gtk.Revealer()
+        self.search_revealer.set_transition_type(Gtk.RevealerTransitionType.SLIDE_DOWN)
+        self.append(self.search_revealer)
+        
+        search_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        search_box.set_margin_start(8)
+        search_box.set_margin_end(8)
+        search_box.set_margin_bottom(8)
+        self.search_revealer.set_child(search_box)
+        
+        self.search_entry = Gtk.SearchEntry()
+        self.search_entry.set_placeholder_text("Filter headlines...")
+        self.search_entry.set_hexpand(True)
+        self.search_entry.connect("search-changed", self._on_search_changed)
+        search_box.append(self.search_entry)
         
         # Headlines container
         self.headlines_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
@@ -557,8 +645,36 @@ class NewsCard(Gtk.Box):
         self.loading_label.set_margin_bottom(8)
         self.headlines_box.append(self.loading_label)
     
+    def _on_search_toggled(self, button):
+        """Toggle search bar visibility."""
+        self.search_revealer.set_reveal_child(button.get_active())
+        if button.get_active():
+            self.search_entry.grab_focus()
+        else:
+            self.search_entry.set_text("")
+            self._filter_headlines("")
+    
+    def _on_search_changed(self, entry):
+        """Filter headlines based on search text."""
+        search_text = entry.get_text().lower()
+        self._filter_headlines(search_text)
+    
+    def _filter_headlines(self, search_text: str):
+        """Filter and display headlines matching search text."""
+        if not search_text:
+            self._display_items(self._all_items)
+        else:
+            filtered = [item for item in self._all_items 
+                       if search_text in item.title.lower() or search_text in item.source.lower()]
+            self._display_items(filtered)
+    
     def set_headlines(self, items: List[NewsItem]):
         """Update headlines."""
+        self._all_items = items or []
+        self._display_items(self._all_items)
+    
+    def _display_items(self, items: List[NewsItem]):
+        """Display the given items."""
         # Clear existing
         while child := self.headlines_box.get_first_child():
             self.headlines_box.remove(child)
@@ -609,7 +725,12 @@ class NewsCard(Gtk.Box):
     def _on_headline_clicked(self, button, url: str):
         """Open headline in browser."""
         try:
-            subprocess.Popen(['xdg-open', url])
+            if self._url_callback:
+                # Use callback (e.g., open in Tux Browser)
+                self._url_callback(url)
+            else:
+                # Fallback to system default browser
+                subprocess.Popen(['xdg-open', url])
         except:
             pass
 
@@ -652,46 +773,89 @@ class WeatherWidget(Gtk.MenuButton):
         self.add_css_class("flat")
         
         # Build popover (expanded state)
-        self._build_popover()
+        self.popover = Gtk.Popover()
+        self.popover.set_size_request(340, -1)
+        self.set_popover(self.popover)
+        
+        panel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        panel.set_margin_top(8)
+        panel.set_margin_bottom(8)
+        panel.set_margin_start(4)
+        panel.set_margin_end(4)
+        
+        self.weather_card = WeatherCard()
+        panel.append(self.weather_card)
+        
+        self.linux_news_card = NewsCard(
+            title="Linux News", 
+            icon="🐧",
+            url_callback=self._open_url_in_browser
+        )
+        panel.append(self.linux_news_card)
+        
+        settings_btn = Gtk.Button()
+        settings_btn.add_css_class("flat")
+        settings_box = Gtk.Box(spacing=8)
+        settings_box.append(Gtk.Label(label="⚙️"))
+        settings_box.append(Gtk.Label(label="Widget Settings"))
+        settings_btn.set_child(settings_box)
+        settings_btn.set_halign(Gtk.Align.CENTER)
+        settings_btn.connect("clicked", self._on_settings_clicked)
+        panel.append(settings_btn)
+        
+        self.popover.set_child(panel)
         
         # Start data refresh after a short delay (don't block startup)
-        GLib.timeout_add_seconds(2, self._initial_refresh)
-        
-        # Auto-refresh every 15 minutes
-        GLib.timeout_add_seconds(900, self._scheduled_refresh)
+        GLib.timeout_add_seconds(2, self._do_refresh)
     
-    def _initial_refresh(self):
-        """Initial refresh on startup."""
-        self._do_refresh()
-        return False  # Don't repeat
+    def _open_url_in_browser(self, url: str):
+        """Open URL in Tux Browser (new tab)."""
+        try:
+            # Ensure browser is initialized
+            if hasattr(self.window, 'browser_panel') and self.window.browser_panel is None:
+                if hasattr(self.window, '_build_global_browser_panel'):
+                    self.window._build_global_browser_panel()
+            
+            if hasattr(self.window, '_browser_new_tab') and self.window.browser_panel:
+                self.popover.popdown()
+                if hasattr(self.window, '_show_browser_docked'):
+                    self.window._show_browser_docked()
+                self.window._browser_new_tab(url)
+            else:
+                subprocess.Popen(['xdg-open', url])
+        except Exception as e:
+            print(f"Error opening URL: {e}")
+            # Fallback to system browser
+            try:
+                subprocess.Popen(['xdg-open', url])
+            except:
+                pass
     
-    def _scheduled_refresh(self):
-        """Scheduled refresh every 15 minutes."""
-        if self._error_count < self._max_errors:
-            self._do_refresh()
-        return True  # Keep timer running
+    def _on_settings_clicked(self, button):
+        """Open widget settings dialog."""
+        self.popover.popdown()
+        dialog = WidgetSettingsDialog(self.window, self)
+        dialog.present()
     
     def _do_refresh(self):
-        """Actually perform the refresh (once)."""
+        """Perform the refresh."""
         if self._refreshing:
-            return  # Already refreshing, skip
-        
+            return False
         self._refreshing = True
         
         def do_refresh():
             try:
-                # Fetch weather
                 weather = self.weather_service.get_weather()
                 if weather:
-                    self._error_count = 0  # Reset on success
-                    GLib.idle_add(self._update_weather, weather)
+                    self._error_count = 0
+                    GLib.idle_add(self.weather_icon.set_label, weather.icon)
+                    GLib.idle_add(self.temp_label.set_label, weather.temperature.replace("°F", "°").replace("°C", "°"))
+                    GLib.idle_add(self.weather_card.update, weather)
                 else:
                     self._error_count += 1
-                    GLib.idle_add(self._show_weather_error)
                 
-                # Fetch Linux news
-                linux_news = self.news_service.get_linux_news(max_items=4)
-                GLib.idle_add(self.linux_news_card.set_headlines, linux_news)
+                news = self.news_service.get_linux_news(max_items=4)
+                GLib.idle_add(self.linux_news_card.set_headlines, news)
             except Exception as e:
                 self._error_count += 1
                 print(f"Widget refresh error: {e}")
@@ -700,59 +864,197 @@ class WeatherWidget(Gtk.MenuButton):
         
         thread = threading.Thread(target=do_refresh, daemon=True)
         thread.start()
+        return False
+
+
+# =============================================================================
+# Widget Settings Dialog
+# =============================================================================
+
+class WidgetSettingsDialog(Adw.Dialog):
+    """Settings dialog for weather widget."""
     
-    def _build_popover(self):
-        """Build the widget panel popover."""
-        self.popover = Gtk.Popover()
-        self.popover.set_size_request(340, -1)
-        self.set_popover(self.popover)
-        
-        # Main panel
-        panel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-        panel.set_margin_top(8)
-        panel.set_margin_bottom(8)
-        panel.set_margin_start(4)
-        panel.set_margin_end(4)
-        
-        # Weather card
-        self.weather_card = WeatherCard()
-        panel.append(self.weather_card)
-        
-        # Linux news card
-        self.linux_news_card = NewsCard(title="Linux News", icon="🐧")
-        panel.append(self.linux_news_card)
-        
-        # Settings button (placeholder for Phase 5)
-        settings_btn = Gtk.Button()
-        settings_btn.add_css_class("flat")
-        settings_box = Gtk.Box(spacing=8)
-        settings_box.append(Gtk.Label(label="⚙️"))
-        settings_box.append(Gtk.Label(label="Widget Settings"))
-        settings_btn.set_child(settings_box)
-        settings_btn.set_halign(Gtk.Align.CENTER)
-        settings_btn.set_margin_top(4)
-        settings_btn.connect("clicked", self._on_settings_clicked)
-        panel.append(settings_btn)
-        
-        self.popover.set_child(panel)
+    ALL_SOURCES = [
+        "Phoronix", "OMG! Ubuntu", "9to5Linux", "It's FOSS", 
+        "GamingOnLinux", "FOSS Force", "Brutalist Report"
+    ]
     
-    def _update_weather(self, weather: Weather):
-        """Update weather display."""
-        # Update button
-        self.weather_icon.set_label(weather.icon)
-        self.temp_label.set_label(weather.temperature.replace("°F", "°"))
+    def __init__(self, parent_window, widget):
+        super().__init__()
+        self.parent_window = parent_window
+        self.widget = widget
+        self.config = load_widget_config()
         
-        # Update card
-        self.weather_card.update(weather)
+        self.set_title("Widget Settings")
+        self.set_content_width(400)
+        self.set_content_height(500)
+        
+        self._build_ui()
     
-    def _show_weather_error(self):
-        """Show weather error state."""
-        self.weather_icon.set_label("⚠️")
-        self.temp_label.set_label("--°")
-        self.weather_card.show_error("Could not load weather")
+    def _build_ui(self):
+        # Main toolbar view
+        toolbar_view = Adw.ToolbarView()
+        self.set_child(toolbar_view)
+        
+        # Header bar
+        header = Adw.HeaderBar()
+        header.set_show_end_title_buttons(True)
+        toolbar_view.add_top_bar(header)
+        
+        # Scrolled content
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        toolbar_view.set_content(scroll)
+        
+        # Main content box
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
+        content.set_margin_top(16)
+        content.set_margin_bottom(16)
+        content.set_margin_start(16)
+        content.set_margin_end(16)
+        scroll.set_child(content)
+        
+        # === Weather Settings ===
+        weather_group = Adw.PreferencesGroup()
+        weather_group.set_title("Weather")
+        weather_group.set_description("Configure weather display")
+        content.append(weather_group)
+        
+        # Temperature unit
+        temp_row = Adw.ComboRow()
+        temp_row.set_title("Temperature Unit")
+        temp_row.set_subtitle("Choose Fahrenheit or Celsius")
+        temp_model = Gtk.StringList.new(["Fahrenheit (°F)", "Celsius (°C)"])
+        temp_row.set_model(temp_model)
+        temp_row.set_selected(0 if self.config.get("temp_unit") == "fahrenheit" else 1)
+        temp_row.connect("notify::selected", self._on_temp_unit_changed)
+        weather_group.add(temp_row)
+        self.temp_row = temp_row
+        
+        # Location override
+        location_row = Adw.EntryRow()
+        location_row.set_title("Location")
+        location_row.set_text(self.config.get("location", ""))
+        location_row.set_show_apply_button(True)
+        location_row.connect("apply", self._on_location_changed)
+        weather_group.add(location_row)
+        self.location_row = location_row
+        
+        # Auto-detect hint
+        location_hint = Adw.ActionRow()
+        location_hint.set_subtitle("Leave empty to auto-detect from IP address")
+        weather_group.add(location_hint)
+        
+        # === News Settings ===
+        news_group = Adw.PreferencesGroup()
+        news_group.set_title("News")
+        news_group.set_description("Configure news sources and display")
+        content.append(news_group)
+        
+        # Headlines count
+        headlines_row = Adw.SpinRow.new_with_range(1, 10, 1)
+        headlines_row.set_title("Headlines to Show")
+        headlines_row.set_subtitle("Number of news items displayed")
+        headlines_row.set_value(self.config.get("headlines_count", 4))
+        headlines_row.connect("notify::value", self._on_headlines_count_changed)
+        news_group.add(headlines_row)
+        self.headlines_row = headlines_row
+        
+        # === News Sources ===
+        sources_group = Adw.PreferencesGroup()
+        sources_group.set_title("News Sources")
+        sources_group.set_description("Enable or disable news sources")
+        content.append(sources_group)
+        
+        enabled_sources = self.config.get("enabled_sources", self.ALL_SOURCES)
+        self.source_switches = {}
+        
+        for source_name in self.ALL_SOURCES:
+            row = Adw.SwitchRow()
+            row.set_title(source_name)
+            row.set_active(source_name in enabled_sources)
+            row.connect("notify::active", self._on_source_toggled, source_name)
+            sources_group.add(row)
+            self.source_switches[source_name] = row
+        
+        # === Refresh Settings ===
+        refresh_group = Adw.PreferencesGroup()
+        refresh_group.set_title("Refresh")
+        refresh_group.set_description("Configure data refresh behavior")
+        content.append(refresh_group)
+        
+        # Refresh interval
+        refresh_row = Adw.ComboRow()
+        refresh_row.set_title("Refresh Interval")
+        refresh_row.set_subtitle("How often to update weather and news")
+        refresh_model = Gtk.StringList.new(["5 minutes", "10 minutes", "15 minutes", "30 minutes", "1 hour"])
+        refresh_row.set_model(refresh_model)
+        
+        interval = self.config.get("refresh_interval", 15)
+        interval_map = {5: 0, 10: 1, 15: 2, 30: 3, 60: 4}
+        refresh_row.set_selected(interval_map.get(interval, 2))
+        refresh_row.connect("notify::selected", self._on_refresh_changed)
+        refresh_group.add(refresh_row)
+        self.refresh_row = refresh_row
+        
+        # Refresh now button
+        refresh_btn_row = Adw.ActionRow()
+        refresh_btn_row.set_title("Refresh Now")
+        refresh_btn_row.set_subtitle("Update weather and news immediately")
+        
+        refresh_btn = Gtk.Button(label="Refresh")
+        refresh_btn.add_css_class("suggested-action")
+        refresh_btn.set_valign(Gtk.Align.CENTER)
+        refresh_btn.connect("clicked", self._on_refresh_now)
+        refresh_btn_row.add_suffix(refresh_btn)
+        refresh_btn_row.set_activatable_widget(refresh_btn)
+        refresh_group.add(refresh_btn_row)
     
-    def _on_settings_clicked(self, button):
-        """Open widget settings (placeholder)."""
-        if hasattr(self.window, 'show_toast'):
-            self.window.show_toast("Widget settings coming soon!")
-        self.popover.popdown()
+    def _on_temp_unit_changed(self, row, param):
+        """Handle temperature unit change."""
+        self.config["temp_unit"] = "fahrenheit" if row.get_selected() == 0 else "celsius"
+        save_widget_config(self.config)
+        # Update weather service
+        if hasattr(self.widget, 'weather_service'):
+            self.widget.weather_service.cache = None  # Clear cache to refresh
+    
+    def _on_location_changed(self, row):
+        """Handle location change."""
+        self.config["location"] = row.get_text().strip()
+        save_widget_config(self.config)
+        # Clear weather cache to use new location
+        if hasattr(self.widget, 'weather_service'):
+            self.widget.weather_service.cache = None
+    
+    def _on_headlines_count_changed(self, row, param):
+        """Handle headlines count change."""
+        self.config["headlines_count"] = int(row.get_value())
+        save_widget_config(self.config)
+    
+    def _on_source_toggled(self, row, param, source_name):
+        """Handle source toggle."""
+        enabled = self.config.get("enabled_sources", list(self.ALL_SOURCES))
+        if row.get_active():
+            if source_name not in enabled:
+                enabled.append(source_name)
+        else:
+            if source_name in enabled:
+                enabled.remove(source_name)
+        self.config["enabled_sources"] = enabled
+        save_widget_config(self.config)
+        # Clear news cache
+        if hasattr(self.widget, 'news_service'):
+            self.widget.news_service.cache = {}
+    
+    def _on_refresh_changed(self, row, param):
+        """Handle refresh interval change."""
+        intervals = [5, 10, 15, 30, 60]
+        self.config["refresh_interval"] = intervals[row.get_selected()]
+        save_widget_config(self.config)
+    
+    def _on_refresh_now(self, button):
+        """Trigger immediate refresh."""
+        if hasattr(self.widget, '_do_refresh'):
+            self.widget._do_refresh()
+        if hasattr(self.parent_window, 'show_toast'):
+            self.parent_window.show_toast("Refreshing weather and news...")
