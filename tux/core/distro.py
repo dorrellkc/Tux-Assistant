@@ -27,7 +27,7 @@ class DistroFamily(Enum):
 DISTRO_FAMILY_MAP = {
     DistroFamily.ARCH: [
         'arch', 'manjaro', 'cachyos', 'endeavouros', 'garuda', 'artix',
-        'arcolinux', 'archcraft', 'rebornos', 'bluestar', 'startde'
+        'arcolinux', 'archcraft', 'rebornos', 'bluestar', 'startde', 'pearos'
     ],
     DistroFamily.DEBIAN: [
         'debian', 'ubuntu', 'linuxmint', 'pop', 'elementary', 'zorin',

@@ -777,6 +777,12 @@ class WeatherWidget(Gtk.MenuButton):
         self.popover.set_size_request(340, -1)
         self.set_popover(self.popover)
         
+        # Scrolled window to prevent popover from getting too tall
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll.set_max_content_height(450)
+        scroll.set_propagate_natural_height(True)
+        
         panel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         panel.set_margin_top(8)
         panel.set_margin_bottom(8)
@@ -803,7 +809,8 @@ class WeatherWidget(Gtk.MenuButton):
         settings_btn.connect("clicked", self._on_settings_clicked)
         panel.append(settings_btn)
         
-        self.popover.set_child(panel)
+        scroll.set_child(panel)
+        self.popover.set_child(scroll)
         
         # Start data refresh after a short delay (don't block startup)
         GLib.timeout_add_seconds(2, self._do_refresh)
@@ -854,7 +861,9 @@ class WeatherWidget(Gtk.MenuButton):
                 else:
                     self._error_count += 1
                 
-                news = self.news_service.get_linux_news(max_items=4)
+                config = load_widget_config()
+                headlines_count = config.get("headlines_count", 4)
+                news = self.news_service.get_linux_news(max_items=headlines_count)
                 GLib.idle_add(self.linux_news_card.set_headlines, news)
             except Exception as e:
                 self._error_count += 1

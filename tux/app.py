@@ -12,6 +12,9 @@ import os
 import gi
 import sqlite3
 import threading
+import urllib.request
+import json
+from datetime import datetime, timedelta
 
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
@@ -522,6 +525,8 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
     CONFIG_FILE = CONFIG_DIR + "/window.conf"
     BOOKMARKS_FILE = CONFIG_DIR + "/bookmarks.json"
     HISTORY_DB = CONFIG_DIR + "/history.db"
+    UPDATE_CHECK_FILE = CONFIG_DIR + "/update_check.json"
+    GITHUB_RELEASES_URL = "https://api.github.com/repos/dorrellkc/Tux-Assistant/releases/latest"
     
     # History limits - designed for daily use over years
     HISTORY_MAX_SIZE_MB = 200  # Maximum database size
@@ -551,6 +556,14 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         'bluekai.com', 'krxd.net', 'exelator.com', 'demdex.net',
         'adzerk.net', 'adcolony.com', 'unity3d.com/ads', 'unityads.unity3d.com',
         'mopub.com', 'applovin.com', 'vungle.com', 'chartboost.com',
+        # Tech/Dev site ad networks
+        'carbonads.com', 'carbonads.net', 'srv.carbonads.net', 'cdn.carbonads.com',
+        'buysellads.com', 'buysellads.net', 's3.buysellads.com',
+        'adthrive.com', 'ads.adthrive.com',
+        'mediavine.com', 'scripts.mediavine.com',
+        'ezoic.net', 'ezoic.com', 'go.ezoic.net',
+        'jeeng.com', 'sdk.jeeng.com',
+        'ethicalads.io',
     }
     
     TRACKER_DOMAINS = {
@@ -645,6 +658,9 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         
         # Build UI
         self.build_ui()
+        
+        # Check for updates (non-blocking)
+        self._check_for_updates()
         
         # Window-level keyboard handler for F11 (fullscreen)
         window_key_controller = Gtk.EventControllerKey()
@@ -1251,6 +1267,15 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         menu_button.set_icon_name("open-menu-symbolic")
         menu_button.set_menu_model(self.create_menu())
         header.pack_end(menu_button)
+        
+        # Update indicator button (hidden by default, shows when update available)
+        self.update_button = Gtk.MenuButton()
+        self.update_button.set_icon_name("software-update-available-symbolic")
+        self.update_button.set_tooltip_text("Update available!")
+        self.update_button.add_css_class("suggested-action")
+        self.update_button.set_visible(False)
+        self._setup_update_popover()
+        header.pack_end(self.update_button)
         
         # Weather widget (before other toggle buttons)
         if ENABLE_WEATHER_WIDGET:
@@ -2262,6 +2287,16 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         self.stop_reading_btn.set_visible(False)
         nav_toolbar.append(self.stop_reading_btn)
         
+        # Reader Mode toggle button
+        self.reader_mode_btn = Gtk.ToggleButton()
+        self.reader_mode_btn.set_icon_name("document-page-setup-symbolic")
+        self.reader_mode_btn.set_tooltip_text("Reader Mode - distraction-free reading")
+        self.reader_mode_btn.connect("toggled", self._on_reader_mode_toggled)
+        nav_toolbar.append(self.reader_mode_btn)
+        
+        # Track reader mode state
+        self._reader_mode_active = False
+        
         nav_toolbar.append(settings_btn)
         
         # New tab button
@@ -2900,7 +2935,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             self.browser_toggle_btn.remove_css_class("active")
             self.browser_toggle_btn.handler_unblock_by_func(self._on_browser_toggle)
         
-        # Remove browser panel
+        # Remove browser panel from UI
         if self.browser_is_docked:
             self.main_paned.set_end_child(None)
             self.docked_panel = None
@@ -2911,6 +2946,9 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             self.browser_window = None
         
         self.browser_panel_visible = False
+        
+        # Reset browser panel so it gets rebuilt fresh next time
+        self.browser_panel = None
         
         # Restore sidebar if it was hidden
         if hasattr(self, 'browser_expanded') and self.browser_expanded:
@@ -6563,6 +6601,135 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         self._stop_read_aloud()
         self._show_toast("Reading stopped")
     
+    def _on_reader_mode_toggled(self, button):
+        """Toggle reader mode for distraction-free reading."""
+        webview = self._get_current_browser_webview()
+        if not webview:
+            button.set_active(False)
+            return
+        
+        self._reader_mode_active = button.get_active()
+        
+        if self._reader_mode_active:
+            # Activate reader mode
+            self._enable_reader_mode(webview)
+        else:
+            # Deactivate reader mode - reload page to restore
+            webview.reload()
+    
+    def _enable_reader_mode(self, webview):
+        """Extract article content and display in reader mode."""
+        # JavaScript to extract article content and apply reader styling
+        reader_js = '''
+        (function() {
+            // Try to find main article content
+            var article = document.querySelector('article') || 
+                          document.querySelector('[role="main"]') ||
+                          document.querySelector('.post-content') ||
+                          document.querySelector('.article-content') ||
+                          document.querySelector('.entry-content') ||
+                          document.querySelector('.content') ||
+                          document.querySelector('main');
+            
+            // Get title
+            var title = document.querySelector('h1') || document.querySelector('title');
+            var titleText = title ? title.textContent : document.title;
+            
+            // Get article text
+            var content = '';
+            if (article) {
+                content = article.innerHTML;
+            } else {
+                // Fallback: get all paragraphs
+                var paragraphs = document.querySelectorAll('p');
+                for (var i = 0; i < paragraphs.length; i++) {
+                    if (paragraphs[i].textContent.length > 50) {
+                        content += '<p>' + paragraphs[i].textContent + '</p>';
+                    }
+                }
+            }
+            
+            if (!content || content.length < 100) {
+                alert('Could not extract article content from this page.');
+                return false;
+            }
+            
+            // Create reader mode overlay
+            var readerCSS = `
+                body.tux-reader-mode {
+                    background: #fefefe !important;
+                    color: #333 !important;
+                }
+                @media (prefers-color-scheme: dark) {
+                    body.tux-reader-mode {
+                        background: #1a1a2e !important;
+                        color: #e8e8e8 !important;
+                    }
+                    body.tux-reader-mode .tux-reader-container {
+                        background: #1a1a2e !important;
+                    }
+                }
+                .tux-reader-container {
+                    max-width: 700px !important;
+                    margin: 0 auto !important;
+                    padding: 40px 20px !important;
+                    font-family: Georgia, 'Times New Roman', serif !important;
+                    font-size: 20px !important;
+                    line-height: 1.8 !important;
+                    background: #fefefe !important;
+                }
+                .tux-reader-container h1 {
+                    font-size: 32px !important;
+                    margin-bottom: 30px !important;
+                    line-height: 1.3 !important;
+                    font-weight: bold !important;
+                }
+                .tux-reader-container p {
+                    margin-bottom: 1.5em !important;
+                }
+                .tux-reader-container img {
+                    max-width: 100% !important;
+                    height: auto !important;
+                    margin: 20px 0 !important;
+                }
+                .tux-reader-container a {
+                    color: #0066cc !important;
+                }
+                .tux-reader-hidden {
+                    display: none !important;
+                }
+            `;
+            
+            // Add style
+            var style = document.createElement('style');
+            style.id = 'tux-reader-style';
+            style.textContent = readerCSS;
+            document.head.appendChild(style);
+            
+            // Hide original content
+            document.body.classList.add('tux-reader-mode');
+            var children = document.body.children;
+            for (var i = 0; i < children.length; i++) {
+                if (!children[i].classList.contains('tux-reader-container')) {
+                    children[i].classList.add('tux-reader-hidden');
+                }
+            }
+            
+            // Create reader container
+            var container = document.createElement('div');
+            container.className = 'tux-reader-container';
+            container.innerHTML = '<h1>' + titleText + '</h1>' + content;
+            document.body.appendChild(container);
+            
+            // Scroll to top
+            window.scrollTo(0, 0);
+            
+            return true;
+        })();
+        '''
+        
+        webview.evaluate_javascript(reader_js, -1, None, None, None, None, None)
+    
     def _tts_playback_finished(self):
         """Called when TTS playback finishes."""
         self.tts_process = None
@@ -6917,6 +7084,186 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         else:
             print(f"[Toast] {message}")
     
+    # =========================================================================
+    # Update Checker
+    # =========================================================================
+    
+    def _setup_update_popover(self):
+        """Setup the update notification popover."""
+        self.update_popover = Gtk.Popover()
+        self.update_popover.set_autohide(True)
+        
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        box.set_margin_top(12)
+        box.set_margin_bottom(12)
+        box.set_margin_start(12)
+        box.set_margin_end(12)
+        
+        # Title
+        self.update_title = Gtk.Label()
+        self.update_title.set_markup("<b>Update Available!</b>")
+        self.update_title.set_halign(Gtk.Align.START)
+        box.append(self.update_title)
+        
+        # Version info
+        self.update_version_label = Gtk.Label()
+        self.update_version_label.set_halign(Gtk.Align.START)
+        self.update_version_label.add_css_class("dim-label")
+        box.append(self.update_version_label)
+        
+        # Changelog preview (scrollable)
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_min_content_height(100)
+        scroll.set_max_content_height(200)
+        scroll.set_min_content_width(300)
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        
+        self.update_changelog = Gtk.Label()
+        self.update_changelog.set_wrap(True)
+        self.update_changelog.set_wrap_mode(2)  # WORD_CHAR
+        self.update_changelog.set_halign(Gtk.Align.START)
+        self.update_changelog.set_valign(Gtk.Align.START)
+        self.update_changelog.set_selectable(True)
+        scroll.set_child(self.update_changelog)
+        box.append(scroll)
+        
+        # Download button
+        download_btn = Gtk.Button(label="View on GitHub")
+        download_btn.add_css_class("suggested-action")
+        download_btn.connect("clicked", self._on_update_download_clicked)
+        box.append(download_btn)
+        
+        self.update_popover.set_child(box)
+        self.update_button.set_popover(self.update_popover)
+        
+        # Store release URL for download button
+        self.update_release_url = None
+    
+    def _check_for_updates(self):
+        """Check GitHub for updates (runs in background thread)."""
+        def do_check():
+            try:
+                # Check if we should skip (checked in last 24 hours)
+                if os.path.exists(self.UPDATE_CHECK_FILE):
+                    try:
+                        with open(self.UPDATE_CHECK_FILE, 'r') as f:
+                            cached = json.load(f)
+                        last_check = datetime.fromisoformat(cached.get('last_check', '2000-01-01'))
+                        if datetime.now() - last_check < timedelta(hours=24):
+                            # Use cached result if update was available
+                            if cached.get('update_available'):
+                                GLib.idle_add(
+                                    self._show_update_available,
+                                    cached.get('latest_version', ''),
+                                    cached.get('changelog', ''),
+                                    cached.get('release_url', '')
+                                )
+                            return
+                    except (json.JSONDecodeError, ValueError):
+                        pass  # Invalid cache, check anyway
+                
+                # Fetch latest release from GitHub
+                req = urllib.request.Request(
+                    self.GITHUB_RELEASES_URL,
+                    headers={'User-Agent': f'Tux-Assistant/{APP_VERSION}'}
+                )
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    data = json.loads(response.read().decode('utf-8'))
+                
+                latest_version = data.get('tag_name', '').lstrip('v')
+                changelog = data.get('body', '')[:500]  # Limit changelog length
+                release_url = data.get('html_url', '')
+                
+                # Compare versions
+                current = APP_VERSION.lstrip('v')
+                update_available = self._compare_versions(latest_version, current) > 0
+                
+                # Cache the result
+                os.makedirs(self.CONFIG_DIR, exist_ok=True)
+                with open(self.UPDATE_CHECK_FILE, 'w') as f:
+                    json.dump({
+                        'last_check': datetime.now().isoformat(),
+                        'latest_version': latest_version,
+                        'update_available': update_available,
+                        'changelog': changelog,
+                        'release_url': release_url
+                    }, f)
+                
+                # Show update if available
+                if update_available:
+                    GLib.idle_add(
+                        self._show_update_available,
+                        latest_version,
+                        changelog,
+                        release_url
+                    )
+                else:
+                    print(f"[Update] Current version {current} is up to date")
+                    
+            except Exception as e:
+                print(f"[Update] Check failed: {e}")
+        
+        # Run in background thread
+        thread = threading.Thread(target=do_check, daemon=True)
+        thread.start()
+    
+    def _compare_versions(self, v1, v2):
+        """Compare two version strings. Returns: 1 if v1>v2, -1 if v1<v2, 0 if equal."""
+        try:
+            def parse_version(v):
+                # Handle versions like "0.9.203" or "v0.9.203"
+                v = v.lstrip('v')
+                parts = []
+                for part in v.split('.'):
+                    # Handle parts like "203-beta" -> just take the number
+                    num = ''.join(c for c in part if c.isdigit())
+                    parts.append(int(num) if num else 0)
+                return parts
+            
+            p1, p2 = parse_version(v1), parse_version(v2)
+            
+            # Pad to same length
+            while len(p1) < len(p2): p1.append(0)
+            while len(p2) < len(p1): p2.append(0)
+            
+            for a, b in zip(p1, p2):
+                if a > b: return 1
+                if a < b: return -1
+            return 0
+        except Exception:
+            return 0  # On error, assume equal
+    
+    def _show_update_available(self, version, changelog, release_url):
+        """Show the update indicator (called from main thread)."""
+        self.update_version_label.set_text(f"v{APP_VERSION} → v{version}")
+        
+        # Clean up changelog for display
+        if changelog:
+            # Take first ~300 chars, try to end at sentence
+            preview = changelog[:300]
+            if len(changelog) > 300:
+                # Try to end at a period or newline
+                last_break = max(preview.rfind('.'), preview.rfind('\n'))
+                if last_break > 100:
+                    preview = preview[:last_break + 1]
+                preview += "..."
+            self.update_changelog.set_text(preview)
+        else:
+            self.update_changelog.set_text("See GitHub for details.")
+        
+        self.update_release_url = release_url
+        self.update_button.set_visible(True)
+        print(f"[Update] Version {version} available!")
+    
+    def _on_update_download_clicked(self, button):
+        """Open the GitHub release page."""
+        self.update_popover.popdown()
+        if self.update_release_url:
+            try:
+                Gio.AppInfo.launch_default_for_uri(self.update_release_url, None)
+            except Exception as e:
+                self._show_toast(f"Couldn't open browser: {e}")
+    
     def _update_blocked_count(self):
         """Update the protection status label."""
         if hasattr(self, 'blocked_label'):
@@ -7096,6 +7443,13 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             
             /* Common WordPress ad plugins */
             .wp-ad, .wpa, .adrotate, .advanced-ads,
+            
+            /* Sponsored content containers */
+            .sponsored, .sponsored-content, .sponsored-post,
+            .promoted, .promoted-content, .native-ad,
+            .carbon-wrap, .carbonads, #carbonads,
+            .bsa-cpc, .buysellads, [id*="bsa-zone"],
+            [class*="adthrive"], [class*="mediavine"], [id*="ezoic"],
             
             /* Cookie banners (specific patterns) */
             .cc-banner, .cookie-banner, .cookie-notice,
