@@ -2381,6 +2381,7 @@ FONT_PACKAGES = [
 # =============================================================================
 
 GNOME_TWEAKS = [
+    # === Window Behavior ===
     Tweak(
         id="titlebar-buttons",
         name="Show Minimize/Maximize Buttons",
@@ -2405,27 +2406,61 @@ GNOME_TWEAKS = [
         disabled_value="false"
     ),
     Tweak(
-        id="tap-to-click",
-        name="Tap to Click",
-        description="Enable touchpad tap to click",
+        id="edge-tiling",
+        name="Edge Tiling",
+        description="Tile windows when dragged to screen edges",
         desktop=DesktopEnv.GNOME,
-        gsettings_schema="org.gnome.desktop.peripherals.touchpad",
-        gsettings_key="tap-to-click",
+        gsettings_schema="org.gnome.mutter",
+        gsettings_key="edge-tiling",
         is_toggle=True,
         enabled_value="true",
         disabled_value="false"
     ),
     Tweak(
-        id="natural-scrolling",
-        name="Natural Scrolling",
-        description="Reverse scroll direction",
+        id="attach-modal-dialogs",
+        name="Attach Modal Dialogs",
+        description="Attach dialog windows to their parent",
         desktop=DesktopEnv.GNOME,
-        gsettings_schema="org.gnome.desktop.peripherals.touchpad",
-        gsettings_key="natural-scroll",
+        gsettings_schema="org.gnome.mutter",
+        gsettings_key="attach-modal-dialogs",
         is_toggle=True,
         enabled_value="true",
         disabled_value="false"
     ),
+    Tweak(
+        id="focus-mode-click",
+        name="Click to Focus",
+        description="Windows require click to focus (vs hover)",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.desktop.wm.preferences",
+        gsettings_key="focus-mode",
+        is_toggle=True,
+        enabled_value="click",
+        disabled_value="sloppy"
+    ),
+    Tweak(
+        id="raise-on-click",
+        name="Raise Windows on Click",
+        description="Clicking a window raises it to front",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.desktop.wm.preferences",
+        gsettings_key="raise-on-click",
+        is_toggle=True,
+        enabled_value="true",
+        disabled_value="false"
+    ),
+    Tweak(
+        id="resize-with-right-button",
+        name="Resize with Right Button",
+        description="Use right-click to resize windows",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.desktop.wm.preferences",
+        gsettings_key="resize-with-right-button",
+        is_toggle=True,
+        enabled_value="true",
+        disabled_value="false"
+    ),
+    # === Top Bar / Clock ===
     Tweak(
         id="show-weekday",
         name="Show Weekday in Clock",
@@ -2438,6 +2473,39 @@ GNOME_TWEAKS = [
         disabled_value="false"
     ),
     Tweak(
+        id="show-date",
+        name="Show Date in Clock",
+        description="Display date in top panel clock",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.desktop.interface",
+        gsettings_key="clock-show-date",
+        is_toggle=True,
+        enabled_value="true",
+        disabled_value="false"
+    ),
+    Tweak(
+        id="clock-seconds",
+        name="Show Seconds in Clock",
+        description="Display seconds in top panel clock",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.desktop.interface",
+        gsettings_key="clock-show-seconds",
+        is_toggle=True,
+        enabled_value="true",
+        disabled_value="false"
+    ),
+    Tweak(
+        id="clock-24h",
+        name="24-Hour Clock",
+        description="Use 24-hour time format",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.desktop.interface",
+        gsettings_key="clock-format",
+        is_toggle=True,
+        enabled_value="24h",
+        disabled_value="12h"
+    ),
+    Tweak(
         id="show-battery-percentage",
         name="Show Battery Percentage",
         description="Display battery percentage in panel",
@@ -2448,17 +2516,7 @@ GNOME_TWEAKS = [
         enabled_value="true",
         disabled_value="false"
     ),
-    Tweak(
-        id="hot-corner",
-        name="Hot Corner (Activities)",
-        description="Enable hot corner for Activities view",
-        desktop=DesktopEnv.GNOME,
-        gsettings_schema="org.gnome.desktop.interface",
-        gsettings_key="enable-hot-corners",
-        is_toggle=True,
-        enabled_value="true",
-        disabled_value="false"
-    ),
+    # === Appearance / Interface ===
     Tweak(
         id="dark-mode",
         name="Dark Mode",
@@ -2482,12 +2540,194 @@ GNOME_TWEAKS = [
         disabled_value="false"
     ),
     Tweak(
-        id="clock-seconds",
-        name="Show Seconds in Clock",
-        description="Display seconds in top panel clock",
+        id="hot-corner",
+        name="Hot Corner (Activities)",
+        description="Enable hot corner for Activities view",
         desktop=DesktopEnv.GNOME,
         gsettings_schema="org.gnome.desktop.interface",
-        gsettings_key="clock-show-seconds",
+        gsettings_key="enable-hot-corners",
+        is_toggle=True,
+        enabled_value="true",
+        disabled_value="false"
+    ),
+    # === Input Devices ===
+    Tweak(
+        id="tap-to-click",
+        name="Tap to Click",
+        description="Enable touchpad tap to click",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.desktop.peripherals.touchpad",
+        gsettings_key="tap-to-click",
+        is_toggle=True,
+        enabled_value="true",
+        disabled_value="false"
+    ),
+    Tweak(
+        id="natural-scrolling",
+        name="Natural Scrolling (Touchpad)",
+        description="Reverse touchpad scroll direction",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.desktop.peripherals.touchpad",
+        gsettings_key="natural-scroll",
+        is_toggle=True,
+        enabled_value="true",
+        disabled_value="false"
+    ),
+    Tweak(
+        id="two-finger-scroll",
+        name="Two-Finger Scrolling",
+        description="Use two fingers to scroll on touchpad",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.desktop.peripherals.touchpad",
+        gsettings_key="two-finger-scrolling-enabled",
+        is_toggle=True,
+        enabled_value="true",
+        disabled_value="false"
+    ),
+    Tweak(
+        id="disable-touchpad-typing",
+        name="Disable Touchpad While Typing",
+        description="Prevent accidental touches while typing",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.desktop.peripherals.touchpad",
+        gsettings_key="disable-while-typing",
+        is_toggle=True,
+        enabled_value="true",
+        disabled_value="false"
+    ),
+    Tweak(
+        id="mouse-natural-scroll",
+        name="Natural Scrolling (Mouse)",
+        description="Reverse mouse scroll direction",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.desktop.peripherals.mouse",
+        gsettings_key="natural-scroll",
+        is_toggle=True,
+        enabled_value="true",
+        disabled_value="false"
+    ),
+    Tweak(
+        id="middle-click-paste",
+        name="Middle-Click Paste",
+        description="Paste with middle mouse button",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.desktop.interface",
+        gsettings_key="gtk-enable-primary-paste",
+        is_toggle=True,
+        enabled_value="true",
+        disabled_value="false"
+    ),
+    # === Workspaces ===
+    Tweak(
+        id="dynamic-workspaces",
+        name="Dynamic Workspaces",
+        description="Automatically add/remove workspaces",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.mutter",
+        gsettings_key="dynamic-workspaces",
+        is_toggle=True,
+        enabled_value="true",
+        disabled_value="false"
+    ),
+    Tweak(
+        id="workspaces-only-primary",
+        name="Workspaces on Primary Display Only",
+        description="Only primary monitor switches workspaces",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.mutter",
+        gsettings_key="workspaces-only-on-primary",
+        is_toggle=True,
+        enabled_value="true",
+        disabled_value="false"
+    ),
+    # === Sound ===
+    Tweak(
+        id="over-amplification",
+        name="Over-Amplification",
+        description="Allow volume above 100%",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.desktop.sound",
+        gsettings_key="allow-volume-above-100-percent",
+        is_toggle=True,
+        enabled_value="true",
+        disabled_value="false"
+    ),
+    Tweak(
+        id="event-sounds",
+        name="System Sounds",
+        description="Play sounds for system events",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.desktop.sound",
+        gsettings_key="event-sounds",
+        is_toggle=True,
+        enabled_value="true",
+        disabled_value="false"
+    ),
+    # === Power ===
+    Tweak(
+        id="suspend-on-lid-close",
+        name="Suspend on Lid Close",
+        description="Suspend laptop when lid is closed",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.settings-daemon.plugins.power",
+        gsettings_key="lid-close-suspend-with-external-monitor",
+        is_toggle=True,
+        enabled_value="true",
+        disabled_value="false"
+    ),
+    Tweak(
+        id="show-suspend-button",
+        name="Show Suspend Button",
+        description="Show suspend in power menu",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.desktop.lockdown",
+        gsettings_key="disable-log-out",
+        is_toggle=True,
+        enabled_value="false",
+        disabled_value="true"
+    ),
+    # === Privacy / Security ===
+    Tweak(
+        id="automatic-screen-lock",
+        name="Automatic Screen Lock",
+        description="Lock screen when idle",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.desktop.screensaver",
+        gsettings_key="lock-enabled",
+        is_toggle=True,
+        enabled_value="true",
+        disabled_value="false"
+    ),
+    Tweak(
+        id="show-full-name-login",
+        name="Show Full Name at Login",
+        description="Display full name instead of username",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.login-screen",
+        gsettings_key="enable-fingerprint-authentication",
+        is_toggle=True,
+        enabled_value="true",
+        disabled_value="false"
+    ),
+    # === Files / Nautilus ===
+    Tweak(
+        id="show-hidden-files",
+        name="Show Hidden Files",
+        description="Show hidden files in file manager",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.nautilus.preferences",
+        gsettings_key="show-hidden-files",
+        is_toggle=True,
+        enabled_value="true",
+        disabled_value="false"
+    ),
+    Tweak(
+        id="sort-folders-first",
+        name="Sort Folders Before Files",
+        description="Show folders before files in file manager",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gtk.gtk4.settings.file-chooser",
+        gsettings_key="sort-directories-first",
         is_toggle=True,
         enabled_value="true",
         disabled_value="false"
@@ -3977,36 +4217,101 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         return group
     
     def _create_gnome_tweaks_section(self) -> Gtk.Widget:
-        """Create GNOME tweaks section."""
-        group = Adw.PreferencesGroup()
-        group.set_title("GNOME Tweaks")
-        group.set_description("Quick settings and customizations")
+        """Create GNOME tweaks section with organized categories."""
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=15)
         
-        for tweak in GNOME_TWEAKS:
-            row = Adw.SwitchRow()
-            row.set_title(tweak.name)
-            row.set_subtitle(tweak.description)
-            
-            # Get current state
-            is_enabled = self.tweak_manager.is_tweak_enabled(tweak)
-            row.set_active(is_enabled)
-            
-            # Connect toggle
-            row.connect("notify::active", self.on_tweak_toggled, tweak)
-            
-            group.add(row)
+        # Define tweak categories by their ID prefixes/keywords
+        categories = [
+            ("Window Behavior", "windows-symbolic", [
+                "titlebar-buttons", "center-new-windows", "edge-tiling", 
+                "attach-modal-dialogs", "focus-mode-click", "raise-on-click",
+                "resize-with-right-button"
+            ]),
+            ("Top Bar & Clock", "preferences-system-time-symbolic", [
+                "show-weekday", "show-date", "clock-seconds", "clock-24h",
+                "show-battery-percentage"
+            ]),
+            ("Appearance", "preferences-desktop-appearance-symbolic", [
+                "dark-mode", "animations", "hot-corner"
+            ]),
+            ("Input Devices", "input-mouse-symbolic", [
+                "tap-to-click", "natural-scrolling", "two-finger-scroll",
+                "disable-touchpad-typing", "mouse-natural-scroll", "middle-click-paste"
+            ]),
+            ("Workspaces", "view-grid-symbolic", [
+                "dynamic-workspaces", "workspaces-only-primary"
+            ]),
+            ("Sound", "audio-volume-high-symbolic", [
+                "over-amplification", "event-sounds"
+            ]),
+            ("Power", "battery-symbolic", [
+                "suspend-on-lid-close", "show-suspend-button"
+            ]),
+            ("Privacy & Security", "security-high-symbolic", [
+                "automatic-screen-lock", "show-full-name-login"
+            ]),
+            ("Files", "folder-symbolic", [
+                "show-hidden-files", "sort-folders-first"
+            ]),
+        ]
         
-        # GNOME Tweaks tool
+        # Build a lookup dict for tweaks by ID
+        tweak_lookup = {tweak.id: tweak for tweak in GNOME_TWEAKS}
+        
+        for cat_name, cat_icon, tweak_ids in categories:
+            group = Adw.PreferencesGroup()
+            group.set_title(cat_name)
+            
+            has_tweaks = False
+            for tweak_id in tweak_ids:
+                if tweak_id in tweak_lookup:
+                    tweak = tweak_lookup[tweak_id]
+                    row = Adw.SwitchRow()
+                    row.set_title(tweak.name)
+                    row.set_subtitle(tweak.description)
+                    
+                    # Get current state
+                    try:
+                        is_enabled = self.tweak_manager.is_tweak_enabled(tweak)
+                        row.set_active(is_enabled)
+                    except Exception:
+                        row.set_active(False)
+                    
+                    # Connect toggle
+                    row.connect("notify::active", self.on_tweak_toggled, tweak)
+                    
+                    group.add(row)
+                    has_tweaks = True
+            
+            if has_tweaks:
+                box.append(group)
+        
+        # GNOME Tweaks tool at the bottom
+        tools_group = Adw.PreferencesGroup()
+        tools_group.set_title("Advanced Tools")
+        
         tweaks_row = Adw.ActionRow()
         tweaks_row.set_title("GNOME Tweaks")
-        tweaks_row.set_subtitle("Advanced GNOME settings tool")
+        tweaks_row.set_subtitle("Install the official GNOME Tweaks tool for more options")
         tweaks_row.set_activatable(True)
         tweaks_row.add_prefix(Gtk.Image.new_from_icon_name("applications-system-symbolic"))
         tweaks_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
         tweaks_row.connect("activated", self.on_install_gnome_tweaks)
-        group.add(tweaks_row)
+        tools_group.add(tweaks_row)
         
-        return group
+        # dconf Editor for power users
+        dconf_row = Adw.ActionRow()
+        dconf_row.set_title("dconf Editor")
+        dconf_row.set_subtitle("Low-level settings editor (advanced users)")
+        dconf_row.set_activatable(True)
+        dconf_row.add_prefix(Gtk.Image.new_from_icon_name("preferences-other-symbolic"))
+        dconf_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        dconf_row.connect("activated", self.on_install_dconf_editor)
+        tools_group.add(dconf_row)
+        
+        box.append(tools_group)
+        
+        return box
     
     def _create_kde_section(self) -> Gtk.Widget:
         """Create KDE Plasma section with widgets, themes, KWin scripts, and tweaks."""
@@ -4432,6 +4737,12 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
     def on_install_gnome_tweaks(self, row):
         """Install GNOME Tweaks."""
         tool = next((t for t in UNIVERSAL_TOOLS if t.id == "gnome-tweaks"), None)
+        if tool:
+            self._install_tool(tool)
+    
+    def on_install_dconf_editor(self, row):
+        """Install dconf Editor."""
+        tool = next((t for t in UNIVERSAL_TOOLS if t.id == "dconf-editor"), None)
         if tool:
             self._install_tool(tool)
     

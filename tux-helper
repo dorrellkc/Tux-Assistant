@@ -1020,6 +1020,32 @@ def install_surfshark(family: str) -> int:
             emit_output("Checking for alien (package converter)...")
             if not shutil.which('alien'):
                 emit_output("Installing alien and dependencies...")
+                
+                # openSUSE: alien is in OBS system:packagemanager repo, need to add it first
+                if family == 'opensuse':
+                    emit_output("Adding OBS system:packagemanager repository for alien...")
+                    # Detect Tumbleweed vs Leap
+                    try:
+                        with open('/etc/os-release', 'r') as f:
+                            os_release = f.read()
+                        if 'Tumbleweed' in os_release:
+                            repo_url = 'https://download.opensuse.org/repositories/system:packagemanager/openSUSE_Tumbleweed/system:packagemanager.repo'
+                        else:
+                            # Try to get Leap version
+                            import re
+                            match = re.search(r'VERSION_ID="?(\d+\.\d+)"?', os_release)
+                            if match:
+                                leap_ver = match.group(1)
+                                repo_url = f'https://download.opensuse.org/repositories/system:packagemanager/{leap_ver}/system:packagemanager.repo'
+                            else:
+                                repo_url = 'https://download.opensuse.org/repositories/system:packagemanager/openSUSE_Tumbleweed/system:packagemanager.repo'
+                    except Exception:
+                        repo_url = 'https://download.opensuse.org/repositories/system:packagemanager/openSUSE_Tumbleweed/system:packagemanager.repo'
+                    
+                    # Add the system:packagemanager repo
+                    subprocess.run(['zypper', '--gpg-auto-import-keys', 'addrepo', '-f', repo_url], capture_output=True)
+                    subprocess.run(['zypper', '--gpg-auto-import-keys', 'refresh'], capture_output=True)
+                
                 result = subprocess.run(
                     pkg_install + ['alien', 'dpkg', 'rpm-build'],
                     capture_output=False
@@ -1223,6 +1249,32 @@ def install_duckietv(family: str) -> int:
             emit_output("Checking for alien...")
             if not shutil.which('alien'):
                 emit_output("Installing alien and dependencies...")
+                
+                # openSUSE: alien is in OBS system:packagemanager repo, need to add it first
+                if family == 'opensuse':
+                    emit_output("Adding OBS system:packagemanager repository for alien...")
+                    # Detect Tumbleweed vs Leap
+                    try:
+                        with open('/etc/os-release', 'r') as f:
+                            os_release = f.read()
+                        if 'Tumbleweed' in os_release:
+                            repo_url = 'https://download.opensuse.org/repositories/system:packagemanager/openSUSE_Tumbleweed/system:packagemanager.repo'
+                        else:
+                            # Try to get Leap version
+                            import re
+                            match = re.search(r'VERSION_ID="?(\d+\.\d+)"?', os_release)
+                            if match:
+                                leap_ver = match.group(1)
+                                repo_url = f'https://download.opensuse.org/repositories/system:packagemanager/{leap_ver}/system:packagemanager.repo'
+                            else:
+                                repo_url = 'https://download.opensuse.org/repositories/system:packagemanager/openSUSE_Tumbleweed/system:packagemanager.repo'
+                    except Exception:
+                        repo_url = 'https://download.opensuse.org/repositories/system:packagemanager/openSUSE_Tumbleweed/system:packagemanager.repo'
+                    
+                    # Add the system:packagemanager repo
+                    subprocess.run(['zypper', '--gpg-auto-import-keys', 'addrepo', '-f', repo_url], capture_output=True)
+                    subprocess.run(['zypper', '--gpg-auto-import-keys', 'refresh'], capture_output=True)
+                
                 result = subprocess.run(
                     pkg_install + ['alien', 'dpkg', 'rpm-build'],
                     capture_output=False
