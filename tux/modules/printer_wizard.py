@@ -499,11 +499,18 @@ class PrinterWizardPage(Adw.NavigationPage):
         self.printers_group.set_description("USB and network printers found on your system")
         self.content_box.append(self.printers_group)
         
-        # Placeholder
+        # Placeholder with Scan button
         self.printers_placeholder = Adw.ActionRow()
-        self.printers_placeholder.set_title("Click 'Scan' to search for printers")
-        self.printers_placeholder.set_subtitle("Will search for USB and network printers")
-        self.printers_placeholder.add_prefix(Gtk.Image.new_from_icon_name("edit-find-symbolic"))
+        self.printers_placeholder.set_title("No printers found yet")
+        self.printers_placeholder.set_subtitle("Click Scan to search for USB and network printers")
+        self.printers_placeholder.add_prefix(Gtk.Image.new_from_icon_name("printer-symbolic"))
+        
+        scan_btn = Gtk.Button(label="Scan")
+        scan_btn.add_css_class("suggested-action")
+        scan_btn.set_valign(Gtk.Align.CENTER)
+        scan_btn.connect("clicked", self._on_scan_clicked)
+        self.printers_placeholder.add_suffix(scan_btn)
+        
         self.printers_group.add(self.printers_placeholder)
         
         self.printer_rows = [self.printers_placeholder]
@@ -540,9 +547,12 @@ class PrinterWizardPage(Adw.NavigationPage):
         manual_row.set_title("Manual Setup")
         manual_row.set_subtitle("Open CUPS web interface for advanced configuration")
         manual_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-system-symbolic"))
-        manual_row.set_activatable(True)
-        manual_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
-        manual_row.connect("activated", self._on_open_cups)
+        
+        cups_btn = Gtk.Button(label="Open CUPS")
+        cups_btn.set_valign(Gtk.Align.CENTER)
+        cups_btn.connect("clicked", self._on_open_cups)
+        manual_row.add_suffix(cups_btn)
+        
         help_group.add(manual_row)
     
     def _check_prerequisites(self):
@@ -902,12 +912,36 @@ read'''
         except Exception:
             self.window.show_toast("Could not start printer service")
     
-    def _on_open_cups(self, row):
+    def _on_open_cups(self, widget):
         """Open CUPS web interface."""
-        try:
-            subprocess.Popen(['xdg-open', 'http://localhost:631'])
-        except Exception:
-            self.window.show_toast("Could not open CUPS interface")
+        url = "http://localhost:631"
+        
+        # Try actual browsers first, then xdg-open/gio as fallback
+        # (xdg-open can exist but not work on some systems)
+        methods = [
+            ['firefox', url],
+            ['google-chrome', url],
+            ['chromium', url],
+            ['chromium-browser', url],
+            ['brave', url],
+            ['vivaldi', url],
+            ['epiphany', url],
+            ['konqueror', url],
+            ['xdg-open', url],
+            ['gio', 'open', url],
+        ]
+        
+        for cmd in methods:
+            try:
+                result = subprocess.run(['which', cmd[0]], capture_output=True)
+                if result.returncode == 0:
+                    subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    self.window.show_toast("Opening CUPS web interface...")
+                    return
+            except Exception:
+                continue
+        
+        self.window.show_toast("Could not open browser - try http://localhost:631 manually")
     
     def _run_in_terminal(self, script: str):
         """Run a script in a terminal window."""
