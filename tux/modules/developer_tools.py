@@ -403,6 +403,56 @@ class DeveloperToolsPage(Adw.NavigationPage):
         self.ta_ssh_row = status_row  # For compatibility with refresh
         self.ta_branch_row = status_row  # For compatibility with refresh
         
+        # Dev Sync row - shows GitHub/AUR sync status
+        sync_row = Adw.ActionRow()
+        sync_row.set_title("🔄 Dev Sync")
+        
+        # Get sync status
+        sync_status = self._get_sync_status()
+        sync_row.set_subtitle(sync_status['message'])
+        
+        if sync_status['state'] == 'in_sync':
+            sync_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
+        elif sync_status['state'] == 'repo_outdated':
+            sync_row.add_prefix(Gtk.Image.new_from_icon_name("dialog-warning-symbolic"))
+            sync_btn = Gtk.Button(label="Sync Repo")
+            sync_btn.add_css_class("destructive-action")
+            sync_btn.set_tooltip_text("Copy installed version to repo")
+            sync_btn.set_valign(Gtk.Align.CENTER)
+            sync_btn.connect("clicked", self._on_sync_repo_from_installed)
+            sync_row.add_suffix(sync_btn)
+        elif sync_status['state'] == 'behind':
+            sync_row.add_prefix(Gtk.Image.new_from_icon_name("software-update-available-symbolic"))
+            pull_btn = Gtk.Button(label="Pull")
+            pull_btn.add_css_class("suggested-action")
+            pull_btn.set_tooltip_text("Pull latest from GitHub")
+            pull_btn.set_valign(Gtk.Align.CENTER)
+            pull_btn.connect("clicked", self._on_ta_pull_dev)
+            sync_row.add_suffix(pull_btn)
+        elif sync_status['state'] == 'ahead':
+            sync_row.add_prefix(Gtk.Image.new_from_icon_name("send-to-symbolic"))
+            push_btn = Gtk.Button(label="Push")
+            push_btn.add_css_class("suggested-action")
+            push_btn.set_tooltip_text("Push to GitHub")
+            push_btn.set_valign(Gtk.Align.CENTER)
+            push_btn.connect("clicked", self._on_ta_push_dev)
+            sync_row.add_suffix(push_btn)
+        elif sync_status['state'] == 'aur_behind':
+            sync_row.add_prefix(Gtk.Image.new_from_icon_name("software-update-available-symbolic"))
+            aur_btn = Gtk.Button(label="Update AUR")
+            aur_btn.add_css_class("suggested-action")
+            aur_btn.set_tooltip_text("Publish to AUR")
+            aur_btn.set_valign(Gtk.Align.CENTER)
+            aur_btn.connect("clicked", self._on_publish_to_aur)
+            sync_row.add_suffix(aur_btn)
+        elif sync_status['state'] == 'dirty':
+            sync_row.add_prefix(Gtk.Image.new_from_icon_name("document-edit-symbolic"))
+        else:
+            sync_row.add_prefix(Gtk.Image.new_from_icon_name("dialog-question-symbolic"))
+        
+        ta_group.add(sync_row)
+        self.sync_row = sync_row
+        
         # Install from ZIP row
         install_row = Adw.ActionRow()
         install_row.set_title("📥 Install from ZIP")
@@ -2312,6 +2362,105 @@ exit 0
         except:
             return False
     
+    def _get_sync_status(self) -> dict:
+        """Check sync status between installed version, local repo, GitHub, and AUR."""
+        result = {
+            'state': 'unknown',
+            'message': 'Checking...',
+            'installed_ver': '',
+            'local_ver': '',
+            'github_ver': '',
+            'aur_ver': ''
+        }
+        
+        try:
+            # Get installed version (what's actually running)
+            installed_ver_file = "/opt/tux-assistant/VERSION"
+            installed_ver = ''
+            if os.path.exists(installed_ver_file):
+                with open(installed_ver_file, 'r') as f:
+                    installed_ver = f.read().strip()
+            result['installed_ver'] = installed_ver
+            
+            # Get repo version
+            local_ver = self._get_ta_version()
+            result['local_ver'] = local_ver
+            
+            # Check if installed version differs from repo version
+            if installed_ver and local_ver and installed_ver != local_ver:
+                result['state'] = 'repo_outdated'
+                result['message'] = f"Installed v{installed_ver} • Repo has v{local_ver} - sync needed"
+                return result
+            
+            # Check for uncommitted changes first
+            if self._ta_has_changes():
+                result['state'] = 'dirty'
+                result['message'] = f"v{local_ver} • Uncommitted changes"
+                return result
+            
+            # Fetch from remote (quick, no pull)
+            subprocess.run(
+                ['git', 'fetch', '--tags', '-q'],
+                cwd=self.ta_repo_path,
+                capture_output=True, text=True, timeout=15
+            )
+            
+            # Get local and remote commit hashes
+            local_result = subprocess.run(
+                ['git', 'rev-parse', 'HEAD'],
+                cwd=self.ta_repo_path,
+                capture_output=True, text=True, timeout=5
+            )
+            local_commit = local_result.stdout.strip()[:7] if local_result.returncode == 0 else ''
+            
+            remote_result = subprocess.run(
+                ['git', 'rev-parse', 'origin/main'],
+                cwd=self.ta_repo_path,
+                capture_output=True, text=True, timeout=5
+            )
+            remote_commit = remote_result.stdout.strip()[:7] if remote_result.returncode == 0 else ''
+            
+            # Check ahead/behind
+            if local_commit and remote_commit and local_commit != remote_commit:
+                # Check if local is behind
+                merge_base = subprocess.run(
+                    ['git', 'merge-base', '--is-ancestor', 'HEAD', 'origin/main'],
+                    cwd=self.ta_repo_path,
+                    capture_output=True, text=True, timeout=5
+                )
+                if merge_base.returncode == 0:
+                    result['state'] = 'behind'
+                    result['message'] = f"v{local_ver} • Behind GitHub - pull available"
+                    return result
+                else:
+                    result['state'] = 'ahead'
+                    result['message'] = f"v{local_ver} • Ahead of GitHub - push needed"
+                    return result
+            
+            # Check AUR version
+            aur_dir = os.path.expanduser("~/Development/tux-assistant-aur")
+            pkgbuild = os.path.join(aur_dir, "PKGBUILD")
+            if os.path.exists(pkgbuild):
+                with open(pkgbuild, 'r') as f:
+                    for line in f:
+                        if line.startswith('pkgver='):
+                            aur_ver = line.split('=')[1].strip()
+                            result['aur_ver'] = aur_ver
+                            if aur_ver != local_ver:
+                                result['state'] = 'aur_behind'
+                                result['message'] = f"v{local_ver} • AUR needs update (has v{aur_ver})"
+                                return result
+                            break
+            
+            # All in sync
+            result['state'] = 'in_sync'
+            result['message'] = f"v{local_ver} • GitHub ✓ • AUR ✓"
+            return result
+            
+        except Exception as e:
+            result['message'] = f"Error checking status: {str(e)[:30]}"
+            return result
+    
     def _check_ssh_agent_status(self) -> str:
         """Check if SSH agent is running and has keys loaded."""
         try:
@@ -2492,6 +2641,11 @@ read -p "Press Enter to close this window..."
         else:
             self.ta_status_row.add_prefix(Gtk.Image.new_from_icon_name("dialog-password-symbolic"))
         
+        # Update sync row if it exists
+        if hasattr(self, 'sync_row'):
+            sync_status = self._get_sync_status()
+            self.sync_row.set_subtitle(sync_status['message'])
+        
         if button:  # Only show toast if manually refreshed
             self.window.show_toast("Status refreshed")
     
@@ -2580,6 +2734,73 @@ Replace X.X.X with your version number."""
         dialog.add_response("close", "Got it!")
         dialog.set_response_appearance("close", Adw.ResponseAppearance.SUGGESTED)
         dialog.present()
+    
+    def _on_sync_repo_from_installed(self, button):
+        """Sync repo from installed version (copy from /opt/tux-assistant)."""
+        installed_ver = ''
+        installed_ver_file = "/opt/tux-assistant/VERSION"
+        if os.path.exists(installed_ver_file):
+            with open(installed_ver_file, 'r') as f:
+                installed_ver = f.read().strip()
+        
+        repo_ver = self._get_ta_version()
+        
+        dialog = Adw.MessageDialog(
+            transient_for=self.window,
+            heading="Sync Repo from Installed",
+            body=f"This will copy the installed version (v{installed_ver}) to your repo, overwriting the current repo version (v{repo_ver}).\n\nThis ensures your repo matches what's installed."
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("sync", "Sync Repo")
+        dialog.set_response_appearance("sync", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.connect("response", self._do_sync_repo_from_installed)
+        dialog.present()
+    
+    def _do_sync_repo_from_installed(self, dialog, response):
+        """Execute the repo sync from installed version."""
+        if response != "sync":
+            return
+        
+        def do_sync():
+            try:
+                import shutil
+                
+                installed_dir = "/opt/tux-assistant"
+                repo_dir = self.ta_repo_path
+                
+                if not os.path.exists(installed_dir):
+                    GLib.idle_add(self.window.show_toast, "Installed directory not found")
+                    return
+                
+                # Files/folders to copy (excluding .git and other dev files)
+                items_to_copy = [
+                    'tux', 'data', 'assets', 'docs', 'scripts', 'screenshots',
+                    'install.sh', 'tux-assistant.py', 'tux-helper', 'VERSION',
+                    'README.md', 'README-public.md', 'LICENSE', 'CHANGELOG.md',
+                    'TODO.md', 'GIT-COMMANDS.txt', 'setup-branches.sh',
+                    'tux-assistant.install'
+                ]
+                
+                for item in items_to_copy:
+                    src = os.path.join(installed_dir, item)
+                    dst = os.path.join(repo_dir, item)
+                    
+                    if os.path.exists(src):
+                        if os.path.isdir(src):
+                            if os.path.exists(dst):
+                                shutil.rmtree(dst)
+                            shutil.copytree(src, dst)
+                        else:
+                            shutil.copy2(src, dst)
+                
+                GLib.idle_add(self.window.show_toast, "Repo synced from installed version")
+                GLib.idle_add(self._on_ta_refresh_status, None)
+                
+            except Exception as e:
+                GLib.idle_add(self.window.show_toast, f"Sync failed: {str(e)[:50]}")
+        
+        threading.Thread(target=do_sync, daemon=True).start()
+        self.window.show_toast("Syncing repo from installed...")
     
     def _on_ta_pull_dev(self, button):
         """Pull latest changes from main branch."""
