@@ -4012,7 +4012,7 @@ class PlanExecutionDialog(Adw.Dialog):
     id="desktop_enhancements",
     name="Desktop Enhancements",
     description="Themes, extensions, widgets, and tweaks",
-    icon="preferences-desktop-appearance-symbolic",
+    icon="preferences-desktop-theme-symbolic",
     category=ModuleCategory.SETUP,
     order=51  # Last in Setup category
 )
@@ -4231,7 +4231,7 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
                 "show-weekday", "show-date", "clock-seconds", "clock-24h",
                 "show-battery-percentage"
             ]),
-            ("Appearance", "preferences-desktop-appearance-symbolic", [
+            ("Appearance", "preferences-desktop-theme-symbolic", [
                 "dark-mode", "animations", "hot-corner"
             ]),
             ("Input Devices", "input-mouse-symbolic", [
@@ -4326,7 +4326,7 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         widgets_row.set_title("Plasma Widgets")
         widgets_row.set_subtitle(f"{len(KDE_WIDGETS)} widgets available")
         widgets_row.set_activatable(True)
-        widgets_row.add_prefix(Gtk.Image.new_from_icon_name("preferences-desktop-icons-symbolic"))
+        widgets_row.add_prefix(Gtk.Image.new_from_icon_name("view-app-grid-symbolic"))
         widgets_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
         widgets_row.connect("activated", self.on_kde_widgets)
         widgets_group.add(widgets_row)
@@ -4433,7 +4433,7 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         compositor_row.set_title("Compositor Tools")
         compositor_row.set_subtitle(f"{len(XFCE_COMPOSITOR_TOOLS)} tools available (picom, compton)")
         compositor_row.set_activatable(True)
-        compositor_row.add_prefix(Gtk.Image.new_from_icon_name("preferences-desktop-effects-symbolic"))
+        compositor_row.add_prefix(Gtk.Image.new_from_icon_name("applications-graphics-symbolic"))
         compositor_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
         compositor_row.connect("activated", self.on_xfce_compositor)
         compositor_group.add(compositor_row)

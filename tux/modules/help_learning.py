@@ -511,7 +511,7 @@ TROUBLESHOOT_ITEMS = [
         id="bluetooth_issues",
         title="Bluetooth Problems",
         description="Bluetooth device not connecting?",
-        icon="bluetooth-disabled-symbolic",
+        icon="network-bluetooth-symbolic",
         checks=[
             {
                 "name": "Check if Bluetooth is enabled",
@@ -560,7 +560,7 @@ QUICK_TASKS = [
               "Create backups of important files"),
     QuickTask("share_files", "Share files on network", "folder-publicshare-symbolic", "networking_simple",
               "Set up file sharing with other computers"),
-    QuickTask("customize_look", "Customize my desktop", "preferences-desktop-wallpaper-symbolic", "desktop_enhancements",
+    QuickTask("customize_look", "Customize my desktop", "preferences-desktop-theme-symbolic", "desktop_enhancements",
               "Themes, icons, fonts, and more"),
     QuickTask("update_system", "Update my system", "system-software-update-symbolic", "system_maintenance",
               "Check for and install updates"),

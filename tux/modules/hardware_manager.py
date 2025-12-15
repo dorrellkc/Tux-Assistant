@@ -570,7 +570,7 @@ class HardwareManagerPage(Adw.NavigationPage):
             row = Adw.ActionRow()
             row.set_title("Bluetooth Service Stopped")
             row.set_subtitle("Start the Bluetooth service to use wireless devices")
-            row.add_prefix(Gtk.Image.new_from_icon_name("bluetooth-disabled-symbolic"))
+            row.add_prefix(Gtk.Image.new_from_icon_name("network-bluetooth-symbolic"))
             
             start_btn = Gtk.Button(label="Start Service")
             start_btn.set_valign(Gtk.Align.CENTER)
@@ -586,7 +586,7 @@ class HardwareManagerPage(Adw.NavigationPage):
             row = Adw.ActionRow()
             row.set_title("No Bluetooth Adapter")
             row.set_subtitle("No Bluetooth hardware detected on this computer")
-            row.add_prefix(Gtk.Image.new_from_icon_name("bluetooth-disabled-symbolic"))
+            row.add_prefix(Gtk.Image.new_from_icon_name("network-bluetooth-symbolic"))
             
             self.bluetooth_group.add(row)
             self.bt_rows.append(row)
@@ -596,7 +596,7 @@ class HardwareManagerPage(Adw.NavigationPage):
             row = Adw.ActionRow()
             row.set_title("Bluetooth Disabled")
             row.set_subtitle("Enable Bluetooth to connect wireless devices")
-            row.add_prefix(Gtk.Image.new_from_icon_name("bluetooth-disabled-symbolic"))
+            row.add_prefix(Gtk.Image.new_from_icon_name("network-bluetooth-symbolic"))
             
             enable_btn = Gtk.Button(label="Enable Bluetooth")
             enable_btn.set_valign(Gtk.Align.CENTER)
@@ -613,7 +613,7 @@ class HardwareManagerPage(Adw.NavigationPage):
             status_row = Adw.ActionRow()
             status_row.set_title("Bluetooth Enabled")
             status_row.set_subtitle("Ready to connect devices")
-            status_row.add_prefix(Gtk.Image.new_from_icon_name("bluetooth-active-symbolic"))
+            status_row.add_prefix(Gtk.Image.new_from_icon_name("network-bluetooth-symbolic"))
             
             disable_btn = Gtk.Button(label="Disable")
             disable_btn.set_valign(Gtk.Align.CENTER)
@@ -637,7 +637,7 @@ class HardwareManagerPage(Adw.NavigationPage):
                     status_text = "Connected" if device.connected else "Paired"
                     dev_row.set_subtitle(f"{device.address} • {status_text}")
                     
-                    icon = "bluetooth-active-symbolic" if device.connected else "bluetooth-symbolic"
+                    icon = "network-bluetooth-symbolic"
                     dev_row.add_prefix(Gtk.Image.new_from_icon_name(icon))
                     
                     devices_expander.add_row(dev_row)
@@ -684,7 +684,7 @@ class HardwareManagerPage(Adw.NavigationPage):
         volume_row = Adw.ActionRow()
         volume_row.set_title("Volume Settings")
         volume_row.set_subtitle("Open system sound settings")
-        volume_row.add_prefix(Gtk.Image.new_from_icon_name("multimedia-volume-control-symbolic"))
+        volume_row.add_prefix(Gtk.Image.new_from_icon_name("audio-volume-high-symbolic"))
         volume_row.set_activatable(True)
         volume_row.connect("activated", self._on_open_sound_settings)
         volume_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
@@ -930,7 +930,7 @@ class HardwareManagerPage(Adw.NavigationPage):
         settings_row = Adw.ActionRow()
         settings_row.set_title("Display Settings")
         settings_row.set_subtitle("Resolution, arrangement, night light")
-        settings_row.add_prefix(Gtk.Image.new_from_icon_name("preferences-desktop-display-symbolic"))
+        settings_row.add_prefix(Gtk.Image.new_from_icon_name("video-display-symbolic"))
         settings_row.set_activatable(True)
         settings_row.connect("activated", self._on_open_display_settings)
         settings_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
