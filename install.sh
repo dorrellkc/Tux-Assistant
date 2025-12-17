@@ -202,6 +202,19 @@ check_dependencies() {
         esac
     fi
     
+    # Check WebKitGTK 6.0 (for Browser and Claude AI)
+    if python3 -c "import gi; gi.require_version('WebKit', '6.0'); from gi.repository import WebKit" 2>/dev/null; then
+        print_success "WebKitGTK 6.0 found"
+    else
+        print_warning "WebKitGTK 6.0 not found (needed for Browser and Claude AI)"
+        case $DISTRO_FAMILY in
+            arch) missing_pkgs+=("webkit2gtk-4.1") ;;
+            debian) missing_pkgs+=("gir1.2-webkit-6.0" "libwebkitgtk-6.0-4") ;;
+            fedora) missing_pkgs+=("webkitgtk6.0") ;;
+            opensuse) missing_pkgs+=("libwebkitgtk-6_0-4" "typelib-1_0-WebKit-6_0" "typelib-1_0-WebKitWebProcessExtension-6_0") ;;
+        esac
+    fi
+    
     # Check GStreamer (for Tux Tunes)
     if python3 -c "import gi; gi.require_version('Gst', '1.0'); from gi.repository import Gst" 2>/dev/null; then
         print_success "GStreamer found"
@@ -211,7 +224,7 @@ check_dependencies() {
             arch) missing_pkgs+=("gstreamer" "gst-plugins-base" "gst-plugins-good") ;;
             debian) missing_pkgs+=("gstreamer1.0-tools" "gir1.2-gst-plugins-base-1.0" "gstreamer1.0-plugins-good") ;;
             fedora) missing_pkgs+=("gstreamer1" "gstreamer1-plugins-base" "gstreamer1-plugins-good") ;;
-            opensuse) missing_pkgs+=("gstreamer" "gstreamer-plugins-base" "gstreamer-plugins-good") ;;
+            opensuse) missing_pkgs+=("gstreamer" "gstreamer-plugins-base" "gstreamer-plugins-good" "typelib-1_0-Gst-1_0" "typelib-1_0-GstPlayer-1_0" "typelib-1_0-GstAudio-1_0" "typelib-1_0-GstVideo-1_0" "typelib-1_0-GstPbutils-1_0" "typelib-1_0-GstTag-1_0") ;;
         esac
     fi
     
