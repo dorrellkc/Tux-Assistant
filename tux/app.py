@@ -676,6 +676,24 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         
         return False
     
+    def _get_available_icon(self, icon_names: list, fallback: str) -> str:
+        """Find first available icon from a list of candidates.
+        
+        Args:
+            icon_names: List of icon names to try in order
+            fallback: Icon name to use if none found
+            
+        Returns:
+            First available icon name, or fallback
+        """
+        icon_theme = Gtk.IconTheme.get_for_display(Gdk.Display.get_default())
+        
+        for icon_name in icon_names:
+            if icon_theme.has_icon(icon_name):
+                return icon_name
+        
+        return fallback
+    
     def _load_window_size(self) -> tuple[int, int, bool]:
         """Load saved window size from config file."""
         import os
@@ -1290,7 +1308,16 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         if WEBKIT_AVAILABLE:
             # Browser toggle button
             self.browser_toggle_btn = Gtk.ToggleButton()
-            self.browser_toggle_btn.set_icon_name("web-browser-symbolic")
+            # Use icon with fallbacks for different themes (KDE doesn't have web-browser-symbolic)
+            browser_icon = self._get_available_icon([
+                "web-browser-symbolic",
+                "applications-internet",
+                "internet-web-browser",
+                "globe-symbolic",
+                "emblem-web",
+                "network-workgroup-symbolic"
+            ], "web-browser-symbolic")
+            self.browser_toggle_btn.set_icon_name(browser_icon)
             self.browser_toggle_btn.set_tooltip_text("Toggle Web Browser")
             self.browser_toggle_btn.add_css_class("claude-toggle-btn")
             self.browser_toggle_btn.connect("toggled", self._on_browser_toggle)
