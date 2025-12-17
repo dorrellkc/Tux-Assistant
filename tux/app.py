@@ -1282,13 +1282,13 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         
         # Menu button on the right
         menu_button = Gtk.MenuButton()
-        menu_button.set_icon_name("open-menu-symbolic")
+        menu_button.set_icon_name("tux-open-menu-symbolic")
         menu_button.set_menu_model(self.create_menu())
         header.pack_end(menu_button)
         
         # Update indicator button (hidden by default, shows when update available)
         self.update_button = Gtk.MenuButton()
-        self.update_button.set_icon_name("software-update-available-symbolic")
+        self.update_button.set_icon_name("tux-software-update-available-symbolic")
         self.update_button.set_tooltip_text("Update available!")
         self.update_button.add_css_class("suggested-action")
         self.update_button.set_visible(False)
@@ -1308,16 +1308,8 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         if WEBKIT_AVAILABLE:
             # Browser toggle button
             self.browser_toggle_btn = Gtk.ToggleButton()
-            # Use icon with fallbacks for different themes (KDE doesn't have web-browser-symbolic)
-            browser_icon = self._get_available_icon([
-                "web-browser-symbolic",
-                "applications-internet",
-                "internet-web-browser",
-                "globe-symbolic",
-                "emblem-web",
-                "network-workgroup-symbolic"
-            ], "web-browser-symbolic")
-            self.browser_toggle_btn.set_icon_name(browser_icon)
+            # Use our bundled icon - guaranteed to exist on all systems
+            self.browser_toggle_btn.set_icon_name("tux-browser")
             self.browser_toggle_btn.set_tooltip_text("Toggle Web Browser")
             self.browser_toggle_btn.add_css_class("claude-toggle-btn")
             self.browser_toggle_btn.connect("toggled", self._on_browser_toggle)
@@ -1325,7 +1317,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             
             # Claude AI toggle button
             self.claude_toggle_btn = Gtk.ToggleButton()
-            self.claude_toggle_btn.set_icon_name("user-available-symbolic")
+            self.claude_toggle_btn.set_icon_name("tux-user-available-symbolic")
             self.claude_toggle_btn.set_tooltip_text("Toggle Claude AI Assistant")
             self.claude_toggle_btn.add_css_class("claude-toggle-btn")
             self.claude_toggle_btn.connect("toggled", self._on_claude_toggle)
@@ -1333,7 +1325,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         
         # Tux Tunes button (always available)
         tux_tunes_btn = Gtk.Button()
-        tux_tunes_btn.set_icon_name("audio-headphones-symbolic")
+        tux_tunes_btn.set_icon_name("tux-audio-headphones-symbolic")
         tux_tunes_btn.set_tooltip_text("Launch Tux Tunes - Internet Radio")
         tux_tunes_btn.add_css_class("claude-toggle-btn")
         tux_tunes_btn.connect("clicked", self._on_tux_tunes_clicked)
@@ -1419,7 +1411,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         panel_header.append(title_box)
         
         # External browser button
-        external_btn = Gtk.Button.new_from_icon_name("web-browser-symbolic")
+        external_btn = Gtk.Button.new_from_icon_name("tux-web-browser-symbolic")
         external_btn.set_tooltip_text("Open in external browser")
         external_btn.connect("clicked", self._on_claude_external)
         panel_header.append(external_btn)
@@ -1432,25 +1424,25 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         self.claude_panel.append(nav_toolbar)
         
         # Back button
-        back_btn = Gtk.Button.new_from_icon_name("go-previous-symbolic")
+        back_btn = Gtk.Button.new_from_icon_name("tux-go-previous-symbolic")
         back_btn.set_tooltip_text("Go back")
         back_btn.connect("clicked", lambda b: self.claude_webview.go_back() if hasattr(self, 'claude_webview') else None)
         nav_toolbar.append(back_btn)
         
         # Forward button
-        forward_btn = Gtk.Button.new_from_icon_name("go-next-symbolic")
+        forward_btn = Gtk.Button.new_from_icon_name("tux-go-next-symbolic")
         forward_btn.set_tooltip_text("Go forward")
         forward_btn.connect("clicked", lambda b: self.claude_webview.go_forward() if hasattr(self, 'claude_webview') else None)
         nav_toolbar.append(forward_btn)
         
         # Reload button
-        reload_btn = Gtk.Button.new_from_icon_name("view-refresh-symbolic")
+        reload_btn = Gtk.Button.new_from_icon_name("tux-view-refresh-symbolic")
         reload_btn.set_tooltip_text("Reload")
         reload_btn.connect("clicked", lambda b: self.claude_webview.reload() if hasattr(self, 'claude_webview') else None)
         nav_toolbar.append(reload_btn)
         
         # Home button
-        home_btn = Gtk.Button.new_from_icon_name("go-home-symbolic")
+        home_btn = Gtk.Button.new_from_icon_name("tux-go-home-symbolic")
         home_btn.set_tooltip_text("Go to Claude.ai")
         home_btn.connect("clicked", lambda b: self.claude_webview.load_uri("https://claude.ai") if hasattr(self, 'claude_webview') else None)
         nav_toolbar.append(home_btn)
@@ -1688,7 +1680,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         panel_header.append(title_box)
         
         # Pop-out button
-        popout_btn = Gtk.Button.new_from_icon_name("window-new-symbolic")
+        popout_btn = Gtk.Button.new_from_icon_name("tux-window-new-symbolic")
         popout_btn.set_tooltip_text("Pop out to window")
         popout_btn.connect("clicked", self._on_browser_popout)
         panel_header.append(popout_btn)
@@ -1701,25 +1693,25 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         self.browser_panel.append(nav_toolbar)
         
         # Back button
-        back_btn = Gtk.Button.new_from_icon_name("go-previous-symbolic")
+        back_btn = Gtk.Button.new_from_icon_name("tux-go-previous-symbolic")
         back_btn.set_tooltip_text("Go back")
         back_btn.connect("clicked", lambda b: self._get_current_browser_webview().go_back() if self._get_current_browser_webview() else None)
         nav_toolbar.append(back_btn)
         
         # Forward button
-        forward_btn = Gtk.Button.new_from_icon_name("go-next-symbolic")
+        forward_btn = Gtk.Button.new_from_icon_name("tux-go-next-symbolic")
         forward_btn.set_tooltip_text("Go forward")
         forward_btn.connect("clicked", lambda b: self._get_current_browser_webview().go_forward() if self._get_current_browser_webview() else None)
         nav_toolbar.append(forward_btn)
         
         # Reload button
-        reload_btn = Gtk.Button.new_from_icon_name("view-refresh-symbolic")
+        reload_btn = Gtk.Button.new_from_icon_name("tux-view-refresh-symbolic")
         reload_btn.set_tooltip_text("Reload")
         reload_btn.connect("clicked", lambda b: self._get_current_browser_webview().reload() if self._get_current_browser_webview() else None)
         nav_toolbar.append(reload_btn)
         
         # Home button
-        home_btn = Gtk.Button.new_from_icon_name("go-home-symbolic")
+        home_btn = Gtk.Button.new_from_icon_name("tux-go-home-symbolic")
         home_btn.set_tooltip_text("Go to home page")
         home_btn.connect("clicked", self._on_browser_home)
         nav_toolbar.append(home_btn)
@@ -1739,20 +1731,20 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         self._url_controllers_added = False
         
         # Go button
-        go_btn = Gtk.Button.new_from_icon_name("go-next-symbolic")
+        go_btn = Gtk.Button.new_from_icon_name("tux-go-next-symbolic")
         go_btn.set_tooltip_text("Go")
         go_btn.connect("clicked", lambda b: self._on_browser_url_activate(self.browser_url_entry))
         nav_toolbar.append(go_btn)
         
         # Bookmark star button (add/remove current page)
-        self.bookmark_star_btn = Gtk.Button.new_from_icon_name("non-starred-symbolic")
+        self.bookmark_star_btn = Gtk.Button.new_from_icon_name("tux-non-starred-symbolic")
         self.bookmark_star_btn.set_tooltip_text("Add bookmark (Ctrl+D)")
         self.bookmark_star_btn.connect("clicked", self._on_bookmark_toggle)
         nav_toolbar.append(self.bookmark_star_btn)
         
         # Bookmarks menu button
         bookmarks_btn = Gtk.MenuButton()
-        bookmarks_btn.set_icon_name("user-bookmarks-symbolic")
+        bookmarks_btn.set_icon_name("tux-user-bookmarks-symbolic")
         bookmarks_btn.set_tooltip_text("Bookmarks")
         
         # Create popover for bookmarks list
@@ -1809,17 +1801,17 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         popover_box.append(buttons_box1)
         
         add_btn = Gtk.Button(label="Add")
-        add_btn.set_icon_name("list-add-symbolic")
+        add_btn.set_icon_name("tux-list-add-symbolic")
         add_btn.connect("clicked", self._on_bookmark_add_manual)
         buttons_box1.append(add_btn)
         
         new_folder_btn = Gtk.Button(label="Folder")
-        new_folder_btn.set_icon_name("folder-new-symbolic")
+        new_folder_btn.set_icon_name("tux-folder-new-symbolic")
         new_folder_btn.connect("clicked", self._on_bookmark_new_folder)
         buttons_box1.append(new_folder_btn)
         
         separator_btn = Gtk.Button(label="Separator")
-        separator_btn.set_icon_name("view-more-horizontal-symbolic")
+        separator_btn.set_icon_name("tux-view-more-horizontal-symbolic")
         separator_btn.connect("clicked", self._on_bookmark_add_separator)
         buttons_box1.append(separator_btn)
         
@@ -1829,24 +1821,24 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         popover_box.append(buttons_box2)
         
         import_btn = Gtk.Button(label="Import")
-        import_btn.set_icon_name("document-open-symbolic")
+        import_btn.set_icon_name("tux-document-open-symbolic")
         import_btn.connect("clicked", self._on_bookmarks_import)
         buttons_box2.append(import_btn)
         
         export_btn = Gtk.Button(label="Export")
-        export_btn.set_icon_name("document-save-symbolic")
+        export_btn.set_icon_name("tux-document-save-symbolic")
         export_btn.connect("clicked", self._on_bookmarks_export)
         buttons_box2.append(export_btn)
         
         # Manage button - opens full bookmark manager window
         manage_btn = Gtk.Button(label="Manage...")
-        manage_btn.set_icon_name("applications-system-symbolic")
+        manage_btn.set_icon_name("tux-applications-system-symbolic")
         manage_btn.connect("clicked", self._show_bookmark_manager)
         popover_box.append(manage_btn)
         
         # Clear All button
         clear_btn = Gtk.Button(label="Clear All")
-        clear_btn.set_icon_name("user-trash-symbolic")
+        clear_btn.set_icon_name("tux-user-trash-symbolic")
         clear_btn.add_css_class("destructive-action")
         clear_btn.connect("clicked", self._on_bookmarks_clear_all)
         popover_box.append(clear_btn)
@@ -1870,7 +1862,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         
         # History menu button
         history_btn = Gtk.MenuButton()
-        history_btn.set_icon_name("document-open-recent-symbolic")
+        history_btn.set_icon_name("tux-document-open-recent-symbolic")
         history_btn.set_tooltip_text("History")
         
         # Create popover for history
@@ -1915,14 +1907,14 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         
         # Show All History
         show_all_btn = Gtk.Button(label="Show All History")
-        show_all_btn.set_icon_name("view-list-symbolic")
+        show_all_btn.set_icon_name("tux-view-list-symbolic")
         show_all_btn.connect("clicked", self._show_history_window)
         show_all_btn.set_hexpand(True)
         history_actions.append(show_all_btn)
         
         # Clear History button (opens dialog)
         clear_btn = Gtk.Button(label="Clear")
-        clear_btn.set_icon_name("edit-clear-symbolic")
+        clear_btn.set_icon_name("tux-edit-clear-symbolic")
         clear_btn.connect("clicked", self._show_clear_history_dialog)
         history_actions.append(clear_btn)
         
@@ -1930,7 +1922,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         
         # Downloads menu button
         downloads_btn = Gtk.MenuButton()
-        downloads_btn.set_icon_name("folder-download-symbolic")
+        downloads_btn.set_icon_name("tux-folder-download-symbolic")
         downloads_btn.set_tooltip_text("Downloads")
         
         # Create popover for downloads
@@ -1970,14 +1962,14 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         
         # Open Downloads folder
         open_folder_btn = Gtk.Button(label="Open Downloads Folder")
-        open_folder_btn.set_icon_name("folder-open-symbolic")
+        open_folder_btn.set_icon_name("tux-folder-open-symbolic")
         open_folder_btn.connect("clicked", self._open_downloads_folder)
         open_folder_btn.set_hexpand(True)
         downloads_actions.append(open_folder_btn)
         
         # Clear completed
         clear_downloads_btn = Gtk.Button(label="Clear")
-        clear_downloads_btn.set_icon_name("edit-clear-symbolic")
+        clear_downloads_btn.set_icon_name("tux-edit-clear-symbolic")
         clear_downloads_btn.set_tooltip_text("Clear completed downloads")
         clear_downloads_btn.connect("clicked", self._clear_completed_downloads)
         downloads_actions.append(clear_downloads_btn)
@@ -1986,7 +1978,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         
         # Privacy shield button
         privacy_btn = Gtk.MenuButton()
-        privacy_btn.set_icon_name("security-high-symbolic")
+        privacy_btn.set_icon_name("tux-security-high-symbolic")
         privacy_btn.set_tooltip_text("Privacy Shield")
         
         # Privacy popover
@@ -2061,7 +2053,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         
         # Settings button
         settings_btn = Gtk.MenuButton()
-        settings_btn.set_icon_name("emblem-system-symbolic")
+        settings_btn.set_icon_name("tux-emblem-system-symbolic")
         settings_btn.set_tooltip_text("Browser Settings")
         
         # Create settings popover
@@ -2219,12 +2211,12 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         # Test button
         test_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         test_btn = Gtk.Button(label="Test Voice")
-        test_btn.set_icon_name("audio-speakers-symbolic")
+        test_btn.set_icon_name("tux-audio-speakers-symbolic")
         test_btn.connect("clicked", self._on_tts_test_clicked)
         test_row.append(test_btn)
         
         self.tts_stop_btn = Gtk.Button(label="Stop")
-        self.tts_stop_btn.set_icon_name("media-playback-stop-symbolic")
+        self.tts_stop_btn.set_icon_name("tux-media-playback-stop-symbolic")
         self.tts_stop_btn.connect("clicked", self._on_tts_stop_clicked)
         self.tts_stop_btn.set_sensitive(False)
         test_row.append(self.tts_stop_btn)
@@ -2250,25 +2242,25 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         
         # Clear History
         clear_history_btn = Gtk.Button(label="Clear History")
-        clear_history_btn.set_icon_name("edit-clear-history-symbolic")
+        clear_history_btn.set_icon_name("tux-edit-clear-history-symbolic")
         clear_history_btn.connect("clicked", self._on_clear_history_clicked)
         clear_box.append(clear_history_btn)
         
         # Clear Cookies
         clear_cookies_btn = Gtk.Button(label="Clear Cookies")
-        clear_cookies_btn.set_icon_name("cookie-symbolic")
+        clear_cookies_btn.set_icon_name("tux-cookie-symbolic")
         clear_cookies_btn.connect("clicked", self._on_clear_cookies_clicked)
         clear_box.append(clear_cookies_btn)
         
         # Clear Cache
         clear_cache_btn = Gtk.Button(label="Clear Cache")
-        clear_cache_btn.set_icon_name("folder-templates-symbolic")
+        clear_cache_btn.set_icon_name("tux-folder-templates-symbolic")
         clear_cache_btn.connect("clicked", self._on_clear_cache_clicked)
         clear_box.append(clear_cache_btn)
         
         # Clear All
         clear_all_btn = Gtk.Button(label="Clear All Data")
-        clear_all_btn.set_icon_name("edit-clear-all-symbolic")
+        clear_all_btn.set_icon_name("tux-edit-clear-all-symbolic")
         clear_all_btn.add_css_class("destructive-action")
         clear_all_btn.connect("clicked", self._on_clear_all_clicked)
         clear_box.append(clear_all_btn)
@@ -2290,7 +2282,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         
         # Set as default button
         set_default_btn = Gtk.Button(label="Set as Default Browser")
-        set_default_btn.set_icon_name("web-browser-symbolic")
+        set_default_btn.set_icon_name("tux-web-browser-symbolic")
         set_default_btn.connect("clicked", self._on_set_default_browser_clicked)
         settings_box.append(set_default_btn)
         
@@ -2301,13 +2293,13 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         settings_box.append(default_hint)
         
         # Read Article button (TTS)
-        self.read_article_btn = Gtk.Button.new_from_icon_name("audio-speakers-symbolic")
+        self.read_article_btn = Gtk.Button.new_from_icon_name("tux-audio-speakers-symbolic")
         self.read_article_btn.set_tooltip_text("Read article aloud")
         self.read_article_btn.connect("clicked", self._on_read_article_clicked)
         nav_toolbar.append(self.read_article_btn)
         
         # Stop Reading button (TTS) - initially hidden
-        self.stop_reading_btn = Gtk.Button.new_from_icon_name("media-playback-stop-symbolic")
+        self.stop_reading_btn = Gtk.Button.new_from_icon_name("tux-media-playback-stop-symbolic")
         self.stop_reading_btn.set_tooltip_text("Stop reading")
         self.stop_reading_btn.add_css_class("destructive-action")
         self.stop_reading_btn.connect("clicked", self._on_stop_reading_clicked)
@@ -2316,7 +2308,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         
         # Reader Mode toggle button
         self.reader_mode_btn = Gtk.ToggleButton()
-        self.reader_mode_btn.set_icon_name("document-page-setup-symbolic")
+        self.reader_mode_btn.set_icon_name("tux-document-page-setup-symbolic")
         self.reader_mode_btn.set_tooltip_text("Reader Mode - distraction-free reading")
         self.reader_mode_btn.connect("toggled", self._on_reader_mode_toggled)
         nav_toolbar.append(self.reader_mode_btn)
@@ -2333,7 +2325,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         nav_toolbar.append(new_tab_btn)
         
         # Expand/collapse browser (hide/show sidebar)
-        self.browser_expand_btn = Gtk.Button.new_from_icon_name("view-fullscreen-symbolic")
+        self.browser_expand_btn = Gtk.Button.new_from_icon_name("tux-view-fullscreen-symbolic")
         self.browser_expand_btn.set_tooltip_text("Expand browser (hide sidebar)")
         self.browser_expand_btn.connect("clicked", self._on_browser_expand_toggle)
         nav_toolbar.append(self.browser_expand_btn)
@@ -2438,19 +2430,19 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         self.find_bar.append(self.find_match_label)
         
         # Previous button
-        prev_btn = Gtk.Button.new_from_icon_name("go-up-symbolic")
+        prev_btn = Gtk.Button.new_from_icon_name("tux-go-up-symbolic")
         prev_btn.set_tooltip_text("Previous match (Shift+Enter)")
         prev_btn.connect("clicked", self._on_find_prev)
         self.find_bar.append(prev_btn)
         
         # Next button
-        next_btn = Gtk.Button.new_from_icon_name("go-down-symbolic")
+        next_btn = Gtk.Button.new_from_icon_name("tux-go-down-symbolic")
         next_btn.set_tooltip_text("Next match (Enter)")
         next_btn.connect("clicked", self._on_find_next)
         self.find_bar.append(next_btn)
         
         # Close button
-        close_btn = Gtk.Button.new_from_icon_name("window-close-symbolic")
+        close_btn = Gtk.Button.new_from_icon_name("tux-window-close-symbolic")
         close_btn.set_tooltip_text("Close (Escape)")
         close_btn.connect("clicked", lambda b: self._hide_find_bar())
         self.find_bar.append(close_btn)
@@ -2982,7 +2974,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             self.browser_expanded = False
             self.navigation_view.set_visible(True)
             if hasattr(self, 'browser_expand_btn'):
-                self.browser_expand_btn.set_icon_name("view-fullscreen-symbolic")
+                self.browser_expand_btn.set_icon_name("tux-view-fullscreen-symbolic")
                 self.browser_expand_btn.set_tooltip_text("Expand browser (hide sidebar)")
     
     def _on_browser_title_changed(self, webview, param):
@@ -3038,7 +3030,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
                 self.browser_expanded = False
                 self.navigation_view.set_visible(True)
                 if hasattr(self, 'browser_expand_btn'):
-                    self.browser_expand_btn.set_icon_name("view-fullscreen-symbolic")
+                    self.browser_expand_btn.set_icon_name("tux-view-fullscreen-symbolic")
                     self.browser_expand_btn.set_tooltip_text("Expand browser (hide sidebar)")
             
             if self.browser_is_docked:
@@ -3127,12 +3119,12 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         if self.browser_expanded:
             # Hide the sidebar (navigation view)
             self.navigation_view.set_visible(False)
-            self.browser_expand_btn.set_icon_name("view-restore-symbolic")
+            self.browser_expand_btn.set_icon_name("tux-view-restore-symbolic")
             self.browser_expand_btn.set_tooltip_text("Restore sidebar")
         else:
             # Show the sidebar
             self.navigation_view.set_visible(True)
-            self.browser_expand_btn.set_icon_name("view-fullscreen-symbolic")
+            self.browser_expand_btn.set_icon_name("tux-view-fullscreen-symbolic")
             self.browser_expand_btn.set_tooltip_text("Expand browser (hide sidebar)")
     
     def _on_browser_url_activate(self, entry):
@@ -3278,9 +3270,9 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         
         # Icon - bookmark or history
         if suggestion.get('is_bookmark'):
-            icon = Gtk.Image.new_from_icon_name("user-bookmarks-symbolic")
+            icon = Gtk.Image.new_from_icon_name("tux-user-bookmarks-symbolic")
         else:
-            icon = Gtk.Image.new_from_icon_name("document-open-recent-symbolic")
+            icon = Gtk.Image.new_from_icon_name("tux-document-open-recent-symbolic")
         row.add_prefix(icon)
         
         # Add click gesture for reliable clicking
@@ -3423,7 +3415,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         import os
         
         # Default icon
-        icon = Gtk.Image.new_from_icon_name("web-browser-symbolic")
+        icon = Gtk.Image.new_from_icon_name("tux-web-browser-symbolic")
         icon.set_pixel_size(24)
         
         if not url:
@@ -3486,10 +3478,10 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         is_bookmarked = any(bm.get('url') == url for bm in self.bookmarks)
         
         if is_bookmarked:
-            self.bookmark_star_btn.set_icon_name("starred-symbolic")
+            self.bookmark_star_btn.set_icon_name("tux-starred-symbolic")
             self.bookmark_star_btn.set_tooltip_text("Remove bookmark (Ctrl+D)")
         else:
-            self.bookmark_star_btn.set_icon_name("non-starred-symbolic")
+            self.bookmark_star_btn.set_icon_name("tux-non-starred-symbolic")
             self.bookmark_star_btn.set_tooltip_text("Add bookmark (Ctrl+D)")
     
     def _on_bookmarks_popover_show(self):
@@ -3616,7 +3608,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         row.add_prefix(favicon)
         
         # Delete button
-        delete_btn = Gtk.Button.new_from_icon_name("edit-delete-symbolic")
+        delete_btn = Gtk.Button.new_from_icon_name("tux-edit-delete-symbolic")
         delete_btn.add_css_class("flat")
         delete_btn.set_valign(Gtk.Align.CENTER)
         delete_btn.set_tooltip_text("Remove from history")
@@ -3781,7 +3773,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         
         # Delete Selected button
         delete_btn = Gtk.Button(label="Delete Selected")
-        delete_btn.set_icon_name("edit-delete-symbolic")
+        delete_btn.set_icon_name("tux-edit-delete-symbolic")
         delete_btn.add_css_class("destructive-action")
         delete_btn.connect("clicked", self._on_hw_delete_selected)
         toolbar.append(delete_btn)
@@ -3793,7 +3785,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         
         # Clear All button
         clear_all_btn = Gtk.Button(label="Clear All History")
-        clear_all_btn.set_icon_name("edit-clear-all-symbolic")
+        clear_all_btn.set_icon_name("tux-edit-clear-all-symbolic")
         clear_all_btn.add_css_class("destructive-action")
         clear_all_btn.connect("clicked", self._on_hw_clear_all)
         toolbar.append(clear_all_btn)
@@ -3932,7 +3924,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         row.add_prefix(favicon)
         
         # Visit button (to navigate)
-        visit_btn = Gtk.Button.new_from_icon_name("go-jump-symbolic")
+        visit_btn = Gtk.Button.new_from_icon_name("tux-go-jump-symbolic")
         visit_btn.add_css_class("flat")
         visit_btn.set_valign(Gtk.Align.CENTER)
         visit_btn.set_tooltip_text("Visit this page")
@@ -4110,7 +4102,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             folder_header.append(expander)
             
             # Delete folder button
-            delete_folder_btn = Gtk.Button.new_from_icon_name("edit-delete-symbolic")
+            delete_folder_btn = Gtk.Button.new_from_icon_name("tux-edit-delete-symbolic")
             delete_folder_btn.add_css_class("flat")
             delete_folder_btn.set_tooltip_text(f"Delete folder '{folder_name}'")
             delete_folder_btn.set_valign(Gtk.Align.CENTER)
@@ -4239,7 +4231,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         row.set_tooltip_text(bm.get('url', ''))
         
         # Drag handle as first prefix
-        drag_handle = Gtk.Image.new_from_icon_name("list-drag-handle-symbolic")
+        drag_handle = Gtk.Image.new_from_icon_name("tux-list-drag-handle-symbolic")
         drag_handle.add_css_class("dim-label")
         row.add_prefix(drag_handle)
         
@@ -4271,7 +4263,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         row.add_controller(drop_target)
         
         # Edit button
-        edit_btn = Gtk.Button.new_from_icon_name("document-edit-symbolic")
+        edit_btn = Gtk.Button.new_from_icon_name("tux-document-edit-symbolic")
         edit_btn.set_valign(Gtk.Align.CENTER)
         edit_btn.add_css_class("flat")
         edit_btn.set_tooltip_text("Edit bookmark")
@@ -4282,7 +4274,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         row.add_suffix(edit_btn)
         
         # Delete button
-        delete_btn = Gtk.Button.new_from_icon_name("edit-delete-symbolic")
+        delete_btn = Gtk.Button.new_from_icon_name("tux-edit-delete-symbolic")
         delete_btn.set_valign(Gtk.Align.CENTER)
         delete_btn.add_css_class("flat")
         delete_btn.set_tooltip_text("Remove bookmark")
@@ -4301,12 +4293,12 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         row.add_css_class("dim-label")
         
         # Drag handle as first prefix
-        drag_handle = Gtk.Image.new_from_icon_name("list-drag-handle-symbolic")
+        drag_handle = Gtk.Image.new_from_icon_name("tux-list-drag-handle-symbolic")
         drag_handle.add_css_class("dim-label")
         row.add_prefix(drag_handle)
         
         # Delete button
-        delete_btn = Gtk.Button.new_from_icon_name("edit-delete-symbolic")
+        delete_btn = Gtk.Button.new_from_icon_name("tux-edit-delete-symbolic")
         delete_btn.set_valign(Gtk.Align.CENTER)
         delete_btn.add_css_class("flat")
         delete_btn.set_tooltip_text("Remove separator")
@@ -5453,7 +5445,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         chip.append(label)
         
         if removable and on_remove:
-            remove_btn = Gtk.Button.new_from_icon_name("window-close-symbolic")
+            remove_btn = Gtk.Button.new_from_icon_name("tux-window-close-symbolic")
             remove_btn.add_css_class("flat")
             remove_btn.add_css_class("circular")
             remove_btn.set_valign(Gtk.Align.CENTER)
@@ -5534,7 +5526,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         
         # Delete Selected button
         delete_btn = Gtk.Button(label="Delete Selected")
-        delete_btn.set_icon_name("edit-delete-symbolic")
+        delete_btn.set_icon_name("tux-edit-delete-symbolic")
         delete_btn.add_css_class("destructive-action")
         delete_btn.connect("clicked", self._on_bm_delete_selected)
         toolbar.append(delete_btn)
@@ -5561,13 +5553,13 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         
         # New Folder button
         new_folder_btn = Gtk.Button(label="New Folder")
-        new_folder_btn.set_icon_name("folder-new-symbolic")
+        new_folder_btn.set_icon_name("tux-folder-new-symbolic")
         new_folder_btn.connect("clicked", self._on_bm_new_folder)
         toolbar.append(new_folder_btn)
         
         # Export button
         export_btn = Gtk.Button(label="Export")
-        export_btn.set_icon_name("document-save-symbolic")
+        export_btn.set_icon_name("tux-document-save-symbolic")
         export_btn.connect("clicked", self._on_bookmarks_export)
         toolbar.append(export_btn)
         
@@ -5713,7 +5705,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             row.add_suffix(folder_label)
         
         # Edit button
-        edit_btn = Gtk.Button.new_from_icon_name("document-edit-symbolic")
+        edit_btn = Gtk.Button.new_from_icon_name("tux-document-edit-symbolic")
         edit_btn.set_valign(Gtk.Align.CENTER)
         edit_btn.add_css_class("flat")
         edit_btn.set_tooltip_text("Edit bookmark")
@@ -5941,7 +5933,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
                 chip_label.set_margin_end(2)
                 chip_box.append(chip_label)
                 
-                remove_btn = Gtk.Button.new_from_icon_name("window-close-symbolic")
+                remove_btn = Gtk.Button.new_from_icon_name("tux-window-close-symbolic")
                 remove_btn.add_css_class("flat")
                 remove_btn.add_css_class("circular")
                 remove_btn.set_valign(Gtk.Align.CENTER)
@@ -5973,7 +5965,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         tag_entry.set_hexpand(True)
         add_tag_box.append(tag_entry)
         
-        add_tag_btn = Gtk.Button.new_from_icon_name("list-add-symbolic")
+        add_tag_btn = Gtk.Button.new_from_icon_name("tux-list-add-symbolic")
         add_tag_btn.set_tooltip_text("Add tag")
         add_tag_box.append(add_tag_btn)
         
@@ -6119,7 +6111,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             row.set_subtitle(f"{count} bookmark{'s' if count != 1 else ''}")
             
             # Rename button
-            rename_btn = Gtk.Button.new_from_icon_name("document-edit-symbolic")
+            rename_btn = Gtk.Button.new_from_icon_name("tux-document-edit-symbolic")
             rename_btn.add_css_class("flat")
             rename_btn.set_valign(Gtk.Align.CENTER)
             rename_btn.set_tooltip_text("Rename tag")
@@ -6128,7 +6120,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             row.add_suffix(rename_btn)
             
             # Delete button
-            delete_btn = Gtk.Button.new_from_icon_name("edit-delete-symbolic")
+            delete_btn = Gtk.Button.new_from_icon_name("tux-edit-delete-symbolic")
             delete_btn.add_css_class("flat")
             delete_btn.set_valign(Gtk.Align.CENTER)
             delete_btn.set_tooltip_text("Delete tag from all bookmarks")
@@ -8177,13 +8169,13 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             
             # Icon based on status
             if d['status'] == 'completed':
-                icon = Gtk.Image.new_from_icon_name("emblem-ok-symbolic")
+                icon = Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic")
                 icon.add_css_class("success")
             elif d['status'] == 'failed':
-                icon = Gtk.Image.new_from_icon_name("dialog-error-symbolic")
+                icon = Gtk.Image.new_from_icon_name("tux-dialog-error-symbolic")
                 icon.add_css_class("error")
             else:
-                icon = Gtk.Image.new_from_icon_name("folder-download-symbolic")
+                icon = Gtk.Image.new_from_icon_name("tux-folder-download-symbolic")
             row.append(icon)
             
             # Filename and status
@@ -8212,7 +8204,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             # Open file button (only for completed)
             if d['status'] == 'completed' and d['destination']:
                 # Open containing folder button
-                folder_btn = Gtk.Button.new_from_icon_name("folder-symbolic")
+                folder_btn = Gtk.Button.new_from_icon_name("tux-folder-symbolic")
                 folder_btn.set_tooltip_text("Open containing folder")
                 folder_btn.add_css_class("flat")
                 dest = d['destination']
@@ -8220,7 +8212,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
                 row.append(folder_btn)
                 
                 # Open file button
-                open_btn = Gtk.Button.new_from_icon_name("media-playback-start-symbolic")
+                open_btn = Gtk.Button.new_from_icon_name("tux-media-playback-start-symbolic")
                 open_btn.set_tooltip_text("Open file")
                 open_btn.add_css_class("flat")
                 open_btn.connect("clicked", lambda b, f=dest: self._open_file(f))
@@ -8877,21 +8869,21 @@ echo "Installation complete!"
         distro_row = Adw.ActionRow()
         distro_row.set_title("Distribution")
         distro_row.set_subtitle(f"{self.distro.name} ({self.distro.family.value})")
-        distro_row.add_prefix(Gtk.Image.new_from_icon_name("computer-symbolic"))
+        distro_row.add_prefix(Gtk.Image.new_from_icon_name("tux-computer-symbolic"))
         banner.add(distro_row)
         
         # Desktop row
         desktop_row = Adw.ActionRow()
         desktop_row.set_title("Desktop Environment")
         desktop_row.set_subtitle(f"{self.desktop.display_name} ({self.desktop.session_type})")
-        desktop_row.add_prefix(Gtk.Image.new_from_icon_name("video-display-symbolic"))
+        desktop_row.add_prefix(Gtk.Image.new_from_icon_name("tux-video-display-symbolic"))
         banner.add(desktop_row)
         
         # Package manager row
         pkg_row = Adw.ActionRow()
         pkg_row.set_title("Package Manager")
         pkg_row.set_subtitle(self.distro.package_manager)
-        pkg_row.add_prefix(Gtk.Image.new_from_icon_name("package-x-generic-symbolic"))
+        pkg_row.add_prefix(Gtk.Image.new_from_icon_name("tux-package-x-generic-symbolic"))
         banner.add(pkg_row)
         
         # Hardware info row
@@ -8912,13 +8904,13 @@ echo "Installation complete!"
         
         hw_subtitle = " • ".join(hw_parts) if hw_parts else "Click for details"
         hw_row.set_subtitle(hw_subtitle)
-        hw_row.add_prefix(Gtk.Image.new_from_icon_name("computer-symbolic"))
+        hw_row.add_prefix(Gtk.Image.new_from_icon_name("tux-computer-symbolic"))
         
         # Add button based on hardinfo2 availability
         if hardware.hardinfo2_available:
             # Launch hardinfo2 button
             launch_btn = Gtk.Button()
-            launch_btn.set_icon_name("go-next-symbolic")
+            launch_btn.set_icon_name("tux-go-next-symbolic")
             launch_btn.set_valign(Gtk.Align.CENTER)
             launch_btn.add_css_class("flat")
             launch_btn.set_tooltip_text("Open hardinfo2 for detailed hardware info")
@@ -8943,8 +8935,8 @@ echo "Installation complete!"
         fetch_row = Adw.ActionRow()
         fetch_row.set_title("System Fetch")
         fetch_row.set_subtitle("Show detailed system info in terminal (fastfetch)")
-        fetch_row.add_prefix(Gtk.Image.new_from_icon_name("utilities-terminal-symbolic"))
-        fetch_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        fetch_row.add_prefix(Gtk.Image.new_from_icon_name("tux-utilities-terminal-symbolic"))
+        fetch_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         fetch_row.set_activatable(True)
         fetch_row.connect("activated", self._on_fastfetch_clicked)
         banner.add(fetch_row)
@@ -9115,7 +9107,7 @@ read'''
             button.get_parent().remove(button)
             
             launch_btn = Gtk.Button()
-            launch_btn.set_icon_name("go-next-symbolic")
+            launch_btn.set_icon_name("tux-go-next-symbolic")
             launch_btn.set_valign(Gtk.Align.CENTER)
             launch_btn.add_css_class("flat")
             launch_btn.set_tooltip_text("Open hardinfo2 for detailed hardware info")
@@ -9200,7 +9192,7 @@ read -p "Press Enter to close..."
             
             row.set_activatable(True)
             row.add_prefix(Gtk.Image.new_from_icon_name(module_info.icon))
-            row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+            row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
             
             # Connect click handler
             row.connect("activated", self.on_module_clicked, module_info)
@@ -9295,7 +9287,7 @@ read -p "Press Enter to close..."
                 row.set_subtitle(match["description"])
                 row.set_activatable(True)
                 row.add_prefix(Gtk.Image.new_from_icon_name(match["icon"]))
-                row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+                row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
                 row.connect("activated", self.on_module_clicked, match["module"])
                 results_group.add(row)
             
@@ -9310,8 +9302,8 @@ read -p "Press Enter to close..."
             web_row.set_title("Search DuckDuckGo")
             web_row.set_subtitle(f"Search the web for: {entry.get_text().strip()}")
             web_row.set_activatable(True)
-            web_row.add_prefix(Gtk.Image.new_from_icon_name("web-browser-symbolic"))
-            web_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+            web_row.add_prefix(Gtk.Image.new_from_icon_name("tux-web-browser-symbolic"))
+            web_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
             web_row.connect("activated", lambda r: self._do_web_search(entry.get_text().strip()))
             no_results.add(web_row)
             

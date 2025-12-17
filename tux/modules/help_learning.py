@@ -652,7 +652,7 @@ class HelpLearningPage(Adw.NavigationPage):
             row.add_prefix(Gtk.Image.new_from_icon_name(task.icon))
             row.set_activatable(True)
             row.connect("activated", self._on_quick_task, task)
-            row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+            row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
             group.add(row)
         
         # Show more button
@@ -660,7 +660,7 @@ class HelpLearningPage(Adw.NavigationPage):
         more_row.set_title("More tasks...")
         more_row.set_activatable(True)
         more_row.connect("activated", self._on_show_all_tasks)
-        more_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        more_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         group.add(more_row)
         
         return group
@@ -678,7 +678,7 @@ class HelpLearningPage(Adw.NavigationPage):
             row.add_prefix(Gtk.Image.new_from_icon_name(item.icon))
             row.set_activatable(True)
             row.connect("activated", self._on_troubleshoot, item)
-            row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+            row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
             group.add(row)
         
         return group
@@ -696,7 +696,7 @@ class HelpLearningPage(Adw.NavigationPage):
             row.add_prefix(Gtk.Image.new_from_icon_name(tutorial.icon))
             row.set_activatable(True)
             row.connect("activated", self._on_tutorial, tutorial)
-            row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+            row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
             group.add(row)
         
         return group
@@ -711,7 +711,7 @@ class HelpLearningPage(Adw.NavigationPage):
         shortcuts_row = Adw.ExpanderRow()
         shortcuts_row.set_title("Keyboard Shortcuts")
         shortcuts_row.set_subtitle("Essential shortcuts to know")
-        shortcuts_row.add_prefix(Gtk.Image.new_from_icon_name("input-keyboard-symbolic"))
+        shortcuts_row.add_prefix(Gtk.Image.new_from_icon_name("tux-input-keyboard-symbolic"))
         
         shortcuts = [
             ("Ctrl + C", "Copy / Cancel command in terminal"),
@@ -737,7 +737,7 @@ class HelpLearningPage(Adw.NavigationPage):
         terms_row = Adw.ExpanderRow()
         terms_row.set_title("Linux Terminology")
         terms_row.set_subtitle("What do these words mean?")
-        terms_row.add_prefix(Gtk.Image.new_from_icon_name("accessories-dictionary-symbolic"))
+        terms_row.add_prefix(Gtk.Image.new_from_icon_name("tux-accessories-dictionary-symbolic"))
         
         terms = [
             ("Distribution (Distro)", "A version of Linux, like Ubuntu, Fedora, or Arch"),
@@ -762,10 +762,10 @@ class HelpLearningPage(Adw.NavigationPage):
         help_row = Adw.ActionRow()
         help_row.set_title("Get Help Online")
         help_row.set_subtitle("Forums, wikis, and communities")
-        help_row.add_prefix(Gtk.Image.new_from_icon_name("web-browser-symbolic"))
+        help_row.add_prefix(Gtk.Image.new_from_icon_name("tux-web-browser-symbolic"))
         help_row.set_activatable(True)
         help_row.connect("activated", self._on_online_help)
-        help_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        help_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         group.add(help_row)
         
         return group
@@ -1150,7 +1150,7 @@ class TroubleshooterPage(Adw.NavigationPage):
         for i, check in enumerate(self.item.checks):
             row = Adw.ExpanderRow()
             row.set_title(f"{i + 1}. {check['name']}")
-            row.add_prefix(Gtk.Image.new_from_icon_name("checkbox-symbolic"))
+            row.add_prefix(Gtk.Image.new_from_icon_name("tux-checkbox-symbolic"))
             
             # Info row
             info_row = Adw.ActionRow()
@@ -1179,10 +1179,10 @@ class TroubleshooterPage(Adw.NavigationPage):
         search_row = Adw.ActionRow()
         search_row.set_title("Search online for help")
         search_row.set_subtitle(f"Search: '{self.item.title} linux fix'")
-        search_row.add_prefix(Gtk.Image.new_from_icon_name("web-browser-symbolic"))
+        search_row.add_prefix(Gtk.Image.new_from_icon_name("tux-web-browser-symbolic"))
         search_row.set_activatable(True)
         search_row.connect("activated", self._on_search_online)
-        search_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        search_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         still_group.add(search_row)
         
         content.append(still_group)
@@ -1236,7 +1236,7 @@ class AllTasksPage(Adw.NavigationPage):
             row.add_prefix(Gtk.Image.new_from_icon_name(task.icon))
             row.set_activatable(True)
             row.connect("activated", lambda r, t=task: self._on_task(t))
-            row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+            row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
             group.add(row)
         
         clamp.set_child(group)

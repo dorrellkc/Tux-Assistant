@@ -323,7 +323,7 @@ class BackupRestorePage(Adw.NavigationPage):
         
         # Refresh button
         refresh_btn = Gtk.Button()
-        refresh_btn.set_icon_name("view-refresh-symbolic")
+        refresh_btn.set_icon_name("tux-view-refresh-symbolic")
         refresh_btn.set_tooltip_text("Refresh")
         refresh_btn.connect("clicked", lambda b: self._refresh_destinations())
         header.pack_end(refresh_btn)
@@ -364,7 +364,7 @@ class BackupRestorePage(Adw.NavigationPage):
         self.dest_row = Adw.ComboRow()
         self.dest_row.set_title("Backup Destination")
         self.dest_row.set_subtitle("Select a destination")
-        self.dest_row.add_prefix(Gtk.Image.new_from_icon_name("drive-harddisk-symbolic"))
+        self.dest_row.add_prefix(Gtk.Image.new_from_icon_name("tux-drive-harddisk-symbolic"))
         
         # Model for destinations
         self.dest_model = Gtk.StringList()
@@ -377,7 +377,7 @@ class BackupRestorePage(Adw.NavigationPage):
         dest_options_row = Adw.ActionRow()
         dest_options_row.set_title("More Options")
         dest_options_row.set_subtitle("Browse for folder or connect to network share")
-        dest_options_row.add_prefix(Gtk.Image.new_from_icon_name("list-add-symbolic"))
+        dest_options_row.add_prefix(Gtk.Image.new_from_icon_name("tux-list-add-symbolic"))
         
         # Browse button
         browse_btn = Gtk.Button(label="Browse...")
@@ -399,7 +399,7 @@ class BackupRestorePage(Adw.NavigationPage):
         self.folders_expander = Adw.ExpanderRow()
         self.folders_expander.set_title("Folders to Backup")
         self.folders_expander.set_subtitle("Select which folders to include")
-        self.folders_expander.add_prefix(Gtk.Image.new_from_icon_name("folder-symbolic"))
+        self.folders_expander.add_prefix(Gtk.Image.new_from_icon_name("tux-folder-symbolic"))
         self.backup_group.add(self.folders_expander)
         
         # Add default folder checkboxes
@@ -427,7 +427,7 @@ class BackupRestorePage(Adw.NavigationPage):
         add_folder_row.set_subtitle("Browse for additional folders")
         
         add_btn = Gtk.Button()
-        add_btn.set_icon_name("list-add-symbolic")
+        add_btn.set_icon_name("tux-list-add-symbolic")
         add_btn.set_valign(Gtk.Align.CENTER)
         add_btn.connect("clicked", self._on_add_custom_folder)
         add_folder_row.add_suffix(add_btn)
@@ -459,7 +459,7 @@ class BackupRestorePage(Adw.NavigationPage):
             install_row = Adw.ActionRow()
             install_row.set_title("Timeshift Not Installed")
             install_row.set_subtitle("Install Timeshift to create system snapshots")
-            install_row.add_prefix(Gtk.Image.new_from_icon_name("dialog-information-symbolic"))
+            install_row.add_prefix(Gtk.Image.new_from_icon_name("tux-dialog-information-symbolic"))
             
             install_btn = Gtk.Button(label="Install")
             install_btn.set_valign(Gtk.Align.CENTER)
@@ -472,7 +472,7 @@ class BackupRestorePage(Adw.NavigationPage):
             create_row = Adw.ActionRow()
             create_row.set_title("Create Snapshot")
             create_row.set_subtitle("Take a snapshot of your current system state")
-            create_row.add_prefix(Gtk.Image.new_from_icon_name("list-add-symbolic"))
+            create_row.add_prefix(Gtk.Image.new_from_icon_name("tux-list-add-symbolic"))
             
             create_btn = Gtk.Button(label="Create")
             create_btn.set_valign(Gtk.Align.CENTER)
@@ -486,7 +486,7 @@ class BackupRestorePage(Adw.NavigationPage):
             open_row = Adw.ActionRow()
             open_row.set_title("Open Timeshift")
             open_row.set_subtitle("Manage snapshots, restore, and configure settings")
-            open_row.add_prefix(Gtk.Image.new_from_icon_name("applications-system-symbolic"))
+            open_row.add_prefix(Gtk.Image.new_from_icon_name("tux-applications-system-symbolic"))
             
             open_btn = Gtk.Button(label="Open")
             open_btn.set_valign(Gtk.Align.CENTER)
@@ -512,7 +512,7 @@ class BackupRestorePage(Adw.NavigationPage):
             row = Adw.ActionRow()
             row.set_title(title)
             row.set_subtitle(subtitle)
-            row.add_prefix(Gtk.Image.new_from_icon_name("dialog-information-symbolic"))
+            row.add_prefix(Gtk.Image.new_from_icon_name("tux-dialog-information-symbolic"))
             tips_group.add(row)
     
     def _refresh_destinations(self):

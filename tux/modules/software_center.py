@@ -1368,7 +1368,7 @@ class SoftwareCenterPage(Adw.NavigationPage):
         
         # Search button
         search_btn = Gtk.Button()
-        search_btn.set_icon_name("system-search-symbolic")
+        search_btn.set_icon_name("tux-system-search-symbolic")
         search_btn.set_valign(Gtk.Align.CENTER)
         search_btn.add_css_class("flat")
         search_btn.connect("clicked", self.on_search_activated)
@@ -1391,7 +1391,7 @@ class SoftwareCenterPage(Adw.NavigationPage):
             row.set_subtitle(f"{category.description} ({available_count} apps)")
             row.set_activatable(True)
             row.add_prefix(Gtk.Image.new_from_icon_name(category.icon))
-            row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+            row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
             row.connect("activated", self.on_category_clicked, category)
             group.add(row)
     
@@ -1462,7 +1462,7 @@ class PackageDetailPage(Adw.NavigationPage):
         name_row = Adw.ActionRow()
         name_row.set_title("Package Name")
         name_row.set_subtitle(self.pkg.get('name', 'Unknown'))
-        name_row.add_prefix(Gtk.Image.new_from_icon_name("package-x-generic-symbolic"))
+        name_row.add_prefix(Gtk.Image.new_from_icon_name("tux-package-x-generic-symbolic"))
         info_group.add(name_row)
         
         # Description row
@@ -1470,7 +1470,7 @@ class PackageDetailPage(Adw.NavigationPage):
             desc_row = Adw.ActionRow()
             desc_row.set_title("Description")
             desc_row.set_subtitle(self.pkg.get('description'))
-            desc_row.add_prefix(Gtk.Image.new_from_icon_name("document-properties-symbolic"))
+            desc_row.add_prefix(Gtk.Image.new_from_icon_name("tux-document-properties-symbolic"))
             info_group.add(desc_row)
         
         # Version row
@@ -1478,7 +1478,7 @@ class PackageDetailPage(Adw.NavigationPage):
             ver_row = Adw.ActionRow()
             ver_row.set_title("Version")
             ver_row.set_subtitle(self.pkg.get('version'))
-            ver_row.add_prefix(Gtk.Image.new_from_icon_name("software-update-available-symbolic"))
+            ver_row.add_prefix(Gtk.Image.new_from_icon_name("tux-software-update-available-symbolic"))
             info_group.add(ver_row)
         
         # Source row
@@ -1486,9 +1486,9 @@ class PackageDetailPage(Adw.NavigationPage):
         source_row.set_title("Source")
         source_row.set_subtitle(self.source_display)
         if self.source == "flatpak":
-            source_row.add_prefix(Gtk.Image.new_from_icon_name("system-software-install-symbolic"))
+            source_row.add_prefix(Gtk.Image.new_from_icon_name("tux-system-software-install-symbolic"))
         else:
-            source_row.add_prefix(Gtk.Image.new_from_icon_name("drive-harddisk-symbolic"))
+            source_row.add_prefix(Gtk.Image.new_from_icon_name("tux-drive-harddisk-symbolic"))
         info_group.add(source_row)
         
         # Flatpak App ID if available
@@ -1496,7 +1496,7 @@ class PackageDetailPage(Adw.NavigationPage):
             appid_row = Adw.ActionRow()
             appid_row.set_title("Flatpak App ID")
             appid_row.set_subtitle(self.pkg.get('app_id'))
-            appid_row.add_prefix(Gtk.Image.new_from_icon_name("application-x-executable-symbolic"))
+            appid_row.add_prefix(Gtk.Image.new_from_icon_name("tux-application-x-executable-symbolic"))
             info_group.add(appid_row)
         
         # Installation status
@@ -1505,7 +1505,7 @@ class PackageDetailPage(Adw.NavigationPage):
             status_row = Adw.ActionRow()
             status_row.set_title("Status")
             status_row.set_subtitle("Already installed on your system")
-            status_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
+            status_row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic"))
             info_group.add(status_row)
         
         # Action buttons
@@ -2116,7 +2116,7 @@ class SearchResultsPage(Adw.NavigationPage):
             row.connect("activated", self._on_package_row_clicked, pkg, source, pkg_key, source_display)
             
             # Arrow to show clickable
-            arrow = Gtk.Image.new_from_icon_name("go-next-symbolic")
+            arrow = Gtk.Image.new_from_icon_name("tux-go-next-symbolic")
             row.add_suffix(arrow)
             
             group.add(row)
@@ -2127,7 +2127,7 @@ class SearchResultsPage(Adw.NavigationPage):
             hint_box.set_halign(Gtk.Align.CENTER)
             hint_box.set_margin_top(10)
             
-            hint_icon = Gtk.Image.new_from_icon_name("dialog-information-symbolic")
+            hint_icon = Gtk.Image.new_from_icon_name("tux-dialog-information-symbolic")
             hint_icon.add_css_class("dim-label")
             hint_box.append(hint_icon)
             
@@ -2470,7 +2470,7 @@ class AppDetailPage(Adw.NavigationPage):
         desc_row = Adw.ActionRow()
         desc_row.set_title("Description")
         desc_row.set_subtitle(self.app.description)
-        desc_row.add_prefix(Gtk.Image.new_from_icon_name("document-properties-symbolic"))
+        desc_row.add_prefix(Gtk.Image.new_from_icon_name("tux-document-properties-symbolic"))
         info_group.add(desc_row)
         
         # Installation method
@@ -2479,13 +2479,13 @@ class AppDetailPage(Adw.NavigationPage):
             method_row = Adw.ActionRow()
             method_row.set_title("Installation Method")
             method_row.set_subtitle(f"Native packages via {self.distro.package_manager}")
-            method_row.add_prefix(Gtk.Image.new_from_icon_name("drive-harddisk-symbolic"))
+            method_row.add_prefix(Gtk.Image.new_from_icon_name("tux-drive-harddisk-symbolic"))
             info_group.add(method_row)
         elif self.app.flatpak:
             method_row = Adw.ActionRow()
             method_row.set_title("Installation Method")
             method_row.set_subtitle("Flatpak from Flathub")
-            method_row.add_prefix(Gtk.Image.new_from_icon_name("system-software-install-symbolic"))
+            method_row.add_prefix(Gtk.Image.new_from_icon_name("tux-system-software-install-symbolic"))
             info_group.add(method_row)
         
         # Special requirements
@@ -2493,7 +2493,7 @@ class AppDetailPage(Adw.NavigationPage):
             special_row = Adw.ActionRow()
             special_row.set_title("Special Requirements")
             special_row.set_subtitle("This app may require additional setup steps")
-            special_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-important-symbolic"))
+            special_row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-important-symbolic"))
             info_group.add(special_row)
         
         # Packages section
@@ -2506,7 +2506,7 @@ class AppDetailPage(Adw.NavigationPage):
             for pkg in packages:
                 pkg_row = Adw.ActionRow()
                 pkg_row.set_title(pkg)
-                pkg_row.add_prefix(Gtk.Image.new_from_icon_name("package-x-generic-symbolic"))
+                pkg_row.add_prefix(Gtk.Image.new_from_icon_name("tux-package-x-generic-symbolic"))
                 pkg_group.add(pkg_row)
         
         # Flatpak info
@@ -2518,7 +2518,7 @@ class AppDetailPage(Adw.NavigationPage):
             flatpak_row = Adw.ActionRow()
             flatpak_row.set_title("Flatpak App ID")
             flatpak_row.set_subtitle(self.app.flatpak)
-            flatpak_row.add_prefix(Gtk.Image.new_from_icon_name("application-x-executable-symbolic"))
+            flatpak_row.add_prefix(Gtk.Image.new_from_icon_name("tux-application-x-executable-symbolic"))
             flatpak_group.add(flatpak_row)
         
         # Action buttons
@@ -2669,7 +2669,7 @@ class CategoryPage(Adw.NavigationPage):
             row.connect("activated", self._on_app_row_clicked, app)
             
             # Arrow to show clickable
-            arrow = Gtk.Image.new_from_icon_name("go-next-symbolic")
+            arrow = Gtk.Image.new_from_icon_name("tux-go-next-symbolic")
             row.add_suffix(arrow)
             
             # Flatpak indicator
@@ -2680,7 +2680,7 @@ class CategoryPage(Adw.NavigationPage):
             
             # Special indicator
             if app.special:
-                special_icon = Gtk.Image.new_from_icon_name("emblem-important-symbolic")
+                special_icon = Gtk.Image.new_from_icon_name("tux-emblem-important-symbolic")
                 special_icon.set_tooltip_text("Requires additional setup")
                 row.add_suffix(special_icon)
             

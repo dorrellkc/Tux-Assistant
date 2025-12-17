@@ -447,7 +447,7 @@ class PrinterWizardPage(Adw.NavigationPage):
         
         # Refresh button
         self.refresh_btn = Gtk.Button()
-        self.refresh_btn.set_icon_name("view-refresh-symbolic")
+        self.refresh_btn.set_icon_name("tux-view-refresh-symbolic")
         self.refresh_btn.set_tooltip_text("Scan for Printers")
         self.refresh_btn.connect("clicked", self._on_scan_clicked)
         header.pack_end(self.refresh_btn)
@@ -503,7 +503,7 @@ class PrinterWizardPage(Adw.NavigationPage):
         self.printers_placeholder = Adw.ActionRow()
         self.printers_placeholder.set_title("No printers found yet")
         self.printers_placeholder.set_subtitle("Click Scan to search for USB and network printers")
-        self.printers_placeholder.add_prefix(Gtk.Image.new_from_icon_name("printer-symbolic"))
+        self.printers_placeholder.add_prefix(Gtk.Image.new_from_icon_name("tux-printer-symbolic"))
         
         scan_btn = Gtk.Button(label="Scan")
         scan_btn.add_css_class("suggested-action")
@@ -525,28 +525,28 @@ class PrinterWizardPage(Adw.NavigationPage):
         hp_row = Adw.ActionRow()
         hp_row.set_title("HP Printers")
         hp_row.set_subtitle("Usually work great with HPLIP")
-        hp_row.add_prefix(Gtk.Image.new_from_icon_name("object-select-symbolic"))
+        hp_row.add_prefix(Gtk.Image.new_from_icon_name("tux-object-select-symbolic"))
         help_group.add(hp_row)
         
         # Brother printers
         brother_row = Adw.ActionRow()
         brother_row.set_title("Brother Printers")
         brother_row.set_subtitle("May require downloading drivers from Brother")
-        brother_row.add_prefix(Gtk.Image.new_from_icon_name("dialog-warning-symbolic"))
+        brother_row.add_prefix(Gtk.Image.new_from_icon_name("tux-dialog-warning-symbolic"))
         help_group.add(brother_row)
         
         # Other printers
         other_row = Adw.ActionRow()
         other_row.set_title("Other Brands")
         other_row.set_subtitle("Canon, Epson - check manufacturer website for Linux drivers")
-        other_row.add_prefix(Gtk.Image.new_from_icon_name("help-about-symbolic"))
+        other_row.add_prefix(Gtk.Image.new_from_icon_name("tux-help-about-symbolic"))
         help_group.add(other_row)
         
         # Manual setup
         manual_row = Adw.ActionRow()
         manual_row.set_title("Manual Setup")
         manual_row.set_subtitle("Open CUPS web interface for advanced configuration")
-        manual_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-system-symbolic"))
+        manual_row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-system-symbolic"))
         
         cups_btn = Gtk.Button(label="Open CUPS")
         cups_btn.set_valign(Gtk.Align.CENTER)
@@ -573,7 +573,7 @@ class PrinterWizardPage(Adw.NavigationPage):
             self.status_row = Adw.ActionRow()
             self.status_row.set_title("Printer Support Not Installed")
             self.status_row.set_subtitle("Install CUPS to enable printing")
-            self.status_row.add_prefix(Gtk.Image.new_from_icon_name("dialog-error-symbolic"))
+            self.status_row.add_prefix(Gtk.Image.new_from_icon_name("tux-dialog-error-symbolic"))
             
             install_btn = Gtk.Button(label="Install CUPS")
             install_btn.set_valign(Gtk.Align.CENTER)
@@ -588,7 +588,7 @@ class PrinterWizardPage(Adw.NavigationPage):
             self.status_row = Adw.ActionRow()
             self.status_row.set_title("Printer Service Stopped")
             self.status_row.set_subtitle("Start CUPS to detect and use printers")
-            self.status_row.add_prefix(Gtk.Image.new_from_icon_name("dialog-warning-symbolic"))
+            self.status_row.add_prefix(Gtk.Image.new_from_icon_name("tux-dialog-warning-symbolic"))
             
             start_btn = Gtk.Button(label="Start Service")
             start_btn.set_valign(Gtk.Align.CENTER)
@@ -603,7 +603,7 @@ class PrinterWizardPage(Adw.NavigationPage):
             self.status_row = Adw.ActionRow()
             self.status_row.set_title("Printer Service Running")
             self.status_row.set_subtitle("Ready to detect and configure printers")
-            self.status_row.add_prefix(Gtk.Image.new_from_icon_name("object-select-symbolic"))
+            self.status_row.add_prefix(Gtk.Image.new_from_icon_name("tux-object-select-symbolic"))
             
             self.refresh_btn.set_sensitive(True)
         
@@ -657,7 +657,7 @@ class PrinterWizardPage(Adw.NavigationPage):
             row = Adw.ActionRow()
             row.set_title("No Printers Found")
             row.set_subtitle("Make sure your printer is connected and powered on")
-            row.add_prefix(Gtk.Image.new_from_icon_name("printer-symbolic"))
+            row.add_prefix(Gtk.Image.new_from_icon_name("tux-printer-symbolic"))
             
             self.printers_group.add(row)
             self.printer_rows.append(row)
@@ -671,7 +671,7 @@ class PrinterWizardPage(Adw.NavigationPage):
         if usb_printers:
             usb_header = Adw.ActionRow()
             usb_header.set_title(f"USB Printers ({len(usb_printers)})")
-            usb_header.add_prefix(Gtk.Image.new_from_icon_name("media-removable-symbolic"))
+            usb_header.add_prefix(Gtk.Image.new_from_icon_name("tux-media-removable-symbolic"))
             self.printers_group.add(usb_header)
             self.printer_rows.append(usb_header)
             
@@ -684,7 +684,7 @@ class PrinterWizardPage(Adw.NavigationPage):
         if network_printers:
             net_header = Adw.ActionRow()
             net_header.set_title(f"Network Printers ({len(network_printers)})")
-            net_header.add_prefix(Gtk.Image.new_from_icon_name("network-workgroup-symbolic"))
+            net_header.add_prefix(Gtk.Image.new_from_icon_name("tux-network-workgroup-symbolic"))
             self.printers_group.add(net_header)
             self.printer_rows.append(net_header)
             

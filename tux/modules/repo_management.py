@@ -226,7 +226,7 @@ class RepoManagementPage(Adw.NavigationPage):
         
         backports_row = Adw.ActionRow()
         backports_row.set_title(f"{codename}-backports" if codename else "Backports")
-        backports_row.add_prefix(Gtk.Image.new_from_icon_name("software-update-available-symbolic"))
+        backports_row.add_prefix(Gtk.Image.new_from_icon_name("tux-software-update-available-symbolic"))
         
         if backports_enabled:
             backports_row.set_subtitle("Newer packages from testing")
@@ -258,7 +258,7 @@ class RepoManagementPage(Adw.NavigationPage):
             
             universe_row = Adw.ActionRow()
             universe_row.set_title("Universe Repository")
-            universe_row.add_prefix(Gtk.Image.new_from_icon_name("starred-symbolic"))
+            universe_row.add_prefix(Gtk.Image.new_from_icon_name("tux-starred-symbolic"))
             
             if universe_enabled:
                 universe_row.set_subtitle("Community-maintained packages")
@@ -359,13 +359,13 @@ class RepoManagementPage(Adw.NavigationPage):
         free_row.set_subtitle("Open source packages (FFmpeg, VLC, etc.)")
         
         if free_enabled:
-            free_row.add_prefix(Gtk.Image.new_from_icon_name("object-select-symbolic"))
+            free_row.add_prefix(Gtk.Image.new_from_icon_name("tux-object-select-symbolic"))
             status_label = Gtk.Label(label="✓ Enabled")
             status_label.add_css_class("success")
             status_label.set_valign(Gtk.Align.CENTER)
             free_row.add_suffix(status_label)
         else:
-            free_row.add_prefix(Gtk.Image.new_from_icon_name("circle-outline-thick-symbolic"))
+            free_row.add_prefix(Gtk.Image.new_from_icon_name("tux-circle-outline-thick-symbolic"))
             btn = Gtk.Button(label="Enable")
             btn.add_css_class("suggested-action")
             btn.set_valign(Gtk.Align.CENTER)
@@ -380,13 +380,13 @@ class RepoManagementPage(Adw.NavigationPage):
         nonfree_row.set_subtitle("Proprietary packages (NVIDIA drivers, Steam, etc.)")
         
         if nonfree_enabled:
-            nonfree_row.add_prefix(Gtk.Image.new_from_icon_name("object-select-symbolic"))
+            nonfree_row.add_prefix(Gtk.Image.new_from_icon_name("tux-object-select-symbolic"))
             status_label = Gtk.Label(label="✓ Enabled")
             status_label.add_css_class("success")
             status_label.set_valign(Gtk.Align.CENTER)
             nonfree_row.add_suffix(status_label)
         else:
-            nonfree_row.add_prefix(Gtk.Image.new_from_icon_name("circle-outline-thick-symbolic"))
+            nonfree_row.add_prefix(Gtk.Image.new_from_icon_name("tux-circle-outline-thick-symbolic"))
             btn = Gtk.Button(label="Enable")
             btn.add_css_class("suggested-action")
             btn.set_valign(Gtk.Align.CENTER)
@@ -465,7 +465,7 @@ class RepoManagementPage(Adw.NavigationPage):
         packman_row = Adw.ActionRow()
         packman_row.set_title("Packman Essentials")
         packman_row.set_subtitle("Multimedia codecs and libraries")
-        packman_row.add_prefix(Gtk.Image.new_from_icon_name("folder-music-symbolic"))
+        packman_row.add_prefix(Gtk.Image.new_from_icon_name("tux-folder-music-symbolic"))
         
         if packman_enabled:
             status_label = Gtk.Label(label="✓ Enabled")
@@ -549,7 +549,7 @@ class RepoManagementPage(Adw.NavigationPage):
         multilib_row = Adw.ActionRow()
         multilib_row.set_title("multilib")
         multilib_row.set_subtitle("32-bit compatibility libraries")
-        multilib_row.add_prefix(Gtk.Image.new_from_icon_name("application-x-executable-symbolic"))
+        multilib_row.add_prefix(Gtk.Image.new_from_icon_name("tux-application-x-executable-symbolic"))
         
         if multilib_enabled:
             status_label = Gtk.Label(label="✓ Enabled")
@@ -578,7 +578,7 @@ class RepoManagementPage(Adw.NavigationPage):
         
         aur_row = Adw.ActionRow()
         aur_row.set_title("AUR Helper")
-        aur_row.add_prefix(Gtk.Image.new_from_icon_name("system-software-install-symbolic"))
+        aur_row.add_prefix(Gtk.Image.new_from_icon_name("tux-system-software-install-symbolic"))
         
         if current_helper:
             aur_row.set_subtitle(f"{current_helper} installed")
@@ -777,7 +777,7 @@ class RepoManagementPage(Adw.NavigationPage):
         elif distro_type == "arch":
             help_row.set_subtitle("Custom repos need [reponame] section and Server line")
         
-        help_row.add_prefix(Gtk.Image.new_from_icon_name("dialog-question-symbolic"))
+        help_row.add_prefix(Gtk.Image.new_from_icon_name("tux-dialog-question-symbolic"))
         custom_group.add(help_row)
     
     def _on_add_custom_repo(self, button):

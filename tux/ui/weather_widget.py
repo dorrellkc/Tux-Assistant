@@ -610,7 +610,7 @@ class NewsCard(Gtk.Box):
         
         # Search toggle button
         self.search_btn = Gtk.ToggleButton()
-        self.search_btn.set_icon_name("system-search-symbolic")
+        self.search_btn.set_icon_name("tux-system-search-symbolic")
         self.search_btn.add_css_class("flat")
         self.search_btn.add_css_class("circular")
         self.search_btn.set_tooltip_text("Search news")

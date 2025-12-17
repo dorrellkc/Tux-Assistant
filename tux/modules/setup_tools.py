@@ -1075,20 +1075,20 @@ class TaskDetailPage(Adw.NavigationPage):
             if installed_count == available_count and available_count > 0:
                 status_row.set_title(f"✓ All {available_count} packages installed")
                 status_row.add_css_class("success")
-                check_icon = Gtk.Image.new_from_icon_name("emblem-ok-symbolic")
+                check_icon = Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic")
                 check_icon.add_css_class("success")
                 status_row.add_prefix(check_icon)
             elif installed_count > 0:
                 remaining = available_count - installed_count
                 status_row.set_title(f"{installed_count} of {available_count} packages installed")
                 status_row.set_subtitle(f"{remaining} remaining to install")
-                partial_icon = Gtk.Image.new_from_icon_name("emblem-default-symbolic")
+                partial_icon = Gtk.Image.new_from_icon_name("tux-emblem-default-symbolic")
                 partial_icon.add_css_class("warning")
                 status_row.add_prefix(partial_icon)
             else:
                 status_row.set_title(f"0 of {available_count} packages installed")
                 status_row.set_subtitle("Click below to add to install queue")
-                empty_icon = Gtk.Image.new_from_icon_name("package-x-generic-symbolic")
+                empty_icon = Gtk.Image.new_from_icon_name("tux-package-x-generic-symbolic")
                 status_row.add_prefix(empty_icon)
             self.pkg_group.add(status_row)
             
@@ -1096,17 +1096,17 @@ class TaskDetailPage(Adw.NavigationPage):
             for pkg in available:
                 pkg_row = Adw.ActionRow()
                 pkg_row.set_title(pkg)
-                pkg_row.add_prefix(Gtk.Image.new_from_icon_name("package-x-generic-symbolic"))
+                pkg_row.add_prefix(Gtk.Image.new_from_icon_name("tux-package-x-generic-symbolic"))
                 
                 if pkg in installed:
                     # Installed - green checkmark
-                    check_icon = Gtk.Image.new_from_icon_name("emblem-ok-symbolic")
+                    check_icon = Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic")
                     check_icon.add_css_class("success")
                     pkg_row.add_suffix(check_icon)
                 else:
                     # Available but not installed - show install button
                     install_btn = Gtk.Button()
-                    install_btn.set_icon_name("list-add-symbolic")
+                    install_btn.set_icon_name("tux-list-add-symbolic")
                     install_btn.set_valign(Gtk.Align.CENTER)
                     install_btn.add_css_class("flat")
                     install_btn.set_tooltip_text(f"Install {pkg}")
@@ -1153,7 +1153,7 @@ class TaskDetailPage(Adw.NavigationPage):
                 enable_row = Adw.ActionRow()
                 enable_row.set_title("Enable RPM Fusion")
                 enable_row.set_subtitle("Adds Free and Nonfree repos for additional packages")
-                enable_row.add_prefix(Gtk.Image.new_from_icon_name("list-add-symbolic"))
+                enable_row.add_prefix(Gtk.Image.new_from_icon_name("tux-list-add-symbolic"))
                 
                 enable_btn = Gtk.Button(label="Enable Repos")
                 enable_btn.add_css_class("suggested-action")
@@ -1169,8 +1169,8 @@ class TaskDetailPage(Adw.NavigationPage):
                     pkg_row.set_title(pkg)
                     pkg_row.set_subtitle("Available after enabling RPM Fusion")
                     pkg_row.add_css_class("dim-label")
-                    pkg_row.add_prefix(Gtk.Image.new_from_icon_name("package-x-generic-symbolic"))
-                    lock_icon = Gtk.Image.new_from_icon_name("changes-prevent-symbolic")
+                    pkg_row.add_prefix(Gtk.Image.new_from_icon_name("tux-package-x-generic-symbolic"))
+                    lock_icon = Gtk.Image.new_from_icon_name("tux-changes-prevent-symbolic")
                     pkg_row.add_suffix(lock_icon)
                     rpmfusion_group.add(pkg_row)
                 
@@ -1182,8 +1182,8 @@ class TaskDetailPage(Adw.NavigationPage):
                 pkg_row.set_title(pkg)
                 pkg_row.set_subtitle("Not available - no known alternative source")
                 pkg_row.add_css_class("dim-label")
-                pkg_row.add_prefix(Gtk.Image.new_from_icon_name("package-x-generic-symbolic"))
-                x_icon = Gtk.Image.new_from_icon_name("window-close-symbolic")
+                pkg_row.add_prefix(Gtk.Image.new_from_icon_name("tux-package-x-generic-symbolic"))
+                x_icon = Gtk.Image.new_from_icon_name("tux-window-close-symbolic")
                 x_icon.add_css_class("error")
                 pkg_row.add_suffix(x_icon)
                 self.pkg_group.add(pkg_row)
@@ -1198,7 +1198,7 @@ class TaskDetailPage(Adw.NavigationPage):
         """Handle click on single package install button."""
         # Disable button and show installing state
         button.set_sensitive(False)
-        button.set_icon_name("content-loading-symbolic")
+        button.set_icon_name("tux-content-loading-symbolic")
         
         family_str = self.distro_family.value if hasattr(self.distro_family, 'value') else str(self.distro_family)
         
@@ -1222,7 +1222,7 @@ class TaskDetailPage(Adw.NavigationPage):
         """Handle completion of single package install."""
         if success:
             # Change button to checkmark
-            button.set_icon_name("emblem-ok-symbolic")
+            button.set_icon_name("tux-emblem-ok-symbolic")
             button.add_css_class("success")
             button.set_tooltip_text(f"{package} installed")
             
@@ -1243,7 +1243,7 @@ class TaskDetailPage(Adw.NavigationPage):
         else:
             # Re-enable button for retry
             button.set_sensitive(True)
-            button.set_icon_name("list-add-symbolic")
+            button.set_icon_name("tux-list-add-symbolic")
             button.set_tooltip_text(f"Retry install {package}")
             
             if self.window:
@@ -1332,7 +1332,7 @@ class TaskDetailPage(Adw.NavigationPage):
         pref_row = Adw.ActionRow()
         pref_row.set_title("Source Preference")
         pref_row.set_subtitle("Choose between sandboxed Flatpak or native packages")
-        pref_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-system-symbolic"))
+        pref_row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-system-symbolic"))
         
         # Flatpak preference button
         flatpak_btn = Gtk.ToggleButton(label="Flatpak")
@@ -1362,7 +1362,7 @@ class TaskDetailPage(Adw.NavigationPage):
             install_all_row = Adw.ActionRow()
             install_all_row.set_title("Install All from Alternative Sources")
             install_all_row.set_subtitle(f"Enable required repos and install all {len(pkgs_with_alternatives)} packages")
-            install_all_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-synchronizing-symbolic"))
+            install_all_row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-synchronizing-symbolic"))
             
             self.install_all_btn = Gtk.Button(label="Install All")
             self.install_all_btn.set_valign(Gtk.Align.CENTER)
@@ -1397,7 +1397,7 @@ class TaskDetailPage(Adw.NavigationPage):
             # Verify source in background (non-blocking - just show indicator if cached)
             verified, _ = verify_source_exists(source, family_str)
             if not verified:
-                warn_icon = Gtk.Image.new_from_icon_name("dialog-warning-symbolic")
+                warn_icon = Gtk.Image.new_from_icon_name("tux-dialog-warning-symbolic")
                 warn_icon.set_tooltip_text("Source could not be verified - may not exist")
                 warn_icon.add_css_class("warning")
                 prefix_box.append(warn_icon)
@@ -1601,7 +1601,7 @@ class TaskDetailPage(Adw.NavigationPage):
         desc_row = Adw.ActionRow()
         desc_row.set_title("Category")
         desc_row.set_subtitle(self.task.category.value.title())
-        desc_row.add_prefix(Gtk.Image.new_from_icon_name("folder-symbolic"))
+        desc_row.add_prefix(Gtk.Image.new_from_icon_name("tux-folder-symbolic"))
         info_group.add(desc_row)
         
         # Reboot indicator
@@ -1609,7 +1609,7 @@ class TaskDetailPage(Adw.NavigationPage):
             reboot_row = Adw.ActionRow()
             reboot_row.set_title("Requires Reboot")
             reboot_row.set_subtitle("System restart needed after installation")
-            reboot_row.add_prefix(Gtk.Image.new_from_icon_name("system-reboot-symbolic"))
+            reboot_row.add_prefix(Gtk.Image.new_from_icon_name("tux-system-reboot-symbolic"))
             info_group.add(reboot_row)
         
         # Packages section - show loading initially
@@ -1644,7 +1644,7 @@ class TaskDetailPage(Adw.NavigationPage):
                 
                 cmd_row = Adw.ActionRow()
                 cmd_row.set_title(cmd_str)
-                cmd_row.add_prefix(Gtk.Image.new_from_icon_name("utilities-terminal-symbolic"))
+                cmd_row.add_prefix(Gtk.Image.new_from_icon_name("tux-utilities-terminal-symbolic"))
                 cmd_group.add(cmd_row)
         
         # Action buttons
@@ -2288,7 +2288,7 @@ class BatchAlternativeInstallDialog(Adw.Dialog):
             row.set_subtitle(get_source_type_description(source.source_type))
             
             # Status icon (starts as pending)
-            status_icon = Gtk.Image.new_from_icon_name("content-loading-symbolic")
+            status_icon = Gtk.Image.new_from_icon_name("tux-content-loading-symbolic")
             status_icon.add_css_class("dim-label")
             row.add_suffix(status_icon)
             
@@ -2699,19 +2699,19 @@ class SetupToolsPage(Adw.NavigationPage):
                 
                 # Vendor icon
                 if gpu.vendor == 'nvidia':
-                    gpu_row.add_prefix(Gtk.Image.new_from_icon_name("video-display-symbolic"))
+                    gpu_row.add_prefix(Gtk.Image.new_from_icon_name("tux-video-display-symbolic"))
                     vendor_badge = Gtk.Label(label="NVIDIA")
                     vendor_badge.add_css_class("success")
                 elif gpu.vendor == 'amd':
-                    gpu_row.add_prefix(Gtk.Image.new_from_icon_name("video-display-symbolic"))
+                    gpu_row.add_prefix(Gtk.Image.new_from_icon_name("tux-video-display-symbolic"))
                     vendor_badge = Gtk.Label(label="AMD")
                     vendor_badge.add_css_class("accent")
                 elif gpu.vendor == 'intel':
-                    gpu_row.add_prefix(Gtk.Image.new_from_icon_name("video-display-symbolic"))
+                    gpu_row.add_prefix(Gtk.Image.new_from_icon_name("tux-video-display-symbolic"))
                     vendor_badge = Gtk.Label(label="Intel")
                     vendor_badge.add_css_class("dim-label")
                 else:
-                    gpu_row.add_prefix(Gtk.Image.new_from_icon_name("video-display-symbolic"))
+                    gpu_row.add_prefix(Gtk.Image.new_from_icon_name("tux-video-display-symbolic"))
                     vendor_badge = Gtk.Label(label="Unknown")
                 
                 vendor_badge.set_valign(Gtk.Align.CENTER)
@@ -2795,12 +2795,12 @@ class SetupToolsPage(Adw.NavigationPage):
             row.connect("activated", self.on_task_row_clicked, task)
             
             # Arrow to indicate clickable for details
-            arrow = Gtk.Image.new_from_icon_name("go-next-symbolic")
+            arrow = Gtk.Image.new_from_icon_name("tux-go-next-symbolic")
             row.add_suffix(arrow)
             
             # Reboot indicator if needed
             if task.requires_reboot:
-                reboot_icon = Gtk.Image.new_from_icon_name("system-reboot-symbolic")
+                reboot_icon = Gtk.Image.new_from_icon_name("tux-system-reboot-symbolic")
                 reboot_icon.set_tooltip_text("Requires reboot")
                 row.add_suffix(reboot_icon)
             
@@ -2883,7 +2883,7 @@ class SetupToolsPage(Adw.NavigationPage):
                 row = Adw.ActionRow()
                 row.set_title(repo['name'])
                 row.set_subtitle(repo.get('url', repo.get('description', '')))
-                row.add_prefix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
+                row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic"))
                 
                 # Add badge for repo type
                 if repo.get('type'):
@@ -2912,13 +2912,13 @@ class SetupToolsPage(Adw.NavigationPage):
         flathub_row.set_subtitle("Universal app store for Linux (Flatpak)")
         
         if flathub_enabled:
-            flathub_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
+            flathub_row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic"))
             status_label = Gtk.Label(label="Enabled")
             status_label.add_css_class("success")
             status_label.set_valign(Gtk.Align.CENTER)
             flathub_row.add_suffix(status_label)
         else:
-            flathub_row.add_prefix(Gtk.Image.new_from_icon_name("list-add-symbolic"))
+            flathub_row.add_prefix(Gtk.Image.new_from_icon_name("tux-list-add-symbolic"))
             flathub_btn = Gtk.Button(label="Enable")
             flathub_btn.set_valign(Gtk.Align.CENTER)
             flathub_btn.add_css_class("suggested-action")
@@ -2938,13 +2938,13 @@ class SetupToolsPage(Adw.NavigationPage):
             aur_row.set_subtitle("Access the Arch User Repository (AUR)")
             
             if aur_installed:
-                aur_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
+                aur_row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic"))
                 status_label = Gtk.Label(label=f"{aur_helper_name} installed")
                 status_label.add_css_class("success")
                 status_label.set_valign(Gtk.Align.CENTER)
                 aur_row.add_suffix(status_label)
             else:
-                aur_row.add_prefix(Gtk.Image.new_from_icon_name("list-add-symbolic"))
+                aur_row.add_prefix(Gtk.Image.new_from_icon_name("tux-list-add-symbolic"))
                 aur_btn = Gtk.Button(label="Install yay")
                 aur_btn.set_valign(Gtk.Align.CENTER)
                 aur_btn.add_css_class("suggested-action")
@@ -2960,13 +2960,13 @@ class SetupToolsPage(Adw.NavigationPage):
             multilib_row.set_subtitle("32-bit libraries for gaming (Steam, Wine)")
             
             if multilib_enabled:
-                multilib_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
+                multilib_row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic"))
                 status_label = Gtk.Label(label="Enabled")
                 status_label.add_css_class("success")
                 status_label.set_valign(Gtk.Align.CENTER)
                 multilib_row.add_suffix(status_label)
             else:
-                multilib_row.add_prefix(Gtk.Image.new_from_icon_name("list-add-symbolic"))
+                multilib_row.add_prefix(Gtk.Image.new_from_icon_name("tux-list-add-symbolic"))
                 multilib_btn = Gtk.Button(label="Enable")
                 multilib_btn.set_valign(Gtk.Align.CENTER)
                 multilib_btn.add_css_class("suggested-action")
@@ -2983,13 +2983,13 @@ class SetupToolsPage(Adw.NavigationPage):
             fusion_free_row.set_subtitle("Open source packages not in Fedora repos")
             
             if fusion_free_enabled:
-                fusion_free_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
+                fusion_free_row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic"))
                 status_label = Gtk.Label(label="Enabled")
                 status_label.add_css_class("success")
                 status_label.set_valign(Gtk.Align.CENTER)
                 fusion_free_row.add_suffix(status_label)
             else:
-                fusion_free_row.add_prefix(Gtk.Image.new_from_icon_name("list-add-symbolic"))
+                fusion_free_row.add_prefix(Gtk.Image.new_from_icon_name("tux-list-add-symbolic"))
                 fusion_free_btn = Gtk.Button(label="Enable")
                 fusion_free_btn.set_valign(Gtk.Align.CENTER)
                 fusion_free_btn.add_css_class("suggested-action")
@@ -3005,13 +3005,13 @@ class SetupToolsPage(Adw.NavigationPage):
             fusion_nonfree_row.set_subtitle("Proprietary packages (NVIDIA drivers, codecs)")
             
             if fusion_nonfree_enabled:
-                fusion_nonfree_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
+                fusion_nonfree_row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic"))
                 status_label = Gtk.Label(label="Enabled")
                 status_label.add_css_class("success")
                 status_label.set_valign(Gtk.Align.CENTER)
                 fusion_nonfree_row.add_suffix(status_label)
             else:
-                fusion_nonfree_row.add_prefix(Gtk.Image.new_from_icon_name("list-add-symbolic"))
+                fusion_nonfree_row.add_prefix(Gtk.Image.new_from_icon_name("tux-list-add-symbolic"))
                 fusion_nonfree_btn = Gtk.Button(label="Enable")
                 fusion_nonfree_btn.set_valign(Gtk.Align.CENTER)
                 fusion_nonfree_btn.add_css_class("suggested-action")
@@ -3028,13 +3028,13 @@ class SetupToolsPage(Adw.NavigationPage):
             packman_row.set_subtitle("Multimedia codecs and additional software")
             
             if packman_enabled:
-                packman_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
+                packman_row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic"))
                 status_label = Gtk.Label(label="Enabled")
                 status_label.add_css_class("success")
                 status_label.set_valign(Gtk.Align.CENTER)
                 packman_row.add_suffix(status_label)
             else:
-                packman_row.add_prefix(Gtk.Image.new_from_icon_name("list-add-symbolic"))
+                packman_row.add_prefix(Gtk.Image.new_from_icon_name("tux-list-add-symbolic"))
                 packman_btn = Gtk.Button(label="Enable")
                 packman_btn.set_valign(Gtk.Align.CENTER)
                 packman_btn.add_css_class("suggested-action")
@@ -3048,7 +3048,7 @@ class SetupToolsPage(Adw.NavigationPage):
             info_row = Adw.ActionRow()
             info_row.set_title("Personal Package Archives (PPAs)")
             info_row.set_subtitle("PPAs can be added via Software Center or terminal")
-            info_row.add_prefix(Gtk.Image.new_from_icon_name("dialog-information-symbolic"))
+            info_row.add_prefix(Gtk.Image.new_from_icon_name("tux-dialog-information-symbolic"))
             available_group.add(info_row)
         
         return container
@@ -3432,7 +3432,7 @@ read -p "Press Enter to close..."
         if row and isinstance(row, Adw.ActionRow):
             row.remove(button)
             # Add checkmark icon
-            check_icon = Gtk.Image.new_from_icon_name("emblem-ok-symbolic")
+            check_icon = Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic")
             check_icon.add_css_class("success")
             row.add_suffix(check_icon)
             # Update row prefix to show enabled state
@@ -3443,7 +3443,7 @@ read -p "Press Enter to close..."
                     row.remove(child)
                     break
                 child = child.get_next_sibling()
-            row.add_prefix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
+            row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic"))
         
         self.window.show_toast(f"✓ {name} enabled!")
     
@@ -3654,7 +3654,7 @@ class SSHKeyRestoreDialog(Adw.Dialog):
         content.append(drop_frame)
         
         # Drop zone content
-        drop_icon = Gtk.Image.new_from_icon_name("document-send-symbolic")
+        drop_icon = Gtk.Image.new_from_icon_name("tux-document-send-symbolic")
         drop_icon.set_pixel_size(48)
         drop_icon.add_css_class("dim-label")
         self.drop_zone.append(drop_icon)
@@ -3946,7 +3946,7 @@ class GitCloneDialog(Adw.Dialog):
             if result.returncode == 0:
                 self.git_installed = True
                 self.git_status.set_subtitle("Installed ✓")
-                self.git_status.add_suffix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
+                self.git_status.add_suffix(Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic"))
             else:
                 self._show_git_not_installed()
         except Exception:
@@ -4005,7 +4005,7 @@ class GitCloneDialog(Adw.Dialog):
         if success:
             self.git_installed = True
             self.git_status.set_subtitle("Installed ✓")
-            self.git_status.add_suffix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
+            self.git_status.add_suffix(Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic"))
             self._on_url_changed(self.url_entry)  # Re-check if clone button should enable
         else:
             self.git_status.set_subtitle("Installation failed")

@@ -302,10 +302,10 @@ class DeveloperToolsPage(Adw.NavigationPage):
         
         if ssh_exists:
             ssh_row.set_subtitle(f"✓ Found {key_type} keys")
-            ssh_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
+            ssh_row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic"))
         else:
             ssh_row.set_subtitle("✗ No SSH keys found - required for Git push/pull")
-            ssh_row.add_prefix(Gtk.Image.new_from_icon_name("dialog-warning-symbolic"))
+            ssh_row.add_prefix(Gtk.Image.new_from_icon_name("tux-dialog-warning-symbolic"))
             
             setup_btn = Gtk.Button(label="Setup Keys")
             setup_btn.add_css_class("suggested-action")
@@ -324,10 +324,10 @@ class DeveloperToolsPage(Adw.NavigationPage):
         if git_configured:
             # Don't use < > as they're interpreted as markup
             config_row.set_subtitle(f"✓ {name} ({email})")
-            config_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
+            config_row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic"))
         else:
             config_row.set_subtitle("✗ Name and email not configured")
-            config_row.add_prefix(Gtk.Image.new_from_icon_name("dialog-warning-symbolic"))
+            config_row.add_prefix(Gtk.Image.new_from_icon_name("tux-dialog-warning-symbolic"))
             
             setup_btn = Gtk.Button(label="Configure")
             setup_btn.add_css_class("suggested-action")
@@ -376,9 +376,9 @@ class DeveloperToolsPage(Adw.NavigationPage):
         status_row.set_subtitle(" • ".join(status_parts))
         
         if ssh_ok:
-            status_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
+            status_row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic"))
         else:
-            status_row.add_prefix(Gtk.Image.new_from_icon_name("dialog-password-symbolic"))
+            status_row.add_prefix(Gtk.Image.new_from_icon_name("tux-dialog-password-symbolic"))
         
         # Unlock SSH button (only show if locked)
         if not ssh_ok:
@@ -391,7 +391,7 @@ class DeveloperToolsPage(Adw.NavigationPage):
         
         # Refresh button
         refresh_btn = Gtk.Button()
-        refresh_btn.set_icon_name("view-refresh-symbolic")
+        refresh_btn.set_icon_name("tux-view-refresh-symbolic")
         refresh_btn.set_tooltip_text("Refresh status")
         refresh_btn.add_css_class("flat")
         refresh_btn.set_valign(Gtk.Align.CENTER)
@@ -412,9 +412,9 @@ class DeveloperToolsPage(Adw.NavigationPage):
         sync_row.set_subtitle(sync_status['message'])
         
         if sync_status['state'] == 'in_sync':
-            sync_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
+            sync_row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic"))
         elif sync_status['state'] == 'repo_outdated':
-            sync_row.add_prefix(Gtk.Image.new_from_icon_name("dialog-warning-symbolic"))
+            sync_row.add_prefix(Gtk.Image.new_from_icon_name("tux-dialog-warning-symbolic"))
             sync_btn = Gtk.Button(label="Sync Repo")
             sync_btn.add_css_class("destructive-action")
             sync_btn.set_tooltip_text("Copy installed version to repo")
@@ -422,7 +422,7 @@ class DeveloperToolsPage(Adw.NavigationPage):
             sync_btn.connect("clicked", self._on_sync_repo_from_installed)
             sync_row.add_suffix(sync_btn)
         elif sync_status['state'] == 'behind':
-            sync_row.add_prefix(Gtk.Image.new_from_icon_name("software-update-available-symbolic"))
+            sync_row.add_prefix(Gtk.Image.new_from_icon_name("tux-software-update-available-symbolic"))
             pull_btn = Gtk.Button(label="Pull")
             pull_btn.add_css_class("suggested-action")
             pull_btn.set_tooltip_text("Pull latest from GitHub")
@@ -430,7 +430,7 @@ class DeveloperToolsPage(Adw.NavigationPage):
             pull_btn.connect("clicked", self._on_ta_pull_dev)
             sync_row.add_suffix(pull_btn)
         elif sync_status['state'] == 'ahead':
-            sync_row.add_prefix(Gtk.Image.new_from_icon_name("send-to-symbolic"))
+            sync_row.add_prefix(Gtk.Image.new_from_icon_name("tux-send-to-symbolic"))
             push_btn = Gtk.Button(label="Push")
             push_btn.add_css_class("suggested-action")
             push_btn.set_tooltip_text("Push to GitHub")
@@ -438,7 +438,7 @@ class DeveloperToolsPage(Adw.NavigationPage):
             push_btn.connect("clicked", self._on_ta_push_dev)
             sync_row.add_suffix(push_btn)
         elif sync_status['state'] == 'aur_behind':
-            sync_row.add_prefix(Gtk.Image.new_from_icon_name("software-update-available-symbolic"))
+            sync_row.add_prefix(Gtk.Image.new_from_icon_name("tux-software-update-available-symbolic"))
             aur_btn = Gtk.Button(label="Update AUR")
             aur_btn.add_css_class("suggested-action")
             aur_btn.set_tooltip_text("Publish to AUR")
@@ -446,9 +446,9 @@ class DeveloperToolsPage(Adw.NavigationPage):
             aur_btn.connect("clicked", self._on_publish_to_aur)
             sync_row.add_suffix(aur_btn)
         elif sync_status['state'] == 'dirty':
-            sync_row.add_prefix(Gtk.Image.new_from_icon_name("document-edit-symbolic"))
+            sync_row.add_prefix(Gtk.Image.new_from_icon_name("tux-document-edit-symbolic"))
         else:
-            sync_row.add_prefix(Gtk.Image.new_from_icon_name("dialog-question-symbolic"))
+            sync_row.add_prefix(Gtk.Image.new_from_icon_name("tux-dialog-question-symbolic"))
         
         ta_group.add(sync_row)
         self.sync_row = sync_row
@@ -457,7 +457,7 @@ class DeveloperToolsPage(Adw.NavigationPage):
         install_row = Adw.ActionRow()
         install_row.set_title("📥 Install from ZIP")
         install_row.set_subtitle("Extract source from Claude and install locally")
-        install_row.add_prefix(Gtk.Image.new_from_icon_name("package-x-generic-symbolic"))
+        install_row.add_prefix(Gtk.Image.new_from_icon_name("tux-package-x-generic-symbolic"))
         
         install_btn = Gtk.Button(label="Choose ZIP & Install")
         install_btn.add_css_class("suggested-action")
@@ -472,7 +472,7 @@ class DeveloperToolsPage(Adw.NavigationPage):
         publish_row = Adw.ActionRow()
         publish_row.set_title("🚀 Publish Release")
         publish_row.set_subtitle("Commit → Push → Build .run → Create GitHub Release")
-        publish_row.add_prefix(Gtk.Image.new_from_icon_name("send-to-symbolic"))
+        publish_row.add_prefix(Gtk.Image.new_from_icon_name("tux-send-to-symbolic"))
         
         publish_btn = Gtk.Button(label=f"Publish v{version}")
         publish_btn.add_css_class("destructive-action")
@@ -487,7 +487,7 @@ class DeveloperToolsPage(Adw.NavigationPage):
         aur_row = Adw.ActionRow()
         aur_row.set_title("📦 Publish to AUR")
         aur_row.set_subtitle("Generate PKGBUILD and push to Arch User Repository")
-        aur_row.add_prefix(Gtk.Image.new_from_icon_name("software-update-available-symbolic"))
+        aur_row.add_prefix(Gtk.Image.new_from_icon_name("tux-software-update-available-symbolic"))
         
         aur_btn = Gtk.Button(label=f"Publish v{version} to AUR")
         aur_btn.add_css_class("suggested-action")
@@ -507,7 +507,7 @@ class DeveloperToolsPage(Adw.NavigationPage):
         deb_row = Adw.ActionRow()
         deb_row.set_title("Debian Package (.deb)")
         deb_row.set_subtitle("Works with: Debian, Ubuntu, Linux Mint, Pop!_OS")
-        deb_row.add_prefix(Gtk.Image.new_from_icon_name("package-x-generic-symbolic"))
+        deb_row.add_prefix(Gtk.Image.new_from_icon_name("tux-package-x-generic-symbolic"))
         
         deb_btn = Gtk.Button(label=f"Build v{version} .deb")
         deb_btn.add_css_class("suggested-action")
@@ -526,7 +526,7 @@ class DeveloperToolsPage(Adw.NavigationPage):
         fedora_row = Adw.ActionRow()
         fedora_row.set_title("Fedora Package (.rpm)")
         fedora_row.set_subtitle("Works with: Fedora, RHEL, CentOS, Rocky Linux")
-        fedora_row.add_prefix(Gtk.Image.new_from_icon_name("package-x-generic-symbolic"))
+        fedora_row.add_prefix(Gtk.Image.new_from_icon_name("tux-package-x-generic-symbolic"))
         
         fedora_btn = Gtk.Button(label=f"Build v{version} .rpm")
         fedora_btn.add_css_class("suggested-action")
@@ -545,7 +545,7 @@ class DeveloperToolsPage(Adw.NavigationPage):
         suse_row = Adw.ActionRow()
         suse_row.set_title("openSUSE Package (.rpm)")
         suse_row.set_subtitle("Works with: openSUSE Tumbleweed, Leap")
-        suse_row.add_prefix(Gtk.Image.new_from_icon_name("package-x-generic-symbolic"))
+        suse_row.add_prefix(Gtk.Image.new_from_icon_name("tux-package-x-generic-symbolic"))
         
         suse_btn = Gtk.Button(label=f"Build v{version} .rpm")
         suse_btn.add_css_class("suggested-action")
@@ -564,7 +564,7 @@ class DeveloperToolsPage(Adw.NavigationPage):
         build_all_row = Adw.ActionRow()
         build_all_row.set_title("Build Complete Release")
         build_all_row.set_subtitle(".run + .deb + Fedora .rpm + openSUSE .rpm")
-        build_all_row.add_prefix(Gtk.Image.new_from_icon_name("folder-download-symbolic"))
+        build_all_row.add_prefix(Gtk.Image.new_from_icon_name("tux-folder-download-symbolic"))
         
         build_all_btn = Gtk.Button(label=f"Build All v{version}")
         build_all_btn.add_css_class("suggested-action")
@@ -577,7 +577,7 @@ class DeveloperToolsPage(Adw.NavigationPage):
         build_all_info = Adw.ActionRow()
         build_all_info.set_title("Output Location")
         build_all_info.set_subtitle(f"~/Tux-Assistant-Releases/v{version}/")
-        build_all_info.add_prefix(Gtk.Image.new_from_icon_name("folder-symbolic"))
+        build_all_info.add_prefix(Gtk.Image.new_from_icon_name("tux-folder-symbolic"))
         build_all_group.add(build_all_info)
         
         # ═══ Publish Full Release ═══
@@ -589,7 +589,7 @@ class DeveloperToolsPage(Adw.NavigationPage):
         full_release_row = Adw.ActionRow()
         full_release_row.set_title("Publish Complete Release")
         full_release_row.set_subtitle("Commit → Push → Build All → Create GitHub Release")
-        full_release_row.add_prefix(Gtk.Image.new_from_icon_name("send-to-symbolic"))
+        full_release_row.add_prefix(Gtk.Image.new_from_icon_name("tux-send-to-symbolic"))
         
         full_release_btn = Gtk.Button(label=f"Publish v{version}")
         full_release_btn.add_css_class("destructive-action")
@@ -603,11 +603,11 @@ class DeveloperToolsPage(Adw.NavigationPage):
         help_row = Adw.ActionRow()
         help_row.set_title("Need help?")
         help_row.set_subtitle("View the Git workflow guide")
-        help_row.add_prefix(Gtk.Image.new_from_icon_name("help-about-symbolic"))
+        help_row.add_prefix(Gtk.Image.new_from_icon_name("tux-help-about-symbolic"))
         help_row.set_activatable(True)
         help_row.connect("activated", self._on_show_git_help)
         
-        chevron = Gtk.Image.new_from_icon_name("go-next-symbolic")
+        chevron = Gtk.Image.new_from_icon_name("tux-go-next-symbolic")
         chevron.add_css_class("dim-label")
         help_row.add_suffix(chevron)
         
@@ -2624,9 +2624,9 @@ read -p "Press Enter to close this window..."
                 child = child.get_next_sibling()
             
             if "Unlocked" in ssh_status:
-                self.ta_ssh_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
+                self.ta_ssh_row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic"))
             else:
-                self.ta_ssh_row.add_prefix(Gtk.Image.new_from_icon_name("dialog-password-symbolic"))
+                self.ta_ssh_row.add_prefix(Gtk.Image.new_from_icon_name("tux-dialog-password-symbolic"))
         
         return False  # Don't repeat
     
@@ -2657,9 +2657,9 @@ read -p "Press Enter to close this window..."
             child = child.get_next_sibling()
         
         if ssh_ok:
-            self.ta_status_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
+            self.ta_status_row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic"))
         else:
-            self.ta_status_row.add_prefix(Gtk.Image.new_from_icon_name("dialog-password-symbolic"))
+            self.ta_status_row.add_prefix(Gtk.Image.new_from_icon_name("tux-dialog-password-symbolic"))
         
         # Update sync row if it exists
         if hasattr(self, 'sync_row'):
@@ -3161,7 +3161,7 @@ Replace X.X.X with your version number."""
         
         # Scan button
         self.scan_btn = Gtk.Button()
-        self.scan_btn.set_icon_name("folder-saved-search-symbolic")
+        self.scan_btn.set_icon_name("tux-folder-saved-search-symbolic")
         self.scan_btn.set_tooltip_text("Scan for Git projects")
         self.scan_btn.add_css_class("flat")
         self.scan_btn.connect("clicked", self._on_scan_projects)
@@ -3169,7 +3169,7 @@ Replace X.X.X with your version number."""
         
         # Add manually button
         add_btn = Gtk.Button()
-        add_btn.set_icon_name("list-add-symbolic")
+        add_btn.set_icon_name("tux-list-add-symbolic")
         add_btn.set_tooltip_text("Add project manually (Advanced)")
         add_btn.add_css_class("flat")
         add_btn.connect("clicked", self._on_add_project_manually)
@@ -3177,7 +3177,7 @@ Replace X.X.X with your version number."""
         
         # Refresh button
         refresh_btn = Gtk.Button()
-        refresh_btn.set_icon_name("view-refresh-symbolic")
+        refresh_btn.set_icon_name("tux-view-refresh-symbolic")
         refresh_btn.set_tooltip_text("Refresh project status")
         refresh_btn.add_css_class("flat")
         refresh_btn.connect("clicked", self._on_refresh_projects)
@@ -3238,7 +3238,7 @@ Replace X.X.X with your version number."""
         # Clone a repository button
         clone_btn = Gtk.Button()
         clone_btn_content = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        clone_btn_content.append(Gtk.Image.new_from_icon_name("folder-download-symbolic"))
+        clone_btn_content.append(Gtk.Image.new_from_icon_name("tux-folder-download-symbolic"))
         clone_btn_content.append(Gtk.Label(label="Clone a Repository"))
         clone_btn.set_child(clone_btn_content)
         clone_btn.add_css_class("suggested-action")
@@ -3251,7 +3251,7 @@ Replace X.X.X with your version number."""
         if not os.path.isdir(dev_folder):
             create_btn = Gtk.Button()
             create_btn_content = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-            create_btn_content.append(Gtk.Image.new_from_icon_name("folder-new-symbolic"))
+            create_btn_content.append(Gtk.Image.new_from_icon_name("tux-folder-new-symbolic"))
             create_btn_content.append(Gtk.Label(label="Create ~/Development Folder"))
             create_btn.set_child(create_btn_content)
             create_btn.connect("clicked", self._on_create_dev_folder)
@@ -3262,7 +3262,7 @@ Replace X.X.X with your version number."""
         if not ssh_exists:
             import_btn = Gtk.Button()
             import_btn_content = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-            import_btn_content.append(Gtk.Image.new_from_icon_name("document-open-symbolic"))
+            import_btn_content.append(Gtk.Image.new_from_icon_name("tux-document-open-symbolic"))
             import_btn_content.append(Gtk.Label(label="Import Developer Kit"))
             import_btn.set_child(import_btn_content)
             import_btn.connect("clicked", self._on_import_dev_kit)
@@ -3271,7 +3271,7 @@ Replace X.X.X with your version number."""
         # Add manually button
         manual_btn = Gtk.Button()
         manual_btn_content = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        manual_btn_content.append(Gtk.Image.new_from_icon_name("list-add-symbolic"))
+        manual_btn_content.append(Gtk.Image.new_from_icon_name("tux-list-add-symbolic"))
         manual_btn_content.append(Gtk.Label(label="Add Manually (Advanced)"))
         manual_btn.set_child(manual_btn_content)
         manual_btn.add_css_class("flat")
@@ -3289,13 +3289,13 @@ Replace X.X.X with your version number."""
         export_row = Adw.ActionRow()
         export_row.set_title("Export Developer Kit")
         export_row.set_subtitle("Save SSH keys, Git identity, and project list to a folder")
-        export_row.add_prefix(Gtk.Image.new_from_icon_name("drive-removable-media-symbolic"))
+        export_row.add_prefix(Gtk.Image.new_from_icon_name("tux-drive-removable-media-symbolic"))
         
         export_btn = Gtk.Button(label="Export")
         export_btn.set_valign(Gtk.Align.CENTER)
         export_btn.connect("clicked", self._on_export_dev_kit)
         export_row.add_suffix(export_btn)
-        export_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        export_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         export_row.set_activatable(True)
         export_row.connect("activated", lambda r: self._on_export_dev_kit(None))
         kit_group.add(export_row)
@@ -3304,13 +3304,13 @@ Replace X.X.X with your version number."""
         import_row = Adw.ActionRow()
         import_row.set_title("Import Developer Kit")
         import_row.set_subtitle("Restore your dev setup from a previous export")
-        import_row.add_prefix(Gtk.Image.new_from_icon_name("document-open-symbolic"))
+        import_row.add_prefix(Gtk.Image.new_from_icon_name("tux-document-open-symbolic"))
         
         import_btn = Gtk.Button(label="Import")
         import_btn.set_valign(Gtk.Align.CENTER)
         import_btn.connect("clicked", self._on_import_dev_kit)
         import_row.add_suffix(import_btn)
-        import_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        import_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         import_row.set_activatable(True)
         import_row.connect("activated", lambda r: self._on_import_dev_kit(None))
         kit_group.add(import_row)
@@ -3325,8 +3325,8 @@ Replace X.X.X with your version number."""
         update_row = Adw.ActionRow()
         update_row.set_title("Update Project from ZIP")
         update_row.set_subtitle("Safely update a git project from a downloaded ZIP file")
-        update_row.add_prefix(Gtk.Image.new_from_icon_name("package-x-generic-symbolic"))
-        update_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        update_row.add_prefix(Gtk.Image.new_from_icon_name("tux-package-x-generic-symbolic"))
+        update_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         update_row.set_activatable(True)
         update_row.connect("activated", self._on_update_from_zip_clicked)
         git_group.add(update_row)
@@ -3335,8 +3335,8 @@ Replace X.X.X with your version number."""
         clone_row = Adw.ActionRow()
         clone_row.set_title("Clone Git Repository")
         clone_row.set_subtitle("Download a new project from GitHub, GitLab, etc.")
-        clone_row.add_prefix(Gtk.Image.new_from_icon_name("folder-download-symbolic"))
-        clone_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        clone_row.add_prefix(Gtk.Image.new_from_icon_name("tux-folder-download-symbolic"))
+        clone_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         clone_row.set_activatable(True)
         clone_row.connect("activated", self._on_clone_repo_clicked)
         git_group.add(clone_row)
@@ -3345,8 +3345,8 @@ Replace X.X.X with your version number."""
         ssh_row = Adw.ActionRow()
         ssh_row.set_title("Restore SSH Keys")
         ssh_row.set_subtitle("Drag and drop your backed up SSH keys")
-        ssh_row.add_prefix(Gtk.Image.new_from_icon_name("channel-secure-symbolic"))
-        ssh_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        ssh_row.add_prefix(Gtk.Image.new_from_icon_name("tux-channel-secure-symbolic"))
+        ssh_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         ssh_row.set_activatable(True)
         ssh_row.connect("activated", self._on_restore_ssh_clicked)
         git_group.add(ssh_row)
@@ -3411,11 +3411,11 @@ Replace X.X.X with your version number."""
         
         # Icon based on status
         if info.has_changes or info.ahead > 0:
-            row.add_prefix(Gtk.Image.new_from_icon_name("document-modified-symbolic"))
+            row.add_prefix(Gtk.Image.new_from_icon_name("tux-document-modified-symbolic"))
         elif info.behind > 0:
-            row.add_prefix(Gtk.Image.new_from_icon_name("emblem-synchronizing-symbolic"))
+            row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-synchronizing-symbolic"))
         else:
-            row.add_prefix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
+            row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic"))
         
         # Quick action buttons (in the row itself)
         button_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
@@ -3424,7 +3424,7 @@ Replace X.X.X with your version number."""
         # Pull button with label
         pull_btn = Gtk.Button()
         pull_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
-        pull_box.append(Gtk.Image.new_from_icon_name("go-down-symbolic"))
+        pull_box.append(Gtk.Image.new_from_icon_name("tux-go-down-symbolic"))
         pull_box.append(Gtk.Label(label="Pull"))
         pull_btn.set_child(pull_box)
         pull_btn.set_tooltip_text("Pull latest changes from remote")
@@ -3434,7 +3434,7 @@ Replace X.X.X with your version number."""
         # Push button with label
         push_btn = Gtk.Button()
         push_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
-        push_box.append(Gtk.Image.new_from_icon_name("go-up-symbolic"))
+        push_box.append(Gtk.Image.new_from_icon_name("tux-go-up-symbolic"))
         push_box.append(Gtk.Label(label="Push"))
         push_btn.set_child(push_box)
         push_btn.set_tooltip_text("Push your changes to remote")
@@ -3496,7 +3496,7 @@ Replace X.X.X with your version number."""
         
         # Remove from list
         remove_btn = Gtk.Button()
-        remove_btn.set_icon_name("user-trash-symbolic")
+        remove_btn.set_icon_name("tux-user-trash-symbolic")
         remove_btn.set_tooltip_text("Remove from list")
         remove_btn.add_css_class("flat")
         remove_btn.connect("clicked", lambda b: self._on_remove_project(path))
@@ -4713,7 +4713,7 @@ class UpdateFromZipDialog(Adw.Dialog):
         self.zip_row = Adw.ActionRow()
         self.zip_row.set_title("ZIP File")
         self.zip_row.set_subtitle("No file selected")
-        self.zip_row.add_prefix(Gtk.Image.new_from_icon_name("package-x-generic-symbolic"))
+        self.zip_row.add_prefix(Gtk.Image.new_from_icon_name("tux-package-x-generic-symbolic"))
         
         browse_btn = Gtk.Button(label="Browse")
         browse_btn.set_valign(Gtk.Align.CENTER)
@@ -4732,7 +4732,7 @@ class UpdateFromZipDialog(Adw.Dialog):
                 row = Adw.ActionRow()
                 row.set_title(project_name)
                 row.set_subtitle(project_path)
-                row.add_prefix(Gtk.Image.new_from_icon_name("folder-symbolic"))
+                row.add_prefix(Gtk.Image.new_from_icon_name("tux-folder-symbolic"))
                 
                 # Radio-style selection
                 check = Gtk.CheckButton()

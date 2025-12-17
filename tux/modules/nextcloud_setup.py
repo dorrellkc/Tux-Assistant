@@ -218,7 +218,7 @@ class NextcloudSetupWizard(Adw.Dialog):
         
         # Welcome banner
         welcome = Adw.StatusPage()
-        welcome.set_icon_name("network-server-symbolic")
+        welcome.set_icon_name("tux-network-server-symbolic")
         welcome.set_title("Set Up Your Personal Cloud")
         welcome.set_description("Replace Google Drive with your own Nextcloud server.\nJust fill in a few details and we'll handle the rest.")
         content_box.append(welcome)
@@ -283,7 +283,7 @@ class NextcloudSetupWizard(Adw.Dialog):
         duckdns_help_row.set_activatable(True)
         duckdns_help_row.connect("activated", self._on_duckdns_help)
         
-        link_icon = Gtk.Image.new_from_icon_name("web-browser-symbolic")
+        link_icon = Gtk.Image.new_from_icon_name("tux-web-browser-symbolic")
         duckdns_help_row.add_suffix(link_icon)
         internet_group.add(duckdns_help_row)
         
@@ -328,7 +328,7 @@ class NextcloudSetupWizard(Adw.Dialog):
             row = Adw.ActionRow()
             row.set_title(name)
             row.set_subtitle(desc)
-            row.add_prefix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
+            row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic"))
             info_group.add(row)
         
         # Install button
@@ -538,7 +538,7 @@ class NextcloudInstallDialog(Adw.Dialog):
             row.set_title(step_name)
             
             # Status icon
-            status_icon = Gtk.Image.new_from_icon_name("content-loading-symbolic")
+            status_icon = Gtk.Image.new_from_icon_name("tux-content-loading-symbolic")
             status_icon.add_css_class("dim-label")
             row.add_prefix(status_icon)
             
@@ -838,7 +838,7 @@ class NextcloudSetupPage(Adw.NavigationPage):
         
         # Hero section
         status_page = Adw.StatusPage()
-        status_page.set_icon_name("network-server-symbolic")
+        status_page.set_icon_name("tux-network-server-symbolic")
         status_page.set_title("Your Personal Cloud")
         status_page.set_description(
             "Replace Google Drive with Nextcloud - your files, your server, your control.\n"
@@ -892,11 +892,11 @@ class NextcloudSetupPage(Adw.NavigationPage):
         setup_row = Adw.ActionRow()
         setup_row.set_title("Set Up Nextcloud Server")
         setup_row.set_subtitle("Install and configure everything automatically")
-        setup_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-system-symbolic"))
+        setup_row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-system-symbolic"))
         setup_row.set_activatable(True)
         setup_row.connect("activated", self._on_setup_clicked)
         
-        go_icon = Gtk.Image.new_from_icon_name("go-next-symbolic")
+        go_icon = Gtk.Image.new_from_icon_name("tux-go-next-symbolic")
         setup_row.add_suffix(go_icon)
         
         action_group.add(setup_row)
@@ -905,11 +905,11 @@ class NextcloudSetupPage(Adw.NavigationPage):
         client_row = Adw.ActionRow()
         client_row.set_title("Install Desktop Client Only")
         client_row.set_subtitle("Connect to an existing Nextcloud server")
-        client_row.add_prefix(Gtk.Image.new_from_icon_name("folder-remote-symbolic"))
+        client_row.add_prefix(Gtk.Image.new_from_icon_name("tux-folder-remote-symbolic"))
         client_row.set_activatable(True)
         client_row.connect("activated", self._on_client_only_clicked)
         
-        client_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        client_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         action_group.add(client_row)
     
     def _on_setup_clicked(self, row):

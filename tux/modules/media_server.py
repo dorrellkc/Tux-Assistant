@@ -308,7 +308,7 @@ class MediaServerPage(Adw.NavigationPage):
         
         # Add refresh button
         refresh_btn = Gtk.Button()
-        refresh_btn.set_icon_name("view-refresh-symbolic")
+        refresh_btn.set_icon_name("tux-view-refresh-symbolic")
         refresh_btn.set_tooltip_text("Refresh")
         refresh_btn.connect("clicked", lambda b: self._build_ui())
         header.pack_end(refresh_btn)
@@ -335,7 +335,7 @@ class MediaServerPage(Adw.NavigationPage):
         
         # Hero section
         status_page = Adw.StatusPage()
-        status_page.set_icon_name("video-display-symbolic")
+        status_page.set_icon_name("tux-video-display-symbolic")
         status_page.set_title("Media Server Setup")
         
         if self.installed_server:
@@ -361,7 +361,7 @@ class MediaServerPage(Adw.NavigationPage):
                 row.set_subtitle(info.description)
                 row.set_activatable(True)
                 row.add_prefix(Gtk.Image.new_from_icon_name(info.icon))
-                row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+                row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
                 row.connect("activated", self._on_install_server, server_type)
                 install_group.add(row)
         
@@ -376,8 +376,8 @@ class MediaServerPage(Adw.NavigationPage):
         config_row.set_title("Configure Drive for Media Server")
         config_row.set_subtitle("Set up permissions for external/secondary drives")
         config_row.set_activatable(True)
-        config_row.add_prefix(Gtk.Image.new_from_icon_name("drive-harddisk-symbolic"))
-        config_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        config_row.add_prefix(Gtk.Image.new_from_icon_name("tux-drive-harddisk-symbolic"))
+        config_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         config_row.connect("activated", self._on_configure_drive)
         drive_group.add(config_row)
         
@@ -386,8 +386,8 @@ class MediaServerPage(Adw.NavigationPage):
         folder_row.set_title("Configure Media Folder")
         folder_row.set_subtitle("Set permissions on a specific folder recursively")
         folder_row.set_activatable(True)
-        folder_row.add_prefix(Gtk.Image.new_from_icon_name("folder-symbolic"))
-        folder_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        folder_row.add_prefix(Gtk.Image.new_from_icon_name("tux-folder-symbolic"))
+        folder_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         folder_row.connect("activated", self._on_configure_folder)
         drive_group.add(folder_row)
         
@@ -432,7 +432,7 @@ class MediaServerPage(Adw.NavigationPage):
             web_row.set_title("Open Web Interface")
             web_row.set_subtitle(f"http://localhost:{info.web_port}")
             web_row.set_activatable(True)
-            web_row.add_suffix(Gtk.Image.new_from_icon_name("web-browser-symbolic"))
+            web_row.add_suffix(Gtk.Image.new_from_icon_name("tux-web-browser-symbolic"))
             web_row.connect("activated", self._on_open_web)
             manage_group.add(web_row)
     
@@ -561,7 +561,7 @@ class InstallServerDialog(Adw.Dialog):
             row = Adw.ActionRow()
             row.set_title(title)
             row.set_subtitle(subtitle)
-            row.add_prefix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
+            row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic"))
             info_group.add(row)
         
         # Install button
@@ -856,7 +856,7 @@ class ConfigureDriveDialog(Adw.Dialog):
         for step in steps:
             row = Adw.ActionRow()
             row.set_title(step)
-            row.add_prefix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
+            row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic"))
             info_group.add(row)
         
         # Configure button
@@ -1163,7 +1163,7 @@ class ConfigureFolderDialog(Adw.Dialog):
         folder_row.set_title("Select Folder")
         folder_row.set_subtitle("No folder selected")
         folder_row.set_activatable(True)
-        folder_row.add_suffix(Gtk.Image.new_from_icon_name("folder-open-symbolic"))
+        folder_row.add_suffix(Gtk.Image.new_from_icon_name("tux-folder-open-symbolic"))
         folder_row.connect("activated", self._on_select_folder)
         self.folder_row = folder_row
         folder_group.add(folder_row)
@@ -1171,7 +1171,7 @@ class ConfigureFolderDialog(Adw.Dialog):
         # Warning
         warning_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         warning_box.set_margin_top(12)
-        warning_icon = Gtk.Image.new_from_icon_name("dialog-warning-symbolic")
+        warning_icon = Gtk.Image.new_from_icon_name("tux-dialog-warning-symbolic")
         warning_icon.add_css_class("warning")
         warning_box.append(warning_icon)
         

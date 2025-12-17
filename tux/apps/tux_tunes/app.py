@@ -159,7 +159,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
         # Recording page
         recording_page = Adw.PreferencesPage()
         recording_page.set_title("Recording")
-        recording_page.set_icon_name("media-record-symbolic")
+        recording_page.set_icon_name("tux-media-record-symbolic")
         self.add(recording_page)
         
         # Recording settings group
@@ -216,7 +216,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
         # Playback page
         playback_page = Adw.PreferencesPage()
         playback_page.set_title("Playback")
-        playback_page.set_icon_name("multimedia-player-symbolic")
+        playback_page.set_icon_name("tux-multimedia-player-symbolic")
         self.add(playback_page)
         
         # Playback group

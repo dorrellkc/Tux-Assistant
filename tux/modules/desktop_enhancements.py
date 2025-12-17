@@ -3680,7 +3680,7 @@ class GnomeExtensionsBrowserPage(Adw.NavigationPage):
             row.set_subtitle(f"{creator}\n{desc}" if creator else desc)
             
             # Chevron
-            chevron = Gtk.Image.new_from_icon_name("go-next-symbolic")
+            chevron = Gtk.Image.new_from_icon_name("tux-go-next-symbolic")
             chevron.add_css_class("dim-label")
             row.add_suffix(chevron)
             
@@ -3721,7 +3721,7 @@ class GnomeExtensionsBrowserPage(Adw.NavigationPage):
         
         # Settings button
         settings_btn = Gtk.Button()
-        settings_btn.set_icon_name("emblem-system-symbolic")
+        settings_btn.set_icon_name("tux-emblem-system-symbolic")
         settings_btn.set_valign(Gtk.Align.CENTER)
         settings_btn.add_css_class("flat")
         settings_btn.set_tooltip_text("Settings")
@@ -3729,7 +3729,7 @@ class GnomeExtensionsBrowserPage(Adw.NavigationPage):
         row.add_suffix(settings_btn)
         
         # Chevron
-        chevron = Gtk.Image.new_from_icon_name("go-down-symbolic")
+        chevron = Gtk.Image.new_from_icon_name("tux-go-down-symbolic")
         chevron.add_css_class("dim-label")
         row.add_suffix(chevron)
         
@@ -4041,7 +4041,7 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         
         # Refresh button
         refresh_btn = Gtk.Button()
-        refresh_btn.set_icon_name("view-refresh-symbolic")
+        refresh_btn.set_icon_name("tux-view-refresh-symbolic")
         refresh_btn.set_tooltip_text("Refresh")
         refresh_btn.connect("clicked", self.on_refresh)
         header.pack_end(refresh_btn)
@@ -4103,7 +4103,7 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         de_row = Adw.ActionRow()
         de_row.set_title("Environment")
         de_row.set_subtitle(f"{self.desktop.display_name} on {self.desktop.session_type.upper()}")
-        de_row.add_prefix(Gtk.Image.new_from_icon_name("computer-symbolic"))
+        de_row.add_prefix(Gtk.Image.new_from_icon_name("tux-computer-symbolic"))
         
         if self.desktop.is_wayland:
             badge = Gtk.Label(label="Wayland")
@@ -4125,7 +4125,7 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         theme_row = Adw.ActionRow()
         theme_row.set_title("Current Theme")
         theme_row.set_subtitle(f"GTK: {current_gtk or 'Unknown'} • Icons: {current_icon or 'Unknown'}")
-        theme_row.add_prefix(Gtk.Image.new_from_icon_name("applications-graphics-symbolic"))
+        theme_row.add_prefix(Gtk.Image.new_from_icon_name("tux-applications-graphics-symbolic"))
         group.add(theme_row)
         
         return group
@@ -4141,8 +4141,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         gtk_row.set_title("GTK Themes")
         gtk_row.set_subtitle(f"{len(GTK_THEMES)} themes available")
         gtk_row.set_activatable(True)
-        gtk_row.add_prefix(Gtk.Image.new_from_icon_name("preferences-desktop-theme-symbolic"))
-        gtk_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        gtk_row.add_prefix(Gtk.Image.new_from_icon_name("tux-preferences-desktop-theme-symbolic"))
+        gtk_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         gtk_row.connect("activated", self.on_gtk_themes)
         group.add(gtk_row)
         
@@ -4151,8 +4151,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         icon_row.set_title("Icon Themes")
         icon_row.set_subtitle(f"{len(ICON_THEMES)} icon packs available")
         icon_row.set_activatable(True)
-        icon_row.add_prefix(Gtk.Image.new_from_icon_name("folder-symbolic"))
-        icon_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        icon_row.add_prefix(Gtk.Image.new_from_icon_name("tux-folder-symbolic"))
+        icon_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         icon_row.connect("activated", self.on_icon_themes)
         group.add(icon_row)
         
@@ -4161,8 +4161,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         cursor_row.set_title("Cursor Themes")
         cursor_row.set_subtitle(f"{len(CURSOR_THEMES)} cursor themes available")
         cursor_row.set_activatable(True)
-        cursor_row.add_prefix(Gtk.Image.new_from_icon_name("input-mouse-symbolic"))
-        cursor_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        cursor_row.add_prefix(Gtk.Image.new_from_icon_name("tux-input-mouse-symbolic"))
+        cursor_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         cursor_row.connect("activated", self.on_cursor_themes)
         group.add(cursor_row)
         
@@ -4171,8 +4171,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         presets_row.set_title("Theme Presets")
         presets_row.set_subtitle(f"{len(THEME_PRESETS)} complete looks (macOS, Nordic, Dracula...)")
         presets_row.set_activatable(True)
-        presets_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-default-symbolic"))
-        presets_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        presets_row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-default-symbolic"))
+        presets_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         presets_row.connect("activated", self.on_theme_presets)
         group.add(presets_row)
         
@@ -4189,8 +4189,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         browser_row.set_title("Browse & Manage Extensions")
         browser_row.set_subtitle("Search, install, and manage GNOME extensions")
         browser_row.set_activatable(True)
-        browser_row.add_prefix(Gtk.Image.new_from_icon_name("web-browser-symbolic"))
-        browser_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        browser_row.add_prefix(Gtk.Image.new_from_icon_name("tux-web-browser-symbolic"))
+        browser_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         browser_row.connect("activated", self.on_gnome_extensions_browser)
         group.add(browser_row)
         
@@ -4199,8 +4199,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         em_row.set_title("Install Extension Manager App")
         em_row.set_subtitle("Standalone app for managing extensions")
         em_row.set_activatable(True)
-        em_row.add_prefix(Gtk.Image.new_from_icon_name("application-x-addon-symbolic"))
-        em_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        em_row.add_prefix(Gtk.Image.new_from_icon_name("tux-application-x-addon-symbolic"))
+        em_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         em_row.connect("activated", self.on_install_extension_manager)
         group.add(em_row)
         
@@ -4209,8 +4209,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         ext_row.set_title("Install from Repos")
         ext_row.set_subtitle(f"{len(GNOME_EXTENSIONS)} extensions in package manager")
         ext_row.set_activatable(True)
-        ext_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-system-symbolic"))
-        ext_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        ext_row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-system-symbolic"))
+        ext_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         ext_row.connect("activated", self.on_gnome_extensions)
         group.add(ext_row)
         
@@ -4294,8 +4294,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         tweaks_row.set_title("GNOME Tweaks")
         tweaks_row.set_subtitle("Install the official GNOME Tweaks tool for more options")
         tweaks_row.set_activatable(True)
-        tweaks_row.add_prefix(Gtk.Image.new_from_icon_name("applications-system-symbolic"))
-        tweaks_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        tweaks_row.add_prefix(Gtk.Image.new_from_icon_name("tux-applications-system-symbolic"))
+        tweaks_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         tweaks_row.connect("activated", self.on_install_gnome_tweaks)
         tools_group.add(tweaks_row)
         
@@ -4304,8 +4304,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         dconf_row.set_title("dconf Editor")
         dconf_row.set_subtitle("Low-level settings editor (advanced users)")
         dconf_row.set_activatable(True)
-        dconf_row.add_prefix(Gtk.Image.new_from_icon_name("preferences-other-symbolic"))
-        dconf_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        dconf_row.add_prefix(Gtk.Image.new_from_icon_name("tux-preferences-other-symbolic"))
+        dconf_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         dconf_row.connect("activated", self.on_install_dconf_editor)
         tools_group.add(dconf_row)
         
@@ -4326,8 +4326,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         widgets_row.set_title("Plasma Widgets")
         widgets_row.set_subtitle(f"{len(KDE_WIDGETS)} widgets available")
         widgets_row.set_activatable(True)
-        widgets_row.add_prefix(Gtk.Image.new_from_icon_name("view-app-grid-symbolic"))
-        widgets_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        widgets_row.add_prefix(Gtk.Image.new_from_icon_name("tux-view-app-grid-symbolic"))
+        widgets_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         widgets_row.connect("activated", self.on_kde_widgets)
         widgets_group.add(widgets_row)
         box.append(widgets_group)
@@ -4341,8 +4341,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         global_row.set_title("Global Themes")
         global_row.set_subtitle(f"{len(KDE_GLOBAL_THEMES)} themes available")
         global_row.set_activatable(True)
-        global_row.add_prefix(Gtk.Image.new_from_icon_name("preferences-desktop-theme-symbolic"))
-        global_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        global_row.add_prefix(Gtk.Image.new_from_icon_name("tux-preferences-desktop-theme-symbolic"))
+        global_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         global_row.connect("activated", self.on_kde_global_themes)
         themes_group.add(global_row)
         
@@ -4350,8 +4350,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         kvantum_row.set_title("Kvantum Themes")
         kvantum_row.set_subtitle(f"{len(KVANTUM_THEMES)} Qt themes available")
         kvantum_row.set_activatable(True)
-        kvantum_row.add_prefix(Gtk.Image.new_from_icon_name("applications-graphics-symbolic"))
-        kvantum_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        kvantum_row.add_prefix(Gtk.Image.new_from_icon_name("tux-applications-graphics-symbolic"))
+        kvantum_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         kvantum_row.connect("activated", self.on_kvantum_themes)
         themes_group.add(kvantum_row)
         
@@ -4360,8 +4360,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         kvantum_install.set_title("Install Kvantum Manager")
         kvantum_install.set_subtitle("Required to apply Kvantum themes")
         kvantum_install.set_activatable(True)
-        kvantum_install.add_prefix(Gtk.Image.new_from_icon_name("system-software-install-symbolic"))
-        kvantum_install.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        kvantum_install.add_prefix(Gtk.Image.new_from_icon_name("tux-system-software-install-symbolic"))
+        kvantum_install.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         kvantum_install.connect("activated", self.on_install_kvantum)
         themes_group.add(kvantum_install)
         
@@ -4376,8 +4376,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         kwin_row.set_title("Window Manager Scripts")
         kwin_row.set_subtitle(f"{len(KWIN_SCRIPTS)} scripts available (tiling, effects)")
         kwin_row.set_activatable(True)
-        kwin_row.add_prefix(Gtk.Image.new_from_icon_name("preferences-system-windows-symbolic"))
-        kwin_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        kwin_row.add_prefix(Gtk.Image.new_from_icon_name("tux-preferences-system-windows-symbolic"))
+        kwin_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         kwin_row.connect("activated", self.on_kwin_scripts)
         kwin_group.add(kwin_row)
         box.append(kwin_group)
@@ -4418,8 +4418,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         plugins_row.set_title("Panel Plugins")
         plugins_row.set_subtitle(f"{len(XFCE_PLUGINS)} plugins available")
         plugins_row.set_activatable(True)
-        plugins_row.add_prefix(Gtk.Image.new_from_icon_name("view-grid-symbolic"))
-        plugins_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        plugins_row.add_prefix(Gtk.Image.new_from_icon_name("tux-view-grid-symbolic"))
+        plugins_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         plugins_row.connect("activated", self.on_xfce_plugins)
         plugins_group.add(plugins_row)
         box.append(plugins_group)
@@ -4433,8 +4433,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         compositor_row.set_title("Compositor Tools")
         compositor_row.set_subtitle(f"{len(XFCE_COMPOSITOR_TOOLS)} tools available (picom, compton)")
         compositor_row.set_activatable(True)
-        compositor_row.add_prefix(Gtk.Image.new_from_icon_name("applications-graphics-symbolic"))
-        compositor_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        compositor_row.add_prefix(Gtk.Image.new_from_icon_name("tux-applications-graphics-symbolic"))
+        compositor_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         compositor_row.connect("activated", self.on_xfce_compositor)
         compositor_group.add(compositor_row)
         box.append(compositor_group)
@@ -4475,8 +4475,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         applets_row.set_title("Panel Applets")
         applets_row.set_subtitle(f"{len(CINNAMON_APPLETS)} applets available")
         applets_row.set_activatable(True)
-        applets_row.add_prefix(Gtk.Image.new_from_icon_name("list-add-symbolic"))
-        applets_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        applets_row.add_prefix(Gtk.Image.new_from_icon_name("tux-list-add-symbolic"))
+        applets_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         applets_row.connect("activated", self.on_cinnamon_applets)
         applets_group.add(applets_row)
         box.append(applets_group)
@@ -4490,8 +4490,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         extensions_row.set_title("Extensions (Spices)")
         extensions_row.set_subtitle(f"{len(CINNAMON_EXTENSIONS)} extensions available")
         extensions_row.set_activatable(True)
-        extensions_row.add_prefix(Gtk.Image.new_from_icon_name("application-x-addon-symbolic"))
-        extensions_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        extensions_row.add_prefix(Gtk.Image.new_from_icon_name("tux-application-x-addon-symbolic"))
+        extensions_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         extensions_row.connect("activated", self.on_cinnamon_extensions)
         extensions_group.add(extensions_row)
         box.append(extensions_group)
@@ -4505,8 +4505,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         tools_row.set_title("Cinnamon Tools")
         tools_row.set_subtitle(f"{len(CINNAMON_TOOLS)} tools available")
         tools_row.set_activatable(True)
-        tools_row.add_prefix(Gtk.Image.new_from_icon_name("applications-utilities-symbolic"))
-        tools_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        tools_row.add_prefix(Gtk.Image.new_from_icon_name("tux-applications-utilities-symbolic"))
+        tools_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         tools_row.connect("activated", self.on_cinnamon_tools)
         tools_group.add(tools_row)
         box.append(tools_group)
@@ -4565,8 +4565,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         applets_row.set_title("Panel Applets")
         applets_row.set_subtitle(f"{len(MATE_APPLETS)} applets available")
         applets_row.set_activatable(True)
-        applets_row.add_prefix(Gtk.Image.new_from_icon_name("list-add-symbolic"))
-        applets_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        applets_row.add_prefix(Gtk.Image.new_from_icon_name("tux-list-add-symbolic"))
+        applets_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         applets_row.connect("activated", self.on_mate_applets)
         applets_group.add(applets_row)
         box.append(applets_group)
@@ -4580,8 +4580,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         tools_row.set_title("MATE Tools")
         tools_row.set_subtitle(f"{len(MATE_TOOLS)} tools available")
         tools_row.set_activatable(True)
-        tools_row.add_prefix(Gtk.Image.new_from_icon_name("applications-utilities-symbolic"))
-        tools_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        tools_row.add_prefix(Gtk.Image.new_from_icon_name("tux-applications-utilities-symbolic"))
+        tools_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         tools_row.connect("activated", self.on_mate_tools)
         tools_group.add(tools_row)
         box.append(tools_group)
@@ -4635,8 +4635,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         tools_row.set_title("Desktop Utilities")
         tools_row.set_subtitle(f"{len(relevant_tools)} tools available")
         tools_row.set_activatable(True)
-        tools_row.add_prefix(Gtk.Image.new_from_icon_name("applications-utilities-symbolic"))
-        tools_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        tools_row.add_prefix(Gtk.Image.new_from_icon_name("tux-applications-utilities-symbolic"))
+        tools_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         tools_row.connect("activated", self.on_desktop_tools)
         group.add(tools_row)
         
@@ -4652,8 +4652,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         fonts_row.set_title("Font Packages")
         fonts_row.set_subtitle(f"{len(FONT_PACKAGES)} font families available")
         fonts_row.set_activatable(True)
-        fonts_row.add_prefix(Gtk.Image.new_from_icon_name("font-x-generic-symbolic"))
-        fonts_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        fonts_row.add_prefix(Gtk.Image.new_from_icon_name("tux-font-x-generic-symbolic"))
+        fonts_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         fonts_row.connect("activated", self.on_fonts)
         group.add(fonts_row)
         
@@ -4898,7 +4898,7 @@ class ThemeDetailPage(Adw.NavigationPage):
         name_row = Adw.ActionRow()
         name_row.set_title("Theme Name")
         name_row.set_subtitle(self.theme.name)
-        name_row.add_prefix(Gtk.Image.new_from_icon_name("preferences-desktop-theme-symbolic"))
+        name_row.add_prefix(Gtk.Image.new_from_icon_name("tux-preferences-desktop-theme-symbolic"))
         info_group.add(name_row)
         
         # Description row
@@ -4906,14 +4906,14 @@ class ThemeDetailPage(Adw.NavigationPage):
             desc_row = Adw.ActionRow()
             desc_row.set_title("Description")
             desc_row.set_subtitle(self.theme.description)
-            desc_row.add_prefix(Gtk.Image.new_from_icon_name("document-properties-symbolic"))
+            desc_row.add_prefix(Gtk.Image.new_from_icon_name("tux-document-properties-symbolic"))
             info_group.add(desc_row)
         
         # Type row
         type_row = Adw.ActionRow()
         type_row.set_title("Theme Type")
         type_row.set_subtitle(self.theme_type.value.title())
-        type_row.add_prefix(Gtk.Image.new_from_icon_name("applications-graphics-symbolic"))
+        type_row.add_prefix(Gtk.Image.new_from_icon_name("tux-applications-graphics-symbolic"))
         info_group.add(type_row)
         
         # Packages section
@@ -4929,7 +4929,7 @@ class ThemeDetailPage(Adw.NavigationPage):
             for pkg in packages:
                 pkg_row = Adw.ActionRow()
                 pkg_row.set_title(pkg)
-                pkg_row.add_prefix(Gtk.Image.new_from_icon_name("package-x-generic-symbolic"))
+                pkg_row.add_prefix(Gtk.Image.new_from_icon_name("tux-package-x-generic-symbolic"))
                 pkg_group.add(pkg_row)
         else:
             # Not in repos - show alternative options
@@ -4943,11 +4943,11 @@ class ThemeDetailPage(Adw.NavigationPage):
                 gnome_row = Adw.ActionRow()
                 gnome_row.set_title("🎨 Preview && Install")
                 gnome_row.set_subtitle("Browse and install from gnome-look.org")
-                gnome_row.add_prefix(Gtk.Image.new_from_icon_name("applications-graphics-symbolic"))
+                gnome_row.add_prefix(Gtk.Image.new_from_icon_name("tux-applications-graphics-symbolic"))
                 gnome_row.set_activatable(True)
                 gnome_row.connect("activated", self._on_preview_install)
                 
-                install_icon = Gtk.Image.new_from_icon_name("go-next-symbolic")
+                install_icon = Gtk.Image.new_from_icon_name("tux-go-next-symbolic")
                 gnome_row.add_suffix(install_icon)
                 alt_group.add(gnome_row)
             elif self.theme.gnome_look_url:
@@ -4955,30 +4955,30 @@ class ThemeDetailPage(Adw.NavigationPage):
                 gnome_row = Adw.ActionRow()
                 gnome_row.set_title("GNOME Look")
                 gnome_row.set_subtitle("Download from gnome-look.org")
-                gnome_row.add_prefix(Gtk.Image.new_from_icon_name("web-browser-symbolic"))
+                gnome_row.add_prefix(Gtk.Image.new_from_icon_name("tux-web-browser-symbolic"))
                 gnome_row.set_activatable(True)
                 gnome_row.connect("activated", self._on_open_url, self.theme.gnome_look_url)
-                gnome_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+                gnome_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
                 alt_group.add(gnome_row)
             
             if self.theme.github_url:
                 github_row = Adw.ActionRow()
                 github_row.set_title("GitHub")
                 github_row.set_subtitle("View source and installation instructions")
-                github_row.add_prefix(Gtk.Image.new_from_icon_name("folder-remote-symbolic"))
+                github_row.add_prefix(Gtk.Image.new_from_icon_name("tux-folder-remote-symbolic"))
                 github_row.set_activatable(True)
                 github_row.connect("activated", self._on_open_url, self.theme.github_url)
-                github_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+                github_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
                 alt_group.add(github_row)
             
             if self.theme.kde_store_url:
                 kde_row = Adw.ActionRow()
                 kde_row.set_title("KDE Store")
                 kde_row.set_subtitle("Download from KDE Store")
-                kde_row.add_prefix(Gtk.Image.new_from_icon_name("web-browser-symbolic"))
+                kde_row.add_prefix(Gtk.Image.new_from_icon_name("tux-web-browser-symbolic"))
                 kde_row.set_activatable(True)
                 kde_row.connect("activated", self._on_open_url, self.theme.kde_store_url)
-                kde_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+                kde_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
                 alt_group.add(kde_row)
             
             # AUR hint for Arch
@@ -4986,7 +4986,7 @@ class ThemeDetailPage(Adw.NavigationPage):
                 aur_row = Adw.ActionRow()
                 aur_row.set_title("AUR")
                 aur_row.set_subtitle("This theme may be available in the AUR")
-                aur_row.add_prefix(Gtk.Image.new_from_icon_name("system-software-install-symbolic"))
+                aur_row.add_prefix(Gtk.Image.new_from_icon_name("tux-system-software-install-symbolic"))
                 alt_group.add(aur_row)
         
         # Action buttons
@@ -5201,7 +5201,7 @@ class ThemeSelectionPage(Adw.NavigationPage):
                 row.connect("activated", self._on_theme_row_clicked, theme)
                 
                 # Arrow to show clickable
-                arrow = Gtk.Image.new_from_icon_name("go-next-symbolic")
+                arrow = Gtk.Image.new_from_icon_name("tux-go-next-symbolic")
                 row.add_suffix(arrow)
             else:
                 # Theme not in repos - show helpful installation options
@@ -5213,7 +5213,7 @@ class ThemeSelectionPage(Adw.NavigationPage):
                 row.connect("activated", self._on_theme_row_clicked, theme)
                 
                 # Arrow to show clickable
-                arrow = Gtk.Image.new_from_icon_name("go-next-symbolic")
+                arrow = Gtk.Image.new_from_icon_name("tux-go-next-symbolic")
                 row.add_suffix(arrow)
                 
                 # Status label
@@ -5390,7 +5390,7 @@ class ThemeDownloadDialog(Adw.Dialog):
                 aur_row = Adw.ActionRow()
                 aur_row.set_title("Install from AUR")
                 aur_row.set_subtitle(f"Package: {packages[0]}")
-                aur_row.add_prefix(Gtk.Image.new_from_icon_name("system-software-install-symbolic"))
+                aur_row.add_prefix(Gtk.Image.new_from_icon_name("tux-system-software-install-symbolic"))
                 
                 aur_btn = Gtk.Button(label="Install")
                 aur_btn.set_valign(Gtk.Align.CENTER)
@@ -5405,7 +5405,7 @@ class ThemeDownloadDialog(Adw.Dialog):
             gnome_row = Adw.ActionRow()
             gnome_row.set_title("Download from GNOME Look")
             gnome_row.set_subtitle("Opens in your browser")
-            gnome_row.add_prefix(Gtk.Image.new_from_icon_name("web-browser-symbolic"))
+            gnome_row.add_prefix(Gtk.Image.new_from_icon_name("tux-web-browser-symbolic"))
             
             gnome_btn = Gtk.Button(label="Open")
             gnome_btn.set_valign(Gtk.Align.CENTER)
@@ -5419,7 +5419,7 @@ class ThemeDownloadDialog(Adw.Dialog):
             github_row = Adw.ActionRow()
             github_row.set_title("Download from GitHub")
             github_row.set_subtitle("Clone or download ZIP")
-            github_row.add_prefix(Gtk.Image.new_from_icon_name("folder-download-symbolic"))
+            github_row.add_prefix(Gtk.Image.new_from_icon_name("tux-folder-download-symbolic"))
             
             github_btn = Gtk.Button(label="Open")
             github_btn.set_valign(Gtk.Align.CENTER)
@@ -5433,7 +5433,7 @@ class ThemeDownloadDialog(Adw.Dialog):
             kde_row = Adw.ActionRow()
             kde_row.set_title("Download from KDE Store")
             kde_row.set_subtitle("Opens in your browser")
-            kde_row.add_prefix(Gtk.Image.new_from_icon_name("kde-symbolic"))
+            kde_row.add_prefix(Gtk.Image.new_from_icon_name("tux-kde-symbolic"))
             
             kde_btn = Gtk.Button(label="Open")
             kde_btn.set_valign(Gtk.Align.CENTER)
@@ -5455,7 +5455,7 @@ class ThemeDownloadDialog(Adw.Dialog):
             ocs_row = Adw.ActionRow()
             ocs_row.set_title("Install ocs-url")
             ocs_row.set_subtitle("Enables 'Install' buttons on gnome-look.org")
-            ocs_row.add_prefix(Gtk.Image.new_from_icon_name("application-x-addon-symbolic"))
+            ocs_row.add_prefix(Gtk.Image.new_from_icon_name("tux-application-x-addon-symbolic"))
             
             ocs_btn = Gtk.Button(label="Install")
             ocs_btn.set_valign(Gtk.Align.CENTER)
@@ -5606,7 +5606,7 @@ class ThemePreviewPage(Adw.NavigationPage):
         info_bar.set_margin_bottom(8)
         info_bar.add_css_class("card")
         
-        info_icon = Gtk.Image.new_from_icon_name("dialog-information-symbolic")
+        info_icon = Gtk.Image.new_from_icon_name("tux-dialog-information-symbolic")
         info_bar.append(info_icon)
         
         info_label = Gtk.Label()
@@ -5670,7 +5670,7 @@ class ThemePreviewPage(Adw.NavigationPage):
         box.set_margin_start(32)
         box.set_margin_end(32)
         
-        icon = Gtk.Image.new_from_icon_name("web-browser-symbolic")
+        icon = Gtk.Image.new_from_icon_name("tux-web-browser-symbolic")
         icon.set_pixel_size(64)
         icon.add_css_class("dim-label")
         box.append(icon)
@@ -6459,7 +6459,7 @@ class ThemePresetPage(Adw.NavigationPage):
         install_row.set_title("Install Popular Theme Packages")
         install_row.set_subtitle("Arc, Papirus, Bibata, and more")
         install_row.set_activatable(True)
-        install_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        install_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         install_row.connect("activated", self.on_install_theme_packages)
         install_group.add(install_row)
     

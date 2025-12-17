@@ -352,6 +352,31 @@ install_icons() {
     cp "$INSTALL_DIR/assets/tux-tunes.svg" "$ICON_DIR/scalable/apps/tux-tunes.svg"
     print_success "Installed Tux Tunes icon"
     
+    # Install all bundled symbolic icons (for cross-DE compatibility)
+    if [ -d "$INSTALL_DIR/assets/icons" ]; then
+        local icon_count=0
+        mkdir -p "$ICON_DIR/scalable/actions"
+        mkdir -p "$ICON_DIR/scalable/status"
+        mkdir -p "$ICON_DIR/scalable/apps"
+        mkdir -p "$ICON_DIR/scalable/devices"
+        mkdir -p "$ICON_DIR/scalable/places"
+        mkdir -p "$ICON_DIR/scalable/mimetypes"
+        mkdir -p "$ICON_DIR/scalable/categories"
+        mkdir -p "$ICON_DIR/scalable/emblems"
+        
+        for icon_file in "$INSTALL_DIR/assets/icons/"*.svg; do
+            if [ -f "$icon_file" ]; then
+                icon_name=$(basename "$icon_file")
+                # Install to multiple categories to ensure discovery
+                cp "$icon_file" "$ICON_DIR/scalable/actions/$icon_name"
+                cp "$icon_file" "$ICON_DIR/scalable/status/$icon_name"
+                cp "$icon_file" "$ICON_DIR/scalable/apps/$icon_name"
+                icon_count=$((icon_count + 1))
+            fi
+        done
+        print_success "Installed $icon_count bundled icons"
+    fi
+    
     # Update icon cache
     if command -v gtk-update-icon-cache &>/dev/null; then
         gtk-update-icon-cache -f -t "$ICON_DIR" 2>/dev/null || true
