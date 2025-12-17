@@ -5223,6 +5223,51 @@ class ThemeSelectionPage(Adw.NavigationPage):
             
             group.add(row)
         
+        # Browse More section
+        browse_group = Adw.PreferencesGroup()
+        browse_group.set_title("Browse More Online")
+        browse_group.set_description("Find and download additional themes")
+        content.append(browse_group)
+        
+        # Determine the appropriate website based on DE
+        desktop_info = get_desktop()
+        de = desktop_info.desktop_env.value.lower() if desktop_info.desktop_env else "unknown"
+        
+        # Site URLs by DE and theme type
+        sites = []
+        
+        if self.theme_type == ThemeType.ICON:
+            if de in ["gnome", "cinnamon", "mate", "budgie", "unity"]:
+                sites.append(("GNOME-Look.org", "https://www.gnome-look.org/browse?cat=132&ord=rating", "tux-emblem-system-symbolic"))
+            if de in ["kde", "plasma"]:
+                sites.append(("KDE Store", "https://store.kde.org/browse?cat=132&ord=rating", "tux-emblem-system-symbolic"))
+            if de == "xfce":
+                sites.append(("XFCE-Look.org", "https://www.xfce-look.org/browse?cat=132&ord=rating", "tux-emblem-system-symbolic"))
+            sites.append(("Pling.com (Icons)", "https://www.pling.com/browse?cat=132&ord=rating", "tux-emblem-system-symbolic"))
+        elif self.theme_type == ThemeType.GTK:
+            if de in ["gnome", "cinnamon", "mate", "budgie", "unity"]:
+                sites.append(("GNOME-Look.org", "https://www.gnome-look.org/browse?cat=135&ord=rating", "tux-emblem-system-symbolic"))
+            if de == "xfce":
+                sites.append(("XFCE-Look.org", "https://www.xfce-look.org/browse?cat=135&ord=rating", "tux-emblem-system-symbolic"))
+            sites.append(("Pling.com (GTK Themes)", "https://www.pling.com/browse?cat=135&ord=rating", "tux-emblem-system-symbolic"))
+        elif self.theme_type == ThemeType.CURSOR:
+            sites.append(("GNOME-Look.org (Cursors)", "https://www.gnome-look.org/browse?cat=107&ord=rating", "tux-emblem-system-symbolic"))
+            sites.append(("Pling.com (Cursors)", "https://www.pling.com/browse?cat=107&ord=rating", "tux-emblem-system-symbolic"))
+        elif self.theme_type == ThemeType.PLASMA:
+            sites.append(("KDE Store (Plasma)", "https://store.kde.org/browse?cat=104&ord=rating", "tux-emblem-system-symbolic"))
+        elif self.theme_type == ThemeType.KVANTUM:
+            sites.append(("KDE Store (Kvantum)", "https://store.kde.org/browse?cat=123&ord=rating", "tux-emblem-system-symbolic"))
+        
+        for site_name, site_url, icon_name in sites:
+            browse_row = Adw.ActionRow()
+            browse_row.set_title(f"Browse {site_name}")
+            browse_row.set_subtitle("Search and download themes online")
+            browse_row.set_activatable(True)
+            browse_row.add_prefix(Gtk.Image.new_from_icon_name(icon_name))
+            browse_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
+            browse_row.connect("activated", self._on_browse_online, site_url)
+            browse_group.add(browse_row)
+        
         # Install button
         button_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         button_box.set_halign(Gtk.Align.CENTER)
@@ -5277,6 +5322,17 @@ class ThemeSelectionPage(Adw.NavigationPage):
             self.selected_themes.discard(theme_id)
         
         self._update_install_button()
+    
+    def _on_browse_online(self, row, url: str):
+        """Open theme website in embedded browser."""
+        page = ThemeBrowserPage(
+            window=self.window,
+            distro=self.distro,
+            url=url,
+            title=f"Browse {self.get_title()}",
+            theme_type=self.theme_type
+        )
+        self.window.navigation_view.push(page)
     
     def _update_install_button(self):
         """Update install button state and label."""
@@ -5832,16 +5888,16 @@ class ThemePreviewPage(Adw.NavigationPage):
         elif content_type in ['yakuake-skins']:
             install_dir = home / '.local' / 'share' / 'yakuake' / 'skins'
         
-        # Icons (universal - all DEs use ~/.icons)
+        # Icons (use XDG standard path - GNOME Settings looks here)
         elif content_type in ['icons', 'icon-themes', 'full-icon-themes', 'kde-icons',
                               'gnome-icons', 'xfce-icons', 'cinnamon-icons', 'mate-icons',
                               'icon-theme', 'icon', 'icons-gnome', 'icons-kde']:
-            install_dir = home / '.icons'
+            install_dir = home / '.local' / 'share' / 'icons'
         
-        # Cursors (also go in ~/.icons)
+        # Cursors (also go in icons directory)
         elif content_type in ['cursors', 'cursor-themes', 'xcursors', 'x11-cursors',
                               'cursor', 'cursor-theme', 'mouse-cursors', 'xcursor']:
-            install_dir = home / '.icons'
+            install_dir = home / '.local' / 'share' / 'icons'
         
         # Wallpapers (universal)
         elif content_type in ['wallpapers', 'wallpaper', 'wallpapers-hd', 'backgrounds',
@@ -5957,6 +6013,32 @@ class ThemePreviewPage(Adw.NavigationPage):
                             return False, "Archive is empty"
                 else:
                     return False, f"Unsupported archive format: {filename}"
+                
+                # Update icon cache and create symlinks for icon/cursor themes
+                if content_type in ['icons', 'icon-themes', 'full-icon-themes', 'kde-icons',
+                                   'gnome-icons', 'xfce-icons', 'cinnamon-icons', 'mate-icons',
+                                   'icon-theme', 'icon', 'icons-gnome', 'icons-kde',
+                                   'cursors', 'cursor-themes', 'xcursors', 'x11-cursors',
+                                   'cursor', 'cursor-theme', 'mouse-cursors', 'xcursor']:
+                    theme_path = install_dir / theme_name
+                    if theme_path.exists():
+                        try:
+                            subprocess.run(
+                                ['gtk-update-icon-cache', '-f', '-t', str(theme_path)],
+                                capture_output=True, timeout=30
+                            )
+                        except Exception:
+                            pass  # Icon cache update is optional
+                        
+                        # Create symlink in ~/.icons for legacy compatibility
+                        legacy_dir = home / '.icons'
+                        legacy_dir.mkdir(parents=True, exist_ok=True)
+                        legacy_link = legacy_dir / theme_name
+                        if not legacy_link.exists():
+                            try:
+                                legacy_link.symlink_to(theme_path)
+                            except Exception:
+                                pass  # Symlink is optional
                     
             except Exception as e:
                 return False, f"Extraction failed: {e}"
@@ -5984,6 +6066,382 @@ class ThemePreviewPage(Adw.NavigationPage):
 
 
 # =============================================================================
+# =============================================================================
+# Theme Browser Page (embedded browser for gnome-look/kde-store/etc)
+# =============================================================================
+
+class ThemeBrowserPage(Adw.NavigationPage):
+    """Embedded browser for browsing and installing themes from online stores."""
+    
+    def __init__(self, window, distro, url: str, title: str, theme_type: ThemeType):
+        super().__init__(title=title)
+        
+        self.window = window
+        self.distro = distro
+        self.url = url
+        self.theme_type = theme_type
+        self.webview = None
+        
+        self.build_ui()
+    
+    def build_ui(self):
+        """Build the browser UI."""
+        toolbar_view = Adw.ToolbarView()
+        self.set_child(toolbar_view)
+        
+        # Header bar with navigation
+        header = Adw.HeaderBar()
+        toolbar_view.add_top_bar(header)
+        
+        # Navigation buttons
+        nav_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        nav_box.add_css_class("linked")
+        
+        self.back_btn = Gtk.Button()
+        self.back_btn.set_icon_name("tux-go-previous-symbolic")
+        self.back_btn.set_tooltip_text("Back")
+        self.back_btn.set_sensitive(False)
+        self.back_btn.connect("clicked", self._on_back)
+        nav_box.append(self.back_btn)
+        
+        self.forward_btn = Gtk.Button()
+        self.forward_btn.set_icon_name("tux-go-next-symbolic")
+        self.forward_btn.set_tooltip_text("Forward")
+        self.forward_btn.set_sensitive(False)
+        self.forward_btn.connect("clicked", self._on_forward)
+        nav_box.append(self.forward_btn)
+        
+        refresh_btn = Gtk.Button()
+        refresh_btn.set_icon_name("tux-view-refresh-symbolic")
+        refresh_btn.set_tooltip_text("Refresh")
+        refresh_btn.connect("clicked", self._on_refresh)
+        nav_box.append(refresh_btn)
+        
+        header.pack_start(nav_box)
+        
+        # Open in external browser button
+        external_btn = Gtk.Button()
+        external_btn.set_icon_name("tux-emblem-system-symbolic")
+        external_btn.set_tooltip_text("Open in external browser")
+        external_btn.connect("clicked", self._on_open_external)
+        header.pack_end(external_btn)
+        
+        # Main content
+        main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        toolbar_view.set_content(main_box)
+        
+        if not HAS_WEBKIT:
+            self._show_no_webkit_fallback(main_box)
+            return
+        
+        # Info bar
+        info_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        info_bar.set_margin_start(16)
+        info_bar.set_margin_end(16)
+        info_bar.set_margin_top(8)
+        info_bar.set_margin_bottom(8)
+        
+        info_icon = Gtk.Image.new_from_icon_name("tux-dialog-information-symbolic")
+        info_bar.append(info_icon)
+        
+        info_label = Gtk.Label()
+        info_label.set_markup(
+            "<small>Click <b>Install</b> on any theme to download and install it automatically. "
+            "Tux Assistant handles the installation for you!</small>"
+        )
+        info_label.set_wrap(True)
+        info_label.set_xalign(0)
+        info_label.set_hexpand(True)
+        info_bar.append(info_label)
+        
+        main_box.append(info_bar)
+        main_box.append(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
+        
+        # WebView
+        self.webview = WebKit.WebView()
+        self.webview.set_vexpand(True)
+        self.webview.set_hexpand(True)
+        
+        # Connect signals
+        self.webview.connect("decide-policy", self._on_decide_policy)
+        self.webview.connect("load-changed", self._on_load_changed)
+        
+        # Configure settings
+        settings = self.webview.get_settings()
+        settings.set_enable_javascript(True)
+        settings.set_enable_javascript_markup(True)
+        
+        # Load the URL
+        self.webview.load_uri(self.url)
+        
+        main_box.append(self.webview)
+        
+        # Status bar
+        self.status_label = Gtk.Label()
+        self.status_label.set_markup("<small>Loading...</small>")
+        self.status_label.add_css_class("dim-label")
+        self.status_label.set_margin_top(4)
+        self.status_label.set_margin_bottom(4)
+        main_box.append(self.status_label)
+    
+    def _show_no_webkit_fallback(self, container):
+        """Show fallback when WebKit isn't available."""
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
+        box.set_valign(Gtk.Align.CENTER)
+        box.set_halign(Gtk.Align.CENTER)
+        box.set_margin_top(40)
+        box.set_margin_bottom(40)
+        container.append(box)
+        
+        icon = Gtk.Image.new_from_icon_name("tux-dialog-warning-symbolic")
+        icon.set_pixel_size(64)
+        box.append(icon)
+        
+        label = Gtk.Label()
+        label.set_markup("<b>WebKit Not Available</b>\n\nInstall WebKitGTK for the embedded browser.")
+        label.set_justify(Gtk.Justification.CENTER)
+        box.append(label)
+        
+        open_btn = Gtk.Button(label="Open in External Browser")
+        open_btn.add_css_class("suggested-action")
+        open_btn.connect("clicked", self._on_open_external)
+        box.append(open_btn)
+    
+    def _on_back(self, button):
+        if self.webview and self.webview.can_go_back():
+            self.webview.go_back()
+    
+    def _on_forward(self, button):
+        if self.webview and self.webview.can_go_forward():
+            self.webview.go_forward()
+    
+    def _on_refresh(self, button):
+        if self.webview:
+            self.webview.reload()
+    
+    def _on_open_external(self, button):
+        import subprocess
+        url = self.webview.get_uri() if self.webview else self.url
+        try:
+            subprocess.Popen(['xdg-open', url])
+        except Exception as e:
+            self.window.show_toast(f"Could not open browser: {e}")
+    
+    def _on_load_changed(self, webview, event):
+        """Update navigation buttons and status."""
+        if event == WebKit.LoadEvent.STARTED:
+            self.status_label.set_markup("<small>Loading...</small>")
+        elif event == WebKit.LoadEvent.FINISHED:
+            title = webview.get_title() or "Theme Browser"
+            self.status_label.set_markup(f"<small>{title}</small>")
+            self.back_btn.set_sensitive(webview.can_go_back())
+            self.forward_btn.set_sensitive(webview.can_go_forward())
+    
+    def _on_decide_policy(self, webview, decision, decision_type):
+        """Intercept navigation to handle ocs:// links."""
+        if decision_type == WebKit.PolicyDecisionType.NAVIGATION_ACTION:
+            nav_action = decision.get_navigation_action()
+            request = nav_action.get_request()
+            uri = request.get_uri()
+            
+            # Handle ocs:// protocol
+            if uri and uri.startswith('ocs://'):
+                decision.ignore()
+                self._handle_ocs_url(uri)
+                return True
+        
+        return False
+    
+    def _handle_ocs_url(self, ocs_uri: str):
+        """Handle ocs:// URL - download and install theme."""
+        self.status_label.set_markup("<small>🎨 Downloading theme...</small>")
+        self.window.show_toast("📦 Downloading theme...")
+        
+        try:
+            from urllib.parse import parse_qs, unquote
+            
+            # Parse ocs:// URL
+            if ocs_uri.startswith('ocs://'):
+                ocs_uri = ocs_uri[6:]
+            
+            if '?' in ocs_uri:
+                path, query = ocs_uri.split('?', 1)
+            else:
+                self.window.show_toast("❌ Invalid ocs:// URL")
+                return
+            
+            params = parse_qs(query)
+            download_url = params.get('url', [None])[0]
+            if download_url:
+                download_url = unquote(download_url)
+            
+            content_type = params.get('type', ['themes'])[0]
+            filename = params.get('filename', [None])[0]
+            if filename:
+                filename = unquote(filename)
+            
+            # Log for debugging
+            print(f"[OCS] content_type={content_type}, filename={filename}")
+            print(f"[OCS] download_url={download_url}")
+            
+            if not download_url:
+                self.window.show_toast("❌ No download URL in link")
+                return
+            
+            # Download and install in background
+            def do_install():
+                try:
+                    success, message = self._download_and_install_theme(download_url, content_type, filename)
+                    GLib.idle_add(self._on_install_complete, success, message)
+                except Exception as e:
+                    GLib.idle_add(self._on_install_complete, False, str(e))
+            
+            threading.Thread(target=do_install, daemon=True).start()
+            
+        except Exception as e:
+            self.window.show_toast(f"❌ Error: {e}")
+    
+    def _download_and_install_theme(self, url: str, content_type: str, filename: str) -> tuple[bool, str]:
+        """Download and install a theme. Returns (success, message)."""
+        import tempfile
+        import tarfile
+        import zipfile
+        import urllib.request
+        import subprocess
+        
+        home = Path.home()
+        content_type_lower = content_type.lower() if content_type else ""
+        
+        # Determine install directory based on content type
+        # Use flexible matching to handle variations
+        
+        # Icons - check for 'icon' anywhere in the type
+        if 'icon' in content_type_lower:
+            install_dir = home / '.local' / 'share' / 'icons'
+            is_icon_theme = True
+        # Cursors
+        elif 'cursor' in content_type_lower or 'xcursor' in content_type_lower:
+            install_dir = home / '.local' / 'share' / 'icons'
+            is_icon_theme = True
+        # Plasma/KDE specific
+        elif 'plasma' in content_type_lower and 'desktoptheme' in content_type_lower:
+            install_dir = home / '.local' / 'share' / 'plasma' / 'desktoptheme'
+            is_icon_theme = False
+        elif 'plasma' in content_type_lower and ('look' in content_type_lower or 'feel' in content_type_lower):
+            install_dir = home / '.local' / 'share' / 'plasma' / 'look-and-feel'
+            is_icon_theme = False
+        elif 'aurorae' in content_type_lower or 'window-decoration' in content_type_lower:
+            install_dir = home / '.local' / 'share' / 'aurorae' / 'themes'
+            is_icon_theme = False
+        elif 'color-scheme' in content_type_lower:
+            install_dir = home / '.local' / 'share' / 'color-schemes'
+            is_icon_theme = False
+        elif 'kvantum' in content_type_lower:
+            install_dir = home / '.config' / 'Kvantum'
+            is_icon_theme = False
+        # GTK/GNOME themes
+        elif 'gtk' in content_type_lower or 'gnome-shell' in content_type_lower:
+            install_dir = home / '.themes'
+            is_icon_theme = False
+        elif 'theme' in content_type_lower:
+            # Generic "themes" - probably GTK
+            install_dir = home / '.themes'
+            is_icon_theme = False
+        # Wallpapers
+        elif 'wallpaper' in content_type_lower or 'background' in content_type_lower:
+            install_dir = home / '.local' / 'share' / 'wallpapers'
+            is_icon_theme = False
+        else:
+            # Default fallback - if we got here via icon themes browser, assume icons
+            if self.theme_type == ThemeType.ICON:
+                install_dir = home / '.local' / 'share' / 'icons'
+                is_icon_theme = True
+            elif self.theme_type == ThemeType.CURSOR:
+                install_dir = home / '.local' / 'share' / 'icons'
+                is_icon_theme = True
+            else:
+                install_dir = home / '.themes'
+                is_icon_theme = False
+        
+        print(f"[OCS] Installing to: {install_dir}")
+        install_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Download to temp file
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=filename or '.tar.gz') as tmp:
+                tmp_path = Path(tmp.name)
+                urllib.request.urlretrieve(url, tmp_path)
+        except Exception as e:
+            return False, f"Download failed: {e}"
+        
+        theme_name = "Unknown"
+        try:
+            # Extract archive
+            if tmp_path.suffix in ['.gz', '.xz', '.bz2'] or '.tar' in str(tmp_path):
+                with tarfile.open(tmp_path) as tar:
+                    members = tar.getnames()
+                    if members:
+                        # Get root folder, handling potential nested structures
+                        root_folder = members[0].split('/')[0]
+                        theme_name = root_folder
+                    
+                    # Extract with security filter if available (Python 3.12+)
+                    try:
+                        tar.extractall(install_dir, filter='data')
+                    except TypeError:
+                        tar.extractall(install_dir)
+                        
+            elif tmp_path.suffix == '.zip':
+                with zipfile.ZipFile(tmp_path) as zf:
+                    members = zf.namelist()
+                    if members:
+                        root_folder = members[0].split('/')[0]
+                        theme_name = root_folder
+                    zf.extractall(install_dir)
+            else:
+                return False, f"Unknown archive format: {tmp_path.suffix}"
+            
+            # Update icon cache if this was an icon/cursor theme
+            if is_icon_theme:
+                theme_path = install_dir / theme_name
+                if theme_path.exists():
+                    try:
+                        subprocess.run(
+                            ['gtk-update-icon-cache', '-f', '-t', str(theme_path)],
+                            capture_output=True, timeout=30
+                        )
+                        print(f"[OCS] Updated icon cache for {theme_name}")
+                    except Exception:
+                        pass  # Icon cache update is optional
+                
+                # Also create symlink in ~/.icons for compatibility
+                legacy_dir = home / '.icons'
+                legacy_dir.mkdir(parents=True, exist_ok=True)
+                legacy_link = legacy_dir / theme_name
+                if not legacy_link.exists() and theme_path.exists():
+                    try:
+                        legacy_link.symlink_to(theme_path)
+                        print(f"[OCS] Created symlink: {legacy_link} -> {theme_path}")
+                    except Exception:
+                        pass  # Symlink is optional
+            
+            return True, f"Installed: {theme_name} to {install_dir}"
+            
+        except Exception as e:
+            return False, str(e)
+        finally:
+            tmp_path.unlink(missing_ok=True)
+    
+    def _on_install_complete(self, success: bool, message: str):
+        """Handle installation completion."""
+        if success:
+            self.status_label.set_markup(f"<small>✓ {message}</small>")
+            self.window.show_toast(f"✓ {message} - Check Settings → Appearance to apply")
+        else:
+            self.status_label.set_markup(f"<small>❌ {message}</small>")
+            self.window.show_toast(f"❌ {message}")
+
+
 # Extension Selection Page
 # =============================================================================
 

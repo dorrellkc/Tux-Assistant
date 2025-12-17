@@ -1233,6 +1233,21 @@ class SimpleNetworkingPage(Adw.NavigationPage):
             wifi_row.add_prefix(Gtk.Image.new_from_icon_name("tux-network-wireless-disabled-symbolic"))
         group.add(wifi_row)
         
+        # Hostname (editable)
+        self.host_row = Adw.ActionRow()
+        self.host_row.set_title("Hostname")
+        self.host_row.set_subtitle(get_hostname())
+        self.host_row.add_prefix(Gtk.Image.new_from_icon_name("tux-computer-symbolic"))
+        
+        edit_btn = Gtk.Button()
+        edit_btn.set_icon_name("tux-document-edit-symbolic")
+        edit_btn.set_valign(Gtk.Align.CENTER)
+        edit_btn.add_css_class("flat")
+        edit_btn.set_tooltip_text("Change hostname")
+        edit_btn.connect("clicked", self._on_edit_hostname)
+        self.host_row.add_suffix(edit_btn)
+        group.add(self.host_row)
+        
         return group
     
     def _create_wifi_section(self) -> Gtk.Widget:
@@ -1473,6 +1488,17 @@ class SimpleNetworkingPage(Adw.NavigationPage):
         """Refresh the status."""
         self._build_content()
         self.window.show_toast("Status refreshed")
+    
+    def _on_edit_hostname(self, button):
+        """Show dialog to change hostname."""
+        dialog = ChangeHostnameDialog(self.window, self._on_hostname_changed)
+        dialog.present(self.window)
+    
+    def _on_hostname_changed(self, new_hostname: str):
+        """Callback when hostname is changed successfully."""
+        if hasattr(self, 'host_row'):
+            self.host_row.set_subtitle(new_hostname)
+        self.window.show_toast(f"Hostname changed to '{new_hostname}'")
     
     def _get_wifi_status(self) -> dict:
         """Get current WiFi status."""
