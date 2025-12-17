@@ -1954,6 +1954,8 @@ exit 0
     
     def _find_fpm_path(self) -> str:
         """Find fpm executable."""
+        import glob
+        
         # Check PATH
         result = subprocess.run(['which', 'fpm'], capture_output=True, text=True)
         if result.returncode == 0 and result.stdout.strip():
@@ -1967,11 +1969,29 @@ exit 0
             )
             if gem_result.returncode == 0:
                 gem_dir = gem_result.stdout.strip()
-                fpm_path = os.path.join(gem_dir, 'bin', 'fpm')
+                bin_dir = os.path.join(gem_dir, 'bin')
+                
+                # Check for fpm directly
+                fpm_path = os.path.join(bin_dir, 'fpm')
                 if os.path.isfile(fpm_path):
                     return fpm_path
-                # Try glob
-                import glob
+                
+                # Check for fpm.ruby* (openSUSE naming)
+                fpm_ruby_matches = glob.glob(os.path.join(bin_dir, 'fpm.ruby*'))
+                if fpm_ruby_matches:
+                    fpm_ruby_path = fpm_ruby_matches[0]
+                    # Create symlink in ~/.local/bin for convenience
+                    local_bin = os.path.expanduser("~/.local/bin")
+                    os.makedirs(local_bin, exist_ok=True)
+                    symlink_path = os.path.join(local_bin, 'fpm')
+                    if not os.path.exists(symlink_path):
+                        try:
+                            os.symlink(fpm_ruby_path, symlink_path)
+                        except:
+                            pass
+                    return fpm_ruby_path
+                
+                # Try glob in gems folder
                 matches = glob.glob(os.path.join(gem_dir, 'gems', 'fpm-*', 'bin', 'fpm'))
                 if matches:
                     return matches[0]
@@ -4022,6 +4042,110 @@ read'''
         except Exception as e:
             self.window.show_toast(f"Export failed: {e}")
     
+    def _install_build_dependencies(self) -> str:
+        """Install all build dependencies for package building."""
+        import glob
+        
+        results = []
+        
+        # Detect distro
+        distro = "unknown"
+        try:
+            with open("/etc/os-release") as f:
+                content = f.read().lower()
+                if "arch" in content or "endeavour" in content or "manjaro" in content or "cachyos" in content:
+                    distro = "arch"
+                elif "fedora" in content or "rhel" in content or "centos" in content or "rocky" in content:
+                    distro = "fedora"
+                elif "opensuse" in content or "suse" in content:
+                    distro = "suse"
+                elif "ubuntu" in content or "debian" in content or "mint" in content or "pop" in content:
+                    distro = "debian"
+        except:
+            pass
+        
+        # Define packages needed per distro
+        pkg_map = {
+            "arch": {
+                "install_cmd": ["sudo", "pacman", "-S", "--noconfirm", "--needed"],
+                "packages": ["ruby", "binutils", "rpm-tools", "fakeroot"]
+            },
+            "fedora": {
+                "install_cmd": ["sudo", "dnf", "install", "-y"],
+                "packages": ["ruby", "ruby-devel", "binutils", "rpm-build", "gcc", "make"]
+            },
+            "suse": {
+                "install_cmd": ["sudo", "zypper", "--non-interactive", "install"],
+                "packages": ["ruby", "ruby-devel", "binutils", "rpm-build", "fakeroot", "gcc", "make"]
+            },
+            "debian": {
+                "install_cmd": ["sudo", "apt", "install", "-y"],
+                "packages": ["ruby", "ruby-dev", "binutils", "rpm", "fakeroot", "build-essential"]
+            }
+        }
+        
+        if distro == "unknown":
+            return "⚠️ Unknown distro - install ruby, binutils, rpm-build manually"
+        
+        # Install system packages
+        try:
+            config = pkg_map[distro]
+            cmd = config["install_cmd"] + config["packages"]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            if result.returncode == 0:
+                results.append("✓ System build tools installed")
+            else:
+                results.append(f"⚠️ Some packages may have failed")
+        except Exception as e:
+            results.append(f"⚠️ Package install error: {str(e)[:50]}")
+        
+        # Install fpm gem
+        try:
+            # Check if fpm already exists
+            fpm_path = self._find_fpm_path()
+            if not fpm_path:
+                result = subprocess.run(
+                    ["gem", "install", "--user-install", "fpm"],
+                    capture_output=True, text=True, timeout=300
+                )
+                if result.returncode == 0:
+                    results.append("✓ FPM gem installed")
+                    
+                    # Handle openSUSE/newer Ruby naming (fpm.ruby*)
+                    gem_result = subprocess.run(
+                        ['ruby', '-e', 'puts Gem.user_dir'],
+                        capture_output=True, text=True, timeout=10
+                    )
+                    if gem_result.returncode == 0:
+                        gem_dir = gem_result.stdout.strip()
+                        bin_dir = os.path.join(gem_dir, 'bin')
+                        fpm_ruby_matches = glob.glob(os.path.join(bin_dir, 'fpm.ruby*'))
+                        if fpm_ruby_matches:
+                            fpm_ruby_path = fpm_ruby_matches[0]
+                            local_bin = os.path.expanduser("~/.local/bin")
+                            os.makedirs(local_bin, exist_ok=True)
+                            symlink_path = os.path.join(local_bin, 'fpm')
+                            if not os.path.exists(symlink_path):
+                                try:
+                                    os.symlink(fpm_ruby_path, symlink_path)
+                                    results.append("✓ FPM symlink created")
+                                except:
+                                    pass
+                else:
+                    results.append(f"⚠️ FPM install failed")
+            else:
+                results.append("✓ FPM already installed")
+        except Exception as e:
+            results.append(f"⚠️ FPM error: {str(e)[:50]}")
+        
+        # Ensure ~/.local/bin is in PATH hint
+        local_bin = os.path.expanduser("~/.local/bin")
+        path_env = os.environ.get("PATH", "")
+        if local_bin not in path_env:
+            results.append(f"ℹ️ Add to PATH: {local_bin}")
+        
+        return "\\n".join(results) if results else "✓ Build dependencies ready"
+    
     def _on_import_dev_kit(self, button):
         """Import Developer Kit from a folder."""
         dialog = Gtk.FileDialog()
@@ -4053,6 +4177,12 @@ read'''
                 manifest = json.load(f)
             
             results = []
+            
+            # Install build dependencies first
+            self.window.show_toast("Installing build dependencies...")
+            build_result = self._install_build_dependencies()
+            if build_result:
+                results.append(build_result)
             
             # Import SSH keys
             ssh_dir = os.path.join(kit_path, 'ssh_keys')
