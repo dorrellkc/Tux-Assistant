@@ -1766,6 +1766,10 @@ exit 0
                     "--exclude", "post-install.sh",
                 ]
                 
+                # For DEB packages, avoid pax headers that cause issues
+                if info["ext"] == "deb":
+                    fpm_cmd.extend(["--deb-no-default-config-files"])
+                
                 # Add dependencies
                 for dep in info["deps"].split(", "):
                     fpm_cmd.extend(["-d", dep.strip()])
@@ -1780,9 +1784,14 @@ exit 0
                 # Add the content
                 fpm_cmd.append(".")
                 
+                # Set environment to use GNU tar format (avoids pax header issues)
+                build_env = os.environ.copy()
+                build_env["TAR_OPTIONS"] = "--format=gnu"
+                
                 result = subprocess.run(
                     fpm_cmd,
-                    capture_output=True, text=True, timeout=120
+                    capture_output=True, text=True, timeout=120,
+                    env=build_env
                 )
                 
                 if result.returncode != 0:
@@ -2099,6 +2108,10 @@ exit 0
                 "--exclude", "post-install.sh",
             ]
             
+            # For DEB packages, avoid pax headers that cause issues
+            if pkg["ext"] == "deb":
+                fpm_cmd.extend(["--deb-no-default-config-files"])
+            
             for dep in pkg["deps"].split(", "):
                 fpm_cmd.extend(["-d", dep.strip()])
             
@@ -2107,7 +2120,11 @@ exit 0
             
             fpm_cmd.append(".")
             
-            result = subprocess.run(fpm_cmd, capture_output=True, text=True, timeout=120)
+            # Set environment to use GNU tar format (avoids pax header issues)
+            build_env = os.environ.copy()
+            build_env["TAR_OPTIONS"] = "--format=gnu"
+            
+            result = subprocess.run(fpm_cmd, capture_output=True, text=True, timeout=120, env=build_env)
             
             shutil.rmtree(staging_dir, ignore_errors=True)
             
