@@ -1512,15 +1512,15 @@ class TaskDetailPage(Adw.NavigationPage):
     def _get_source_icon(self, source_type: SourceType) -> str:
         """Get icon name for a source type."""
         icons = {
-            SourceType.COPR: "application-x-addon-symbolic",
-            SourceType.PPA: "application-x-addon-symbolic", 
-            SourceType.AUR: "system-software-install-symbolic",
-            SourceType.OBS: "application-x-addon-symbolic",
-            SourceType.FLATPAK: "system-software-install-symbolic",
-            SourceType.RPMFUSION: "application-x-addon-symbolic",
-            SourceType.PACKMAN: "application-x-addon-symbolic",
+            SourceType.COPR: "tux-application-x-addon-symbolic",
+            SourceType.PPA: "tux-application-x-addon-symbolic", 
+            SourceType.AUR: "tux-system-software-install-symbolic",
+            SourceType.OBS: "tux-application-x-addon-symbolic",
+            SourceType.FLATPAK: "tux-system-software-install-symbolic",
+            SourceType.RPMFUSION: "tux-application-x-addon-symbolic",
+            SourceType.PACKMAN: "tux-application-x-addon-symbolic",
         }
-        return icons.get(source_type, "package-x-generic-symbolic")
+        return icons.get(source_type, "tux-package-x-generic-symbolic")
     
     def _on_enable_source_clicked(self, button, package: str, source: PackageSource):
         """Handle Enable & Install button click."""
@@ -1822,6 +1822,8 @@ class AlternativeSourceInstallDialog(Adw.Dialog):
                 self._install_rpmfusion(pkg_name)
             elif self.source.source_type == SourceType.PACKMAN:
                 self._install_packman(pkg_name)
+            elif self.source.source_type == SourceType.OBS:
+                self._install_obs(pkg_name)
             else:
                 GLib.idle_add(self._append_output, f"Unknown source type: {self.source.source_type}")
                 GLib.idle_add(self._installation_complete, False)
@@ -2091,6 +2093,14 @@ class AlternativeSourceInstallDialog(Adw.Dialog):
         # Use tux-helper for privileged operations
         self._run_with_helper('packman', '', pkg_name)
     
+    def _install_obs(self, pkg_name: str):
+        """Enable OBS repository and install package."""
+        GLib.idle_add(self._append_output, f"Enabling OBS repository: {self.source.repo_id}")
+        GLib.idle_add(self.progress_bar.set_text, "Enabling OBS repository...")
+        
+        # Use tux-helper for privileged operations
+        self._run_with_helper('obs', self.source.repo_id, pkg_name)
+    
     def _run_with_helper(self, source_type: str, repo_id: str, pkg_name: str):
         """Run installation using tux-helper with pkexec."""
         import shutil
@@ -2325,15 +2335,15 @@ class BatchAlternativeInstallDialog(Adw.Dialog):
             icon.remove_css_class("dim-label")
             
             if status == 'installing':
-                icon.set_from_icon_name("emblem-synchronizing-symbolic")
+                icon.set_from_icon_name("tux-emblem-synchronizing-symbolic")
                 icon.add_css_class("accent")
             elif status == 'success':
                 icon.remove_css_class("accent")
-                icon.set_from_icon_name("emblem-ok-symbolic")
+                icon.set_from_icon_name("tux-emblem-ok-symbolic")
                 icon.add_css_class("success")
             elif status == 'failed':
                 icon.remove_css_class("accent")
-                icon.set_from_icon_name("dialog-error-symbolic")
+                icon.set_from_icon_name("tux-dialog-error-symbolic")
                 icon.add_css_class("error")
     
     def _start_installation(self):
@@ -2413,6 +2423,8 @@ class BatchAlternativeInstallDialog(Adw.Dialog):
                 return self._do_rpmfusion_install(pkg_name)
             elif source.source_type == SourceType.PACKMAN:
                 return self._do_packman_install(pkg_name)
+            elif source.source_type == SourceType.OBS:
+                return self._do_obs_install(source.repo_id, pkg_name)
             else:
                 GLib.idle_add(self._append_output, f"Unknown source type: {source.source_type}")
                 return False
@@ -2563,6 +2575,31 @@ class BatchAlternativeInstallDialog(Adw.Dialog):
             ['sudo', 'zypper', 'install', '-y', pkg_name],
             capture_output=True, text=True, timeout=300
         )
+        
+        return result.returncode == 0
+    
+    def _do_obs_install(self, repo_id: str, pkg_name: str) -> bool:
+        """Install from OBS repository."""
+        # Use tux-helper to enable repo and install
+        helper_paths = [
+            '/usr/bin/tux-helper',
+            '/usr/local/bin/tux-helper',
+            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'tux-helper'),
+        ]
+        
+        helper_path = None
+        for path in helper_paths:
+            if os.path.exists(path):
+                helper_path = path
+                break
+        
+        if not helper_path:
+            GLib.idle_add(self._append_output, "Error: tux-helper not found!")
+            return False
+        
+        cmd = ['sudo', helper_path, '--enable-source', 'obs', '--repo-id', repo_id, '--install-package', pkg_name]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
         
         return result.returncode == 0
     

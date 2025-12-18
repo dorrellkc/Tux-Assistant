@@ -3460,68 +3460,84 @@ def enable_obs(repo_id: str) -> bool:
     """Enable an OpenSUSE Build Service repository.
     
     Args:
-        repo_id: OBS repository ID (e.g., 'games', 'home:user/project')
+        repo_id: OBS repository ID (e.g., 'games', 'home:lemmy04', 'Archiving:Backup')
         
     Returns:
         True on success, False on failure
     """
     emit_output(f"Adding OBS repository: {repo_id}")
     
-    # Get OpenSUSE version
-    version = "tumbleweed"
+    # Get OpenSUSE version info
+    version_id = ""
+    pretty_name = ""
     try:
         with open('/etc/os-release', 'r') as f:
             for line in f:
                 if line.startswith('VERSION_ID='):
-                    ver = line.split('=')[1].strip().strip('"')
-                    if ver:
-                        version = ver
-                    break
+                    version_id = line.split('=')[1].strip().strip('"')
+                elif line.startswith('PRETTY_NAME='):
+                    pretty_name = line.split('=')[1].strip().strip('"').lower()
     except:
         pass
     
-    # Build OBS repo URL
-    # Format: https://download.opensuse.org/repositories/{repo}/openSUSE_{version}/
-    if '/' in repo_id:
-        # home:user/project format
-        repo_url = f"https://download.opensuse.org/repositories/{repo_id.replace(':', ':/')}/openSUSE_{version}/"
-        repo_name = repo_id.replace(':', '_').replace('/', '_')
+    # Determine distro version string for OBS URL
+    if 'tumbleweed' in pretty_name or not version_id:
+        distro_version = "openSUSE_Tumbleweed"
+    elif 'slowroll' in pretty_name:
+        distro_version = "openSUSE_Slowroll"
     else:
-        # Simple repo name like 'games'
-        repo_url = f"https://download.opensuse.org/repositories/{repo_id}/openSUSE_{version}/"
-        repo_name = repo_id
+        distro_version = version_id
+    
+    emit_output(f"Detected distro version: {distro_version}")
+    
+    # Build OBS repo file URL
+    repo_file_url = f"https://download.opensuse.org/repositories/{repo_id}/{distro_version}/{repo_id}.repo"
+    
+    # Local filename (replace : with _ for filesystem)
+    repo_filename = repo_id.replace(':', '_') + '.repo'
+    local_repo_path = f"/etc/zypp/repos.d/{repo_filename}"
+    
+    emit_output(f"Repository URL: {repo_file_url}")
     
     try:
-        # Check if repo already exists
-        result = subprocess.run(
-            ['zypper', 'repos', repo_name],
-            capture_output=True, text=True, timeout=30
-        )
-        
-        if result.returncode == 0:
-            emit_output(f"Repository {repo_name} already configured")
+        # Check if repo file already exists
+        if os.path.exists(local_repo_path):
+            emit_output(f"Repository file already exists: {local_repo_path}")
             return True
         
-        # Add the repository
-        emit_output(f"Adding repository from {repo_url}")
+        # Download the .repo file directly to /etc/zypp/repos.d/
+        emit_output(f"Downloading repository file...")
         result = subprocess.run(
-            ['zypper', 'ar', '-f', repo_url, repo_name],
+            ['curl', '-fsSL', '-o', local_repo_path, repo_file_url],
             capture_output=True, text=True, timeout=60
         )
         
-        if result.returncode != 0 and 'already exists' not in result.stderr.lower():
-            emit_output(f"Error adding repo: {result.stderr}")
+        if result.returncode != 0:
+            emit_output(f"Error downloading repo file: {result.stderr}")
             return False
         
-        # Import GPG key
-        emit_output("Importing GPG key...")
-        subprocess.run(
-            ['zypper', '--gpg-auto-import-keys', 'refresh', repo_name],
-            capture_output=True, timeout=120
+        emit_output(f"Repository file saved to {local_repo_path}")
+        
+        # Refresh with auto GPG key import
+        emit_output("Refreshing repository and importing GPG key...")
+        result = subprocess.run(
+            ['zypper', '--gpg-auto-import-keys', 'refresh'],
+            capture_output=True, text=True, timeout=120
         )
         
-        emit_output(f"✓ OBS repository {repo_name} added")
+        if result.returncode != 0:
+            emit_output(f"Warning: refresh returned {result.returncode}")
+            # Don't fail - might still work
+        
+        emit_output(f"✓ OBS repository added successfully")
         return True
+        
+    except subprocess.TimeoutExpired:
+        emit_output("Timeout while adding OBS repository")
+        return False
+    except Exception as e:
+        emit_output(f"Error: {str(e)}")
+        return False
         
     except subprocess.TimeoutExpired:
         emit_output("Timeout while adding OBS repository")
