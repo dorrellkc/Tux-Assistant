@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.1
+Type=Application
+Name=Tux Assistant OCS Handler
+GenericName=Theme/Extension Installer
+Comment=Handles ocs:// links for theme and extension installation
+Exec=/opt/tux-assistant/scripts/tux-ocs-handler %u
+Icon=tux-assistant
+Terminal=false
+Categories=System;
+NoDisplay=true
+MimeType=x-scheme-handler/ocs;

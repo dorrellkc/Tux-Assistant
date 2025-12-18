@@ -54,6 +54,7 @@ def main():
             print("  --help, -h      Show this help message")
             print("  --version, -v   Show version information")
             print("  --check         Check system and dependencies")
+            print("  --browser [URL] Launch Tux Browser (Firefox)")
             sys.exit(0)
         
         elif sys.argv[1] in ('--version', '-v'):
@@ -78,6 +79,51 @@ def main():
             print(f"Display Server:  {desktop.session_type}")
             print("=" * 40)
             print("All checks passed!")
+            sys.exit(0)
+        
+        elif sys.argv[1] == '--browser':
+            # Launch Tux Browser directly (Firefox with managed profile)
+            import subprocess
+            
+            profile_dir = os.path.expanduser("~/.config/tux-assistant/firefox-profile")
+            os.makedirs(profile_dir, exist_ok=True)
+            
+            # Create user.js if it doesn't exist
+            user_js_path = os.path.join(profile_dir, "user.js")
+            if not os.path.exists(user_js_path):
+                user_js_content = '''// Tux Browser - Firefox Profile Preferences
+user_pref("browser.startup.homepage", "https://start.duckduckgo.com");
+user_pref("privacy.trackingprotection.enabled", true);
+user_pref("dom.security.https_only_mode", true);
+user_pref("toolkit.telemetry.enabled", false);
+user_pref("extensions.pocket.enabled", false);
+user_pref("browser.shell.checkDefaultBrowser", false);
+'''
+                with open(user_js_path, 'w') as f:
+                    f.write(user_js_content)
+            
+            # Find Firefox
+            firefox = None
+            for name in ['firefox', 'firefox-esr', 'firefox-bin']:
+                result = subprocess.run(['which', name], capture_output=True, text=True)
+                if result.returncode == 0:
+                    firefox = result.stdout.strip()
+                    break
+            
+            if not firefox:
+                print("Error: Firefox not found. Please install Firefox.")
+                sys.exit(1)
+            
+            # Build command - no --class, let Firefox use its default identity
+            # This ensures GNOME/KDE match it to firefox.desktop for proper icon
+            cmd = [firefox, '--profile', profile_dir]
+            
+            # Add URL if provided
+            if len(sys.argv) > 2:
+                cmd.append(sys.argv[2])
+            
+            # Launch Firefox
+            subprocess.Popen(cmd, start_new_session=True)
             sys.exit(0)
     
     # Check dependencies before launching

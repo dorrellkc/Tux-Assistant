@@ -352,6 +352,15 @@ install_icons() {
     cp "$INSTALL_DIR/assets/tux-tunes.svg" "$ICON_DIR/scalable/apps/tux-tunes.svg"
     print_success "Installed Tux Tunes icon"
     
+    # Install Tux Browser icon
+    for size in 16 24 32 48 64 128 256; do
+        local icon_path="$ICON_DIR/${size}x${size}/apps"
+        mkdir -p "$icon_path"
+        cp "$INSTALL_DIR/assets/tux-browser.svg" "$icon_path/tux-browser.svg"
+    done
+    cp "$INSTALL_DIR/assets/tux-browser.svg" "$ICON_DIR/scalable/apps/tux-browser.svg"
+    print_success "Installed Tux Browser icon"
+    
     # Install all bundled symbolic icons (for cross-DE compatibility)
     if [ -d "$INSTALL_DIR/assets/icons" ]; then
         local icon_count=0
@@ -399,11 +408,47 @@ install_desktop_entries() {
     cp "data/com.tuxassistant.tuxtunes.desktop" "$DESKTOP_DIR/"
     print_success "Created Tux Tunes desktop entry"
     
+    # Install Tux Browser desktop entry (GNOME standard naming)
+    cp "data/com.tuxassistant.tuxbrowser.desktop" "$DESKTOP_DIR/"
+    print_success "Created Tux Browser desktop entry"
+    
     # Update desktop database
     if command -v update-desktop-database &>/dev/null; then
         update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
         print_success "Updated desktop database"
     fi
+}
+
+install_native_messaging() {
+    print_step "Installing OCS protocol handler..."
+    
+    # Ensure scripts directory exists
+    mkdir -p "$INSTALL_DIR/scripts"
+    
+    # Install OCS handler script
+    cp "scripts/tux-ocs-handler" "$INSTALL_DIR/scripts/"
+    chmod +x "$INSTALL_DIR/scripts/tux-ocs-handler"
+    print_success "Installed OCS handler script"
+    
+    # Install OCS handler desktop file
+    cp "data/tux-ocs-handler.desktop" "$DESKTOP_DIR/"
+    print_success "Installed OCS handler desktop entry"
+    
+    # Register as protocol handler for ocs:// links
+    if command -v xdg-mime &>/dev/null; then
+        xdg-mime default tux-ocs-handler.desktop x-scheme-handler/ocs 2>/dev/null || true
+        print_success "Registered ocs:// protocol handler"
+    fi
+    
+    # Update desktop database
+    if command -v update-desktop-database &>/dev/null; then
+        update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
+    fi
+    
+    echo ""
+    echo -e "  ${GREEN}✓ One-click theme installs from gnome-look.org now work!${NC}"
+    echo -e "  ${DIM}Click 'Install' on any theme and Tux Assistant will handle it.${NC}"
+    echo ""
 }
 
 #-------------------------------------------------------------------------------
@@ -434,7 +479,7 @@ uninstall_app() {
     done
     
     # Remove desktop entries (both old and new naming conventions)
-    for desktop in "tux-assistant.desktop" "tux-tunes.desktop" "com.tuxassistant.app.desktop" "com.tuxassistant.tuxtunes.desktop"; do
+    for desktop in "tux-assistant.desktop" "tux-tunes.desktop" "com.tuxassistant.app.desktop" "com.tuxassistant.tuxtunes.desktop" "com.tuxassistant.tuxbrowser.desktop" "tux-ocs-handler.desktop"; do
         if [ -f "$DESKTOP_DIR/$desktop" ]; then
             rm -f "$DESKTOP_DIR/$desktop"
             print_success "Removed $desktop"
@@ -442,8 +487,15 @@ uninstall_app() {
         fi
     done
     
+    # Remove native messaging host manifest (legacy, may not exist)
+    if [ -f "/usr/lib/mozilla/native-messaging-hosts/tux_assistant.json" ]; then
+        rm -f "/usr/lib/mozilla/native-messaging-hosts/tux_assistant.json"
+        print_success "Removed Firefox native messaging manifest"
+        found_something=true
+    fi
+    
     # Remove icons
-    for icon in "tux-assistant.svg" "tux-tunes.svg"; do
+    for icon in "tux-assistant.svg" "tux-tunes.svg" "tux-browser.svg"; do
         for size in 16 24 32 48 64 128 256 scalable; do
             local icon_path="$ICON_DIR/${size}x${size}/apps/$icon"
             if [ "$size" = "scalable" ]; then
@@ -566,6 +618,29 @@ main() {
     install_icons
     echo ""
     install_desktop_entries
+    echo ""
+    install_native_messaging
+    
+    # Ensure 7z is available for extracting themes from gnome-look.org
+    echo ""
+    print_step "Ensuring archive extraction tools..."
+    if ! command -v 7z &>/dev/null && ! command -v 7za &>/dev/null; then
+        # Install based on distro
+        if command -v zypper &>/dev/null; then
+            zypper install -y p7zip 2>/dev/null || true
+        elif command -v dnf &>/dev/null; then
+            dnf install -y p7zip p7zip-plugins 2>/dev/null || true
+        elif command -v apt &>/dev/null; then
+            apt install -y p7zip-full 2>/dev/null || true
+        elif command -v pacman &>/dev/null; then
+            pacman -S --noconfirm p7zip 2>/dev/null || true
+        fi
+    fi
+    if command -v 7z &>/dev/null || command -v 7za &>/dev/null; then
+        print_success "7z extraction ready"
+    else
+        echo -e "  ${YELLOW}⚠ Could not install p7zip - some theme archives may not extract${NC}"
+    fi
     
     # Ensure Python audio libraries are installed (for Tux Tunes audio analysis)
     echo ""

@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.1
+Type=Application
+Name=Tux Browser
+GenericName=Web Browser
+Comment=Privacy-focused web browser powered by Firefox
+Exec=sh -c 'firefox --profile "$HOME/.config/tux-assistant/firefox-profile" "$@"' _ %u
+Icon=tux-browser
+Terminal=false
+Categories=Network;WebBrowser;
+Keywords=web;browser;internet;firefox;tux;
+StartupNotify=true
+StartupWMClass=firefox
+MimeType=x-scheme-handler/http;x-scheme-handler/https;text/html;

@@ -2,6 +2,203 @@
 
 All notable changes to Tux Assistant will be documented in this file.
 
+## [0.9.279] - 2025-12-18
+
+### Added - Automatic p7zip Installation
+- **install.sh now installs p7zip** - Detected and installed for each distro:
+  - openSUSE: `zypper install p7zip`
+  - Fedora: `dnf install p7zip p7zip-plugins`
+  - Debian/Ubuntu: `apt install p7zip-full`
+  - Arch: `pacman -S p7zip`
+- **Runtime fallback** - If 7z not found when extracting a .7z file:
+  - Uses `pkexec` (graphical sudo prompt) to install p7zip
+  - Automatically retries extraction after install
+  - Shows notification during installation
+
+This is Tux Assistant - we handle the hard stuff so users don't have to.
+
+## [0.9.278] - 2025-12-18
+
+### Fixed - OCS Handler Improvements
+- **Case-insensitive content type matching** - Handles `gnome_shell_themes` same as `Gnome Shell Themes`
+- **Added 7z extraction support** - Uses system `7z` or `7za` command
+- **Partial content type matching** - Falls back to reasonable defaults
+
+## [0.9.277] - 2025-12-18
+
+### Debug
+- Added logging to `tux-ocs-handler` - writes to `~/.config/tux-assistant/ocs-handler.log`
+- Logs received URLs, parsed parameters, download progress, and results
+
+## [0.9.276] - 2025-12-18
+
+### Changed - Replaced Browser Extension with Protocol Handler
+Firefox won't load unsigned extensions. Switched to a much simpler approach.
+
+**Removed:**
+- Firefox extension (tux-browser-extension/)
+- Native messaging host
+- All the complicated XPI/signing stuff
+
+**Added:**
+- **OCS Protocol Handler** (`tux-ocs-handler`) - System-level handler for `ocs://` links
+- **Desktop entry** (`tux-ocs-handler.desktop`) - Registers with the system
+
+**How it works now:**
+1. You browse gnome-look.org in ANY browser
+2. Click "Install" on a theme
+3. The system sees `ocs://install?...` link
+4. System calls Tux Assistant's handler
+5. Theme downloads and installs to ~/.themes or ~/.icons
+6. Desktop notification confirms success
+
+No browser extension needed. Works with Firefox, Chrome, whatever.
+
+## [0.9.275] - 2025-12-18
+
+### Debug
+- Added verbose debugging to XPI creation to track down why extension isn't being installed
+
+## [0.9.274] - 2025-12-18
+
+### Fixed - Extension Auto-Enable
+- **Added `extensions.autoDisableScopes = 0`** - Prevents Firefox from disabling sideloaded extensions
+- **Added `extensions.enabledScopes = 15`** - Enables all extension scopes
+- **Added `extensions.startupScanScopes = 15`** - Scans all scopes on startup
+- **Always install native messaging manifest** - Even if extension already exists
+- **Updated existing profile handling** - Adds new settings to existing user.js files
+
+These settings should make Firefox automatically enable the Tux Connector extension
+instead of silently ignoring it.
+
+## [0.9.273] - 2025-12-18
+
+### Fixed
+- **install.sh** - Create `/opt/tux-assistant/scripts/` directory before copying native host
+
+## [0.9.272] - 2025-12-18
+
+### Added - Automatic Extension Installation
+- **Auto-install Tux Connector** - Extension is automatically installed to Firefox profile
+  - No manual about:debugging steps required
+  - Installs on first Tux Browser launch
+  - Updates existing profiles automatically
+- **Unsigned extension support** - `xpinstall.signatures.required = false` in user.js
+- **User-level native messaging** - Manifest also installed to `~/.mozilla/native-messaging-hosts/`
+
+### Changed
+- Removed manual installation instructions from install.sh
+- Extension now "just works" when you launch Tux Browser
+
+### How It Works
+1. First time you click the browser button
+2. Profile is created with unsigned extension support enabled
+3. Tux Connector extension (XPI) is installed to profile
+4. Native messaging manifest is set up
+5. Firefox launches with everything ready
+
+One-click installs from gnome-look.org and extensions.gnome.org should work automatically.
+
+## [0.9.271] - 2025-12-18
+
+### Added - Phase 2: Native Messaging Extension
+- **Firefox WebExtension** (`tux-browser-extension/`) - Catches install requests
+  - Intercepts OCS protocol links (gnome-look.org, pling.com, opendesktop.org)
+  - Catches GNOME Extensions install requests (extensions.gnome.org)
+  - Sends requests to Tux Assistant via native messaging
+- **Native messaging host** (`tux-native-host`) - Receives messages from Firefox
+  - Handles GNOME Shell extension installation
+  - Handles OCS content installation (themes, icons, cursors)
+  - Shows desktop notifications on success
+  - Logs activity to `~/.config/tux-assistant/native-host.log`
+- **Native messaging manifest** - Registered system-wide for Firefox
+
+### Installation Notes
+The extension must be loaded manually in Firefox:
+1. Go to `about:debugging#/runtime/this-firefox`
+2. Click "Load Temporary Add-on..."
+3. Navigate to `/opt/tux-assistant/data/tux-browser-extension/`
+4. Select `manifest.json`
+
+(Temporary add-ons are removed on Firefox restart. For permanent installation,
+the extension would need to be signed by Mozilla and submitted to AMO.)
+
+## [0.9.270] - 2025-12-18
+
+### Changed - Native Wayland, Firefox Icon
+- **Reverted X11 hack** - Firefox runs native Wayland again
+- **Removed --class flag** - Let Firefox use its default identity
+- **StartupWMClass=firefox** - GNOME/KDE will show Firefox icon
+- Desktop file simplified, no shell wrapper hacks
+
+The blue diamond was caused by --class setting a WM_CLASS that didn't match
+any desktop file. By not overriding, Firefox reports "firefox" and GNOME
+matches it to firefox.desktop for proper icon display.
+
+## [0.9.269] - 2025-12-18
+
+### Fixed - Force X11 Mode for Icon Matching
+- **GDK_BACKEND=x11** - Force XWayland mode where --class actually works
+- **MOZ_ENABLE_WAYLAND=0** - Explicitly disable Wayland backend
+- Firefox on native Wayland ignores --class entirely, X11 respects it
+- Updated desktop file, app.py, and CLI handler
+
+This is a workaround for Firefox ignoring custom WM_CLASS on Wayland.
+
+## [0.9.268] - 2025-12-18
+
+### Fixed - Wayland Icon Association
+- **MOZ_APP_LAUNCHER env var** - Tells Firefox which .desktop file to use for icon
+- **Updated StartupWMClass** - Now matches `com.tuxassistant.tuxbrowser`
+- **Desktop file Exec** - Sets MOZ_APP_LAUNCHER before launching Firefox
+- **Both app.py and CLI** - Consistent icon behavior from Tux Assistant or command line
+
+This should fix the missing icon in GNOME dock on Wayland.
+
+## [0.9.267] - 2025-12-18
+
+### Fixed
+- **Desktop file Exec** - Fixed home directory expansion (use sh -c with $HOME)
+- **Simplified Firefox launch** - Removed gio launch attempt, direct Firefox call
+- **StartupWMClass** - Should match --class flag for icon association
+
+## [0.9.266] - 2025-12-18
+
+### Added - Tux Browser Desktop Integration
+- **Tux Browser desktop entry** - Shows in app menu with proper icon
+- **Full-color Tux Browser icon** - Tux with globe/web theme (matches Tux Tunes style)
+- **`--browser` command line option** - Launch Tux Browser directly: `tux-assistant --browser`
+- **URL support** - Open URLs directly: `tux-assistant --browser https://example.com`
+
+### Changed
+- Browser can now be launched standalone from app menu or command line
+
+## [0.9.265] - 2025-12-18
+
+### Fixed
+- Added missing `subprocess` import for Firefox launcher
+
+## [0.9.264] - 2025-12-18
+
+### Changed - Tux Browser Now Uses Firefox
+- **Major: Browser button now launches Firefox** with a managed profile
+- Firefox profile stored at `~/.config/tux-assistant/firefox-profile/`
+- First launch creates profile with privacy-focused defaults
+- User can sign into Firefox Sync to get their extensions, bookmarks, etc.
+- **CAPTCHAs now work** - real browser, real extensions, no fingerprinting issues
+- Claude AI panel still uses WebKitGTK (works fine for claude.ai)
+
+### Added
+- `_setup_firefox_profile()` - Creates Firefox profile with sensible defaults
+- `_launch_tux_browser()` - Launches Firefox with managed profile
+- `_find_firefox()` - Detects Firefox installation (native, ESR, Flatpak)
+- Privacy defaults in user.js: HTTPS-only, tracking protection, no telemetry
+
+### Technical Notes
+- WebKitGTK browser code kept for potential future use
+- Browser button changed from ToggleButton to regular Button
+- Web searches now open in Firefox instead of internal browser
+
 ## [0.9.166] - 2025-12-07
 
 ### Fixed - SponsorBlock Complete Rewrite

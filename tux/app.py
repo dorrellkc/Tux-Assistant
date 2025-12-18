@@ -12,6 +12,7 @@ import os
 import gi
 import sqlite3
 import threading
+import subprocess
 import urllib.request
 import json
 from datetime import datetime, timedelta
@@ -1386,14 +1387,14 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         
         # Claude AI toggle button (only if WebKit available)
         if WEBKIT_AVAILABLE:
-            # Browser toggle button
-            self.browser_toggle_btn = Gtk.ToggleButton()
+            # Browser button - launches Firefox with managed profile
+            self.browser_btn = Gtk.Button()
             # Use our bundled icon - guaranteed to exist on all systems
-            self.browser_toggle_btn.set_icon_name("tux-browser")
-            self.browser_toggle_btn.set_tooltip_text("Toggle Web Browser")
-            self.browser_toggle_btn.add_css_class("claude-toggle-btn")
-            self.browser_toggle_btn.connect("toggled", self._on_browser_toggle)
-            header.pack_end(self.browser_toggle_btn)
+            self.browser_btn.set_icon_name("tux-browser")
+            self.browser_btn.set_tooltip_text("Open Tux Browser (Firefox)")
+            self.browser_btn.add_css_class("claude-toggle-btn")
+            self.browser_btn.connect("clicked", self._on_browser_clicked)
+            header.pack_end(self.browser_btn)
             
             # Claude AI toggle button
             self.claude_toggle_btn = Gtk.ToggleButton()
@@ -1588,10 +1589,10 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         except:
             pass
         
-        # GNOME Web-style user agent (passes Cloudflare!)
+        # Chrome user agent - better CAPTCHA/Cloudflare compatibility
         settings.set_user_agent(
-            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15 "
-            "(KHTML, like Gecko) Version/17.0 Safari/605.1.15"
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         )
         
         # Handle external links - open in default browser
@@ -2848,11 +2849,22 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         except:
             pass
         
-        # Standard browser user agent
+        # Chrome user agent - better CAPTCHA/Cloudflare compatibility than Safari UA
         settings.set_user_agent(
-            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15 "
-            "(KHTML, like Gecko) Version/17.0 Safari/605.1.15"
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         )
+        
+        # Enable features that help with CAPTCHA compatibility
+        for attr, value in [
+            ('set_enable_site_specific_quirks', True),
+            ('set_enable_developer_extras', False),  # Disable to avoid bot detection
+        ]:
+            if hasattr(settings, attr):
+                try:
+                    getattr(settings, attr)(value)
+                except:
+                    pass
         
         # Apply saved zoom level
         try:
@@ -3027,12 +3039,8 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
     
     def _close_browser_panel(self):
         """Close the browser panel and return to main view."""
-        # Update toggle button state (block handler to prevent recursion)
-        if hasattr(self, 'browser_toggle_btn') and self.browser_toggle_btn.get_active():
-            self.browser_toggle_btn.handler_block_by_func(self._on_browser_toggle)
-            self.browser_toggle_btn.set_active(False)
-            self.browser_toggle_btn.remove_css_class("active")
-            self.browser_toggle_btn.handler_unblock_by_func(self._on_browser_toggle)
+        # Note: This is for the legacy WebKitGTK browser panel
+        # The main browser button now launches Firefox externally
         
         # Remove browser panel from UI
         if self.browser_is_docked:
@@ -3074,6 +3082,156 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
                     page.set_title(title)
                     break
     
+    # ==================== Tux Browser (Firefox) ====================
+    
+    def _on_browser_clicked(self, button):
+        """Launch Tux Browser (Firefox with managed profile)."""
+        self._launch_tux_browser()
+    
+    def _get_firefox_profile_dir(self):
+        """Get the Firefox profile directory path."""
+        return os.path.join(os.path.expanduser("~"), ".config", "tux-assistant", "firefox-profile")
+    
+    def _setup_firefox_profile(self):
+        """Set up Firefox profile with privacy-focused defaults."""
+        profile_dir = self._get_firefox_profile_dir()
+        
+        # Create profile directory
+        os.makedirs(profile_dir, exist_ok=True)
+        
+        # Create user.js with sensible defaults
+        user_js_path = os.path.join(profile_dir, "user.js")
+        
+        # Only create if it doesn't exist (preserve user customizations)
+        if not os.path.exists(user_js_path):
+            user_js_content = '''// Tux Browser - Firefox Profile Preferences
+// These are defaults - Firefox Sync will override with your personal settings
+
+// Homepage - DuckDuckGo for privacy
+user_pref("browser.startup.homepage", "https://start.duckduckgo.com");
+user_pref("browser.startup.page", 1);
+
+// Privacy - Enhanced Tracking Protection (strict)
+user_pref("privacy.trackingprotection.enabled", true);
+user_pref("privacy.trackingprotection.socialtracking.enabled", true);
+user_pref("browser.contentblocking.category", "strict");
+
+// HTTPS-Only Mode
+user_pref("dom.security.https_only_mode", true);
+user_pref("dom.security.https_only_mode_ever_enabled", true);
+
+// Disable telemetry
+user_pref("toolkit.telemetry.enabled", false);
+user_pref("toolkit.telemetry.unified", false);
+user_pref("datareporting.healthreport.uploadEnabled", false);
+user_pref("datareporting.policy.dataSubmissionEnabled", false);
+
+// Disable Pocket
+user_pref("extensions.pocket.enabled", false);
+
+// Disable sponsored content
+user_pref("browser.newtabpage.activity-stream.showSponsored", false);
+user_pref("browser.newtabpage.activity-stream.showSponsoredTopSites", false);
+user_pref("browser.newtabpage.activity-stream.feeds.topsites", false);
+
+// Disable Firefox accounts promotion
+user_pref("identity.fxaccounts.enabled", true);
+
+// Search - DuckDuckGo
+user_pref("browser.urlbar.placeholderName", "DuckDuckGo");
+user_pref("browser.urlbar.placeholderName.private", "DuckDuckGo");
+
+// Enable userChrome.css customization (for future theming)
+user_pref("toolkit.legacyUserProfileCustomizations.stylesheets", true);
+
+// Smooth scrolling
+user_pref("general.smoothScroll", true);
+
+// Don't warn on about:config
+user_pref("browser.aboutConfig.showWarning", false);
+
+// Disable default browser check (we know it's not default)
+user_pref("browser.shell.checkDefaultBrowser", false);
+'''
+            with open(user_js_path, 'w') as f:
+                f.write(user_js_content)
+            
+            print(f"[Tux Browser] Created Firefox profile at {profile_dir}")
+        
+        return profile_dir
+    
+    def _find_firefox(self):
+        """Find Firefox executable."""
+        # Try common Firefox locations
+        firefox_names = ['firefox', 'firefox-esr', 'firefox-bin']
+        
+        for name in firefox_names:
+            result = subprocess.run(['which', name], capture_output=True, text=True)
+            if result.returncode == 0:
+                return result.stdout.strip()
+        
+        # Check flatpak
+        result = subprocess.run(['flatpak', 'list', '--app'], capture_output=True, text=True)
+        if result.returncode == 0 and 'org.mozilla.firefox' in result.stdout:
+            return 'flatpak run org.mozilla.firefox'
+        
+        return None
+    
+    def _launch_tux_browser(self, url=None):
+        """Launch Firefox with the Tux Browser profile."""
+        # Find Firefox
+        firefox = self._find_firefox()
+        
+        if not firefox:
+            # Show error dialog
+            dialog = Adw.MessageDialog(
+                transient_for=self,
+                heading="Firefox Not Found",
+                body="Tux Browser requires Firefox to be installed.\n\nPlease install Firefox using your package manager or the Software module.",
+            )
+            dialog.add_response("ok", "OK")
+            dialog.set_default_response("ok")
+            dialog.present()
+            return
+        
+        # Set up profile if needed
+        profile_dir = self._setup_firefox_profile()
+        
+        # Build command - no --class flag, let Firefox use its default identity
+        # This ensures GNOME/KDE match it to firefox.desktop for proper icon
+        if 'flatpak' in firefox:
+            cmd = [
+                'flatpak', 'run',
+                'org.mozilla.firefox',
+                '--profile', profile_dir
+            ]
+        else:
+            cmd = [
+                firefox,
+                '--profile', profile_dir
+            ]
+        
+        if url:
+            cmd.append(url)
+        
+        # Launch Firefox
+        try:
+            subprocess.Popen(cmd, start_new_session=True)
+            print(f"[Tux Browser] Launched Firefox with profile: {profile_dir}")
+        except Exception as e:
+            print(f"[Tux Browser] Error launching Firefox: {e}")
+            dialog = Adw.MessageDialog(
+                transient_for=self,
+                heading="Launch Failed",
+                body=f"Could not launch Firefox:\n{e}",
+            )
+            dialog.add_response("ok", "OK")
+            dialog.present()
+    
+    # ==================== Legacy Browser (WebKitGTK) ====================
+    # Note: This code is kept for potential future use but the main browser
+    # button now launches Firefox. The Claude AI panel still uses WebKitGTK.
+
     def _on_browser_toggle(self, button):
         """Toggle browser panel visibility."""
         # Build browser panel lazily on first use
@@ -3134,13 +3292,6 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         self.browser_is_docked = True
         self.browser_panel_visible = True
         
-        # Sync toggle button state (block handler to prevent recursion)
-        if hasattr(self, 'browser_toggle_btn') and not self.browser_toggle_btn.get_active():
-            self.browser_toggle_btn.handler_block_by_func(self._on_browser_toggle)
-            self.browser_toggle_btn.set_active(True)
-            self.browser_toggle_btn.add_css_class("active")
-            self.browser_toggle_btn.handler_unblock_by_func(self._on_browser_toggle)
-        
         # Give browser most of the space - leave ~250px for navigation
         # This makes the browser the star of the show
         GLib.idle_add(lambda: self.main_paned.set_position(250))
@@ -3172,9 +3323,6 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         self.browser_window = None
         self.browser_is_docked = False
         self.browser_panel_visible = False
-        
-        if hasattr(self, 'browser_toggle_btn'):
-            self.browser_toggle_btn.set_active(False)
         
         return False
     
@@ -7249,11 +7397,13 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
                             cached = json.load(f)
                         last_check = datetime.fromisoformat(cached.get('last_check', '2000-01-01'))
                         if datetime.now() - last_check < timedelta(hours=24):
-                            # Use cached result if update was available
-                            if cached.get('update_available'):
+                            # Re-verify cached version is actually newer than CURRENT version
+                            cached_version = cached.get('latest_version', '')
+                            current = APP_VERSION.lstrip('v')
+                            if cached_version and self._compare_versions(cached_version, current) > 0:
                                 GLib.idle_add(
                                     self._show_update_available,
-                                    cached.get('latest_version', ''),
+                                    cached_version,
                                     cached.get('changelog', ''),
                                     cached.get('release_url', '')
                                 )
@@ -9431,25 +9581,12 @@ read -p "Press Enter to close..."
         return search_urls.get(search_engine, search_urls['DuckDuckGo'])
     
     def _do_web_search(self, query: str):
-        """Open web search in internal browser."""
+        """Open web search in Tux Browser (Firefox)."""
         search_url = self._get_search_url(query + ' linux')
         
-        if WEBKIT_AVAILABLE and hasattr(self, 'browser_panel') and self.browser_panel is not None:
-            # Use internal browser
-            if not self.browser_panel_visible:
-                self.browser_toggle_btn.set_active(True)
-            
-            # Load search URL
-            webview = self._get_current_browser_webview()
-            if webview:
-                webview.load_uri(search_url)
-            
-            self.show_toast(f"Searching: {query}")
-        else:
-            # Fallback to external browser
-            import subprocess
-            subprocess.Popen(['xdg-open', search_url])
-            self.show_toast(f"Opening search in browser...")
+        # Launch Firefox with search URL
+        self._launch_tux_browser(search_url)
+        self.show_toast(f"Searching: {query}")
         
         # Clear search
         self.search_entry.set_text("")
