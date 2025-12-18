@@ -4012,7 +4012,7 @@ class PlanExecutionDialog(Adw.Dialog):
     id="desktop_enhancements",
     name="Desktop Enhancements",
     description="Themes, extensions, widgets, and tweaks",
-    icon="preferences-desktop-theme-symbolic",
+    icon="tux-preferences-desktop-theme-symbolic",
     category=ModuleCategory.SETUP,
     order=51  # Last in Setup category
 )

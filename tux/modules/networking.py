@@ -1131,7 +1131,7 @@ class FirewallManager:
     id="networking_simple",
     name="Networking",
     description="WiFi, file sharing, hotspot, and speed test",
-    icon="network-wireless-symbolic",
+    icon="tux-network-wireless-symbolic",
     category=ModuleCategory.NETWORK,
     order=12  # Windows refugee essential
 )
@@ -1747,7 +1747,7 @@ class SimpleNetworkingPage(Adw.NavigationPage):
     id="networking_advanced",
     name="Advanced Networking",
     description="VPN, Active Directory, firewall, and advanced sharing",
-    icon="network-server-symbolic",
+    icon="tux-network-server-symbolic",
     category=ModuleCategory.NETWORK,
     order=31  # Power user tier
 )

@@ -82,8 +82,31 @@ class DiscoveredPrinter:
 def check_cups_installed() -> bool:
     """Check if CUPS is installed."""
     try:
+        # Method 1: Check for lpinfo in PATH
         result = subprocess.run(['which', 'lpinfo'], capture_output=True)
-        return result.returncode == 0
+        if result.returncode == 0:
+            return True
+        
+        # Method 2: Check common locations for CUPS binaries
+        cups_paths = [
+            '/usr/sbin/cupsd',
+            '/usr/bin/lpstat',
+            '/usr/sbin/lpinfo',
+            '/usr/bin/lp',
+        ]
+        for path in cups_paths:
+            if os.path.exists(path):
+                return True
+        
+        # Method 3: Check if cups service unit exists
+        result = subprocess.run(
+            ['systemctl', 'list-unit-files', 'cups.service'],
+            capture_output=True, text=True
+        )
+        if 'cups.service' in result.stdout:
+            return True
+        
+        return False
     except Exception:
         return False
 
@@ -98,6 +121,32 @@ def check_cups_running() -> bool:
         return result.stdout.strip() == "active"
     except Exception:
         return False
+
+
+def find_lpinfo() -> Optional[str]:
+    """Find the lpinfo command path.
+    
+    On some distros (openSUSE, etc.) /usr/sbin is not in PATH,
+    so we need to check common locations explicitly.
+    
+    Returns: Full path to lpinfo, or None if not found.
+    """
+    # Method 1: Check if in PATH
+    result = subprocess.run(['which', 'lpinfo'], capture_output=True, text=True)
+    if result.returncode == 0:
+        return result.stdout.strip()
+    
+    # Method 2: Check common locations
+    lpinfo_paths = [
+        '/usr/sbin/lpinfo',
+        '/usr/bin/lpinfo',
+        '/sbin/lpinfo',
+    ]
+    for path in lpinfo_paths:
+        if os.path.exists(path):
+            return path
+    
+    return None
 
 
 def get_cups_status() -> Tuple[bool, bool, str]:
@@ -166,10 +215,15 @@ def discover_usb_printers() -> List[DiscoveredPrinter]:
     """Discover USB-connected printers."""
     printers = []
     
+    # Find lpinfo command (may be in /usr/sbin on some distros)
+    lpinfo_cmd = find_lpinfo()
+    if not lpinfo_cmd:
+        return printers
+    
     try:
         # Use lpinfo to find USB devices
         result = subprocess.run(
-            ['lpinfo', '-v'],
+            [lpinfo_cmd, '-v'],
             capture_output=True, text=True
         )
         
@@ -208,7 +262,7 @@ def discover_usb_printers() -> List[DiscoveredPrinter]:
             device_id = ""
             try:
                 id_result = subprocess.run(
-                    ['lpinfo', '--device-id', uri],
+                    [lpinfo_cmd, '--device-id', uri],
                     capture_output=True, text=True,
                     timeout=5
                 )
@@ -248,69 +302,73 @@ def discover_network_printers() -> List[DiscoveredPrinter]:
     printers = []
     seen_uris = set()
     
-    # Method 1: CUPS lpinfo network discovery
-    try:
-        result = subprocess.run(
-            ['lpinfo', '-v'],
-            capture_output=True, text=True,
-            timeout=10
-        )
-        
-        if result.returncode == 0:
-            for line in result.stdout.strip().split('\n'):
-                if not line:
-                    continue
-                
-                parts = line.split(None, 1)
-                if len(parts) < 2:
-                    continue
-                
-                backend_type, uri = parts
-                
-                # Network protocols
-                if any(uri.startswith(proto) for proto in ['socket://', 'ipp://', 'ipps://', 'lpd://', 'dnssd://']):
-                    if uri in seen_uris:
-                        continue
-                    seen_uris.add(uri)
-                    
-                    # Parse network URI for make/model
-                    make = ""
-                    model = ""
-                    location = ""
-                    
-                    # Extract hostname/IP
-                    if '://' in uri:
-                        location = uri.split('://')[1].split('/')[0].split(':')[0]
-                    
-                    # dnssd URIs often have make/model encoded
-                    if uri.startswith('dnssd://'):
-                        # dnssd://MAKE%20MODEL._ipp._tcp.local/...
-                        name_part = uri.replace('dnssd://', '').split('.')[0]
-                        name_part = name_part.replace('%20', ' ')
-                        parts = name_part.split(' ', 1)
-                        if len(parts) >= 1:
-                            make = parts[0]
-                        if len(parts) >= 2:
-                            model = parts[1]
-                    
-                    brand = detect_brand(make, model, uri)
-                    
-                    printers.append(DiscoveredPrinter(
-                        uri=uri,
-                        name=f"{make} {model}".strip() or f"Network Printer ({location})",
-                        make=make,
-                        model=model,
-                        connection_type=PrinterConnectionType.NETWORK,
-                        brand=brand,
-                        is_configured=False,
-                        device_id="",
-                        location=location
-                    ))
+    # Find lpinfo command (may be in /usr/sbin on some distros)
+    lpinfo_cmd = find_lpinfo()
     
-    except subprocess.TimeoutExpired:
-        print("Network printer discovery timed out")
-    except Exception as e:
-        print(f"Error with lpinfo network discovery: {e}")
+    # Method 1: CUPS lpinfo network discovery
+    if lpinfo_cmd:
+        try:
+            result = subprocess.run(
+                [lpinfo_cmd, '-v'],
+                capture_output=True, text=True,
+                timeout=10
+            )
+            
+            if result.returncode == 0:
+                for line in result.stdout.strip().split('\n'):
+                    if not line:
+                        continue
+                    
+                    parts = line.split(None, 1)
+                    if len(parts) < 2:
+                        continue
+                    
+                    backend_type, uri = parts
+                    
+                    # Network protocols
+                    if any(uri.startswith(proto) for proto in ['socket://', 'ipp://', 'ipps://', 'lpd://', 'dnssd://']):
+                        if uri in seen_uris:
+                            continue
+                        seen_uris.add(uri)
+                        
+                        # Parse network URI for make/model
+                        make = ""
+                        model = ""
+                        location = ""
+                        
+                        # Extract hostname/IP
+                        if '://' in uri:
+                            location = uri.split('://')[1].split('/')[0].split(':')[0]
+                        
+                        # dnssd URIs often have make/model encoded
+                        if uri.startswith('dnssd://'):
+                            # dnssd://MAKE%20MODEL._ipp._tcp.local/...
+                            name_part = uri.replace('dnssd://', '').split('.')[0]
+                            name_part = name_part.replace('%20', ' ')
+                            parts = name_part.split(' ', 1)
+                            if len(parts) >= 1:
+                                make = parts[0]
+                            if len(parts) >= 2:
+                                model = parts[1]
+                        
+                        brand = detect_brand(make, model, uri)
+                        
+                        printers.append(DiscoveredPrinter(
+                            uri=uri,
+                            name=f"{make} {model}".strip() or f"Network Printer ({location})",
+                            make=make,
+                            model=model,
+                            connection_type=PrinterConnectionType.NETWORK,
+                            brand=brand,
+                            is_configured=False,
+                            device_id="",
+                            location=location
+                        ))
+        
+        except subprocess.TimeoutExpired:
+            print("Network printer discovery timed out")
+        except Exception as e:
+            print(f"Error with lpinfo network discovery: {e}")
     
     # Method 2: Avahi/mDNS discovery (if available)
     try:
@@ -419,7 +477,7 @@ def discover_all_printers() -> List[DiscoveredPrinter]:
     id="printer_wizard",
     name="Printer Wizard",
     description="Detect and set up printers",
-    icon="printer-symbolic",
+    icon="tux-printer-symbolic",
     category=ModuleCategory.SYSTEM,
     order=12
 )

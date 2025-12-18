@@ -577,7 +577,7 @@ QUICK_TASKS = [
     id="help_learning",
     name="Help and Learning",
     description="Tutorials, troubleshooting, and guided help",
-    icon="help-browser-symbolic",
+    icon="tux-help-browser-symbolic",
     category=ModuleCategory.SYSTEM,
     order=2  # Second - help for new users
 )

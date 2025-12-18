@@ -455,6 +455,25 @@ uninstall_app() {
             fi
         done
     done
+    
+    # Remove bundled tux-* symbolic icons
+    for category in actions status apps emblems; do
+        if [ -d "$ICON_DIR/scalable/$category" ]; then
+            for icon_file in "$ICON_DIR/scalable/$category"/tux-*.svg; do
+                if [ -f "$icon_file" ]; then
+                    rm -f "$icon_file"
+                    found_something=true
+                fi
+            done
+        fi
+    done
+    
+    # Remove runtime icon theme (created by the app)
+    if [ -d "$HOME/.local/share/icons/tux-runtime" ]; then
+        rm -rf "$HOME/.local/share/icons/tux-runtime"
+        found_something=true
+    fi
+    
     if [ "$found_something" = true ]; then
         print_success "Removed icons"
     fi

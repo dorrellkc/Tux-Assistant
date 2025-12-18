@@ -124,12 +124,34 @@ def check_cups_status() -> Tuple[str, str]:
     """
     try:
         # Check if CUPS is installed
+        # Method 1: Check common PATH locations
+        cups_found = False
         result = subprocess.run(['which', 'lpstat'], capture_output=True)
-        if result.returncode != 0:
-            # Also check for cups package
-            result = subprocess.run(['which', 'cupsd'], capture_output=True)
-            if result.returncode != 0:
-                return "CUPS not installed", "not_installed"
+        if result.returncode == 0:
+            cups_found = True
+        else:
+            # Method 2: Check /usr/sbin paths (not in PATH on openSUSE, etc.)
+            cups_paths = [
+                '/usr/sbin/cupsd',
+                '/usr/bin/lpstat',
+                '/usr/sbin/lpinfo',
+            ]
+            for path in cups_paths:
+                if os.path.exists(path):
+                    cups_found = True
+                    break
+        
+        if not cups_found:
+            # Method 3: Check if cups service unit exists
+            result = subprocess.run(
+                ['systemctl', 'list-unit-files', 'cups.service'],
+                capture_output=True, text=True
+            )
+            if 'cups.service' in result.stdout:
+                cups_found = True
+        
+        if not cups_found:
+            return "CUPS not installed", "not_installed"
         
         # Check if CUPS service is running
         result = subprocess.run(
@@ -460,7 +482,7 @@ def get_displays() -> List[DisplayInfo]:
     id="hardware_manager",
     name="Hardware Manager",
     description="Printers, Bluetooth, displays, audio",
-    icon="computer-symbolic",
+    icon="tux-computer-symbolic",
     category=ModuleCategory.SYSTEM,
     order=11  # Windows refugee essential
 )

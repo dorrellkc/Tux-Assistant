@@ -252,7 +252,7 @@ def check_32bit_support(family: DistroFamily) -> Tuple[bool, str]:
     id="gaming",
     name="Gaming",
     description="Steam, Lutris, and gaming utilities",
-    icon="applications-games-symbolic",
+    icon="tux-applications-games-symbolic",
     category=ModuleCategory.SETUP,
     order=50  # After Setup Tools and Software Center
 )

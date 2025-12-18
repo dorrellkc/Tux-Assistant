@@ -37,7 +37,7 @@ except (ValueError, ImportError):
 
 from . import __version__, __app_name__, __app_id__
 from .core import get_distro, get_desktop
-from .modules import ModuleRegistry, ModuleCategory
+from .modules import ModuleRegistry, ModuleCategory, create_icon_simple
 
 # Weather widget (feature flag - set to False to disable)
 ENABLE_WEATHER_WIDGET = True
@@ -269,6 +269,9 @@ class TuxAssistantApp(Adw.Application):
     
     def on_startup(self, app):
         """Called when the application starts."""
+        # Register bundled icons with GTK icon theme
+        self._register_bundled_icons()
+        
         # Discover and register all modules
         ModuleRegistry.discover_modules()
         
@@ -280,6 +283,83 @@ class TuxAssistantApp(Adw.Application):
         
         # Audio dependency check disabled - uncomment to re-enable:
         # GLib.idle_add(self._check_audio_dependencies)
+    
+    def _register_bundled_icons(self):
+        """Register bundled icons with GTK's icon theme.
+        
+        This creates a proper icon theme structure at runtime so GTK can find
+        our bundled icons even if they weren't installed to the system theme.
+        """
+        # Find the bundled icons directory
+        icon_dirs = [
+            # Installed to /opt (most common)
+            '/opt/tux-assistant/assets/icons',
+            # Running from source
+            os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'assets', 'icons'),
+            # Installed to /usr/share
+            '/usr/share/tux-assistant/assets/icons',
+            # Local install
+            os.path.expanduser('~/.local/share/tux-assistant/assets/icons'),
+        ]
+        
+        bundled_dir = None
+        for icon_dir in icon_dirs:
+            if os.path.isdir(icon_dir):
+                bundled_dir = icon_dir
+                break
+        
+        if not bundled_dir:
+            return
+        
+        # Create a runtime icon theme directory structure
+        runtime_theme_dir = os.path.expanduser('~/.local/share/icons/tux-runtime')
+        scalable_dir = os.path.join(runtime_theme_dir, 'scalable', 'actions')
+        
+        try:
+            os.makedirs(scalable_dir, exist_ok=True)
+            
+            # Create index.theme file
+            index_path = os.path.join(runtime_theme_dir, 'index.theme')
+            if not os.path.exists(index_path):
+                with open(index_path, 'w') as f:
+                    f.write("""[Icon Theme]
+Name=Tux Runtime
+Comment=Runtime icons for Tux Assistant
+Inherits=hicolor
+Directories=scalable/actions
+
+[scalable/actions]
+Size=16
+MinSize=8
+MaxSize=512
+Type=Scalable
+""")
+            
+            # Symlink all bundled icons to the runtime theme
+            for icon_file in os.listdir(bundled_dir):
+                if icon_file.endswith('.svg'):
+                    src = os.path.join(bundled_dir, icon_file)
+                    dst = os.path.join(scalable_dir, icon_file)
+                    if not os.path.exists(dst):
+                        try:
+                            os.symlink(src, dst)
+                        except OSError:
+                            # Fall back to copy if symlink fails
+                            import shutil
+                            shutil.copy2(src, dst)
+            
+            # Add to icon theme search path
+            icon_theme = Gtk.IconTheme.get_for_display(Gdk.Display.get_default())
+            icon_theme.add_search_path(os.path.expanduser('~/.local/share/icons'))
+            
+            # Also add hicolor as fallback (should already be there but ensure it)
+            for path in ['/usr/share/icons', os.path.expanduser('~/.local/share/icons')]:
+                if os.path.isdir(path):
+                    icon_theme.add_search_path(path)
+                    
+        except Exception as e:
+            # Non-fatal - icons will fall back to direct file loading
+            pass
     
     def load_css(self):
         """Load custom CSS for improved readability."""
@@ -9191,8 +9271,8 @@ read -p "Press Enter to close..."
             row.set_subtitle(description)
             
             row.set_activatable(True)
-            row.add_prefix(Gtk.Image.new_from_icon_name(module_info.icon))
-            row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
+            row.add_prefix(create_icon_simple(module_info.icon))
+            row.add_suffix(create_icon_simple("tux-go-next-symbolic"))
             
             # Connect click handler
             row.connect("activated", self.on_module_clicked, module_info)

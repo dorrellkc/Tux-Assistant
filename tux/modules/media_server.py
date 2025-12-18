@@ -279,7 +279,7 @@ def detect_installed_media_server() -> Optional[MediaServer]:
     id="media_server",
     name="Media Server",
     description="Plex, Jellyfin, Emby setup and drive configuration",
-    icon="video-display-symbolic",
+    icon="tux-video-display-symbolic",
     category=ModuleCategory.SERVER,
     order=50  # Specialized tier
 )

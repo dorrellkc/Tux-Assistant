@@ -217,7 +217,7 @@ def save_projects(paths: List[str]):
     id="developer_tools",
     name="Developer Tools",
     description="Git manager, SSH keys, and development utilities",
-    icon="utilities-terminal-symbolic",
+    icon="tux-utilities-terminal-symbolic",
     category=ModuleCategory.DEVELOPER,
     order=40  # Power user tier
 )

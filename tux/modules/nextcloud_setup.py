@@ -794,7 +794,7 @@ class NextcloudInstallDialog(Adw.Dialog):
     id="nextcloud_setup",
     name="Nextcloud Server",
     description="Set up your own personal cloud server",
-    icon="network-server-symbolic",
+    icon="tux-network-server-symbolic",
     category=ModuleCategory.SERVER,
     order=51  # Specialized tier
 )

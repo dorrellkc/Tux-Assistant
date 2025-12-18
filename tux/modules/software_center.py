@@ -22,6 +22,7 @@ from typing import Optional
 from enum import Enum
 
 from ..core import get_distro, get_package_manager, DistroFamily
+from .registry import register_module, ModuleCategory, create_icon_simple
 
 
 # =============================================================================
@@ -80,7 +81,7 @@ def build_catalog() -> list[Category]:
             id="browsers",
             name="Web Browsers",
             description="Browse the internet",
-            icon="web-browser-symbolic",
+            icon="tux-web-browser-symbolic",
             apps=[
                 App(
                     id="firefox",
@@ -170,7 +171,7 @@ def build_catalog() -> list[Category]:
             id="media",
             name="Media Players",
             description="Play videos, music, and streaming content",
-            icon="multimedia-player-symbolic",
+            icon="tux-multimedia-player-symbolic",
             apps=[
                 App(
                     id="vlc",
@@ -275,7 +276,7 @@ def build_catalog() -> list[Category]:
             id="office",
             name="Office and Productivity",
             description="Documents, spreadsheets, and productivity tools",
-            icon="x-office-document-symbolic",
+            icon="tux-x-office-document-symbolic",
             apps=[
                 App(
                     id="libreoffice",
@@ -374,7 +375,7 @@ def build_catalog() -> list[Category]:
             id="graphics",
             name="Graphics and Design",
             description="Image editing, drawing, and design tools",
-            icon="applications-graphics-symbolic",
+            icon="tux-applications-graphics-symbolic",
             apps=[
                 App(
                     id="gimp",
@@ -482,7 +483,7 @@ def build_catalog() -> list[Category]:
             id="communication",
             name="Communication",
             description="Chat, video calls, and messaging",
-            icon="user-available-symbolic",
+            icon="tux-user-available-symbolic",
             apps=[
                 App(
                     id="discord",
@@ -565,7 +566,7 @@ def build_catalog() -> list[Category]:
             id="development",
             name="Development Tools",
             description="Code editors, IDEs, and programming tools",
-            icon="applications-development-symbolic",
+            icon="tux-applications-development-symbolic",
             apps=[
                 App(
                     id="vscode",
@@ -664,7 +665,7 @@ def build_catalog() -> list[Category]:
             id="gaming",
             name="Gaming",
             description="Games, game launchers, and gaming tools",
-            icon="applications-games-symbolic",
+            icon="tux-applications-games-symbolic",
             apps=[
                 App(
                     id="steam",
@@ -753,7 +754,7 @@ def build_catalog() -> list[Category]:
             id="system",
             name="System Tools",
             description="System utilities and management tools",
-            icon="preferences-system-symbolic",
+            icon="tux-preferences-system-symbolic",
             apps=[
                 App(
                     id="gnome-tweaks",
@@ -852,7 +853,7 @@ def build_catalog() -> list[Category]:
             id="video",
             name="Video Production",
             description="Video editing and screen recording",
-            icon="camera-video-symbolic",
+            icon="tux-camera-video-symbolic",
             apps=[
                 App(
                     id="kdenlive",
@@ -934,7 +935,7 @@ def build_catalog() -> list[Category]:
             id="audio",
             name="Audio Production",
             description="Audio editing and music production",
-            icon="audio-x-generic-symbolic",
+            icon="tux-audio-x-generic-symbolic",
             apps=[
                 App(
                     id="audacity",
@@ -1004,7 +1005,7 @@ def build_catalog() -> list[Category]:
             id="files",
             name="File Management",
             description="File managers and cloud sync",
-            icon="folder-symbolic",
+            icon="tux-folder-symbolic",
             apps=[
                 App(
                     id="nautilus",
@@ -1110,7 +1111,7 @@ def build_catalog() -> list[Category]:
             id="security",
             name="Security and Privacy",
             description="Security tools and VPNs",
-            icon="security-high-symbolic",
+            icon="tux-security-high-symbolic",
             apps=[
                 App(
                     id="keepassxc",
@@ -1191,7 +1192,7 @@ def build_catalog() -> list[Category]:
             id="special",
             name="Special Installation",
             description="Apps requiring additional setup or external repositories",
-            icon="emblem-important-symbolic",
+            icon="tux-emblem-important-symbolic",
             apps=[
                 App(
                     id="surfshark",
@@ -1205,6 +1206,26 @@ def build_catalog() -> list[Category]:
                         "fedora": ["SPECIAL:surfshark"],
                         "opensuse": ["SPECIAL:surfshark"],
                     },
+                ),
+                App(
+                    id="rustdesk",
+                    name="RustDesk",
+                    description="Open-source remote desktop (native packages)",
+                    icon="tux-computer-symbolic",
+                    special=True,
+                    packages={
+                        "arch": ["SPECIAL:rustdesk"],
+                        "debian": ["SPECIAL:rustdesk"],
+                        "fedora": ["SPECIAL:rustdesk"],
+                        "opensuse": ["SPECIAL:rustdesk"],
+                    },
+                ),
+                App(
+                    id="plex-desktop",
+                    name="Plex Desktop",
+                    description="Plex media player client",
+                    icon="multimedia-player-symbolic",
+                    flatpak="tv.plex.PlexDesktop",
                 ),
                 App(
                     id="duckietv",
@@ -1275,14 +1296,6 @@ def build_catalog() -> list[Category]:
                         "arch": ["dropbox"],
                     },
                 ),
-                App(
-                    id="plex-desktop",
-                    name="Plex Desktop",
-                    description="Plex media player client",
-                    icon="plex-symbolic",
-                    special=True,
-                    flatpak="tv.plex.PlexDesktop",
-                ),
             ]
         ),
     ]
@@ -1299,7 +1312,7 @@ from .registry import register_module, ModuleCategory
     id="software_center",
     name="Software Center",
     description="Browse and install applications by category",
-    icon="system-software-install-symbolic",
+    icon="tux-system-software-install-symbolic",
     category=ModuleCategory.SETUP,
     order=3  # Third - install apps like app store
 )
@@ -1390,8 +1403,8 @@ class SoftwareCenterPage(Adw.NavigationPage):
             row.set_title(category.name)
             row.set_subtitle(f"{category.description} ({available_count} apps)")
             row.set_activatable(True)
-            row.add_prefix(Gtk.Image.new_from_icon_name(category.icon))
-            row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
+            row.add_prefix(create_icon_simple(category.icon))
+            row.add_suffix(create_icon_simple("tux-go-next-symbolic"))
             row.connect("activated", self.on_category_clicked, category)
             group.add(row)
     

@@ -8,11 +8,181 @@ or removed by simply adding/removing their folders.
 Copyright (c) 2025 Christopher Dorrell. Licensed under GPL-3.0.
 """
 
+import gi
+gi.require_version('Gtk', '4.0')
+
+from gi.repository import Gtk, Gio
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional, Callable, Type
 import importlib
 import os
+
+
+# =============================================================================
+# Icon Utilities - Cross-DE, Cross-Distro Icon Loading
+# =============================================================================
+
+def _get_bundled_icons_dir() -> Optional[str]:
+    """Get the path to bundled icons directory."""
+    # Try multiple locations
+    candidates = [
+        # Running from source
+        os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'assets', 'icons'),
+        # Installed to /opt
+        '/opt/tux-assistant/assets/icons',
+        # Installed to /usr/share
+        '/usr/share/tux-assistant/assets/icons',
+        # Local install
+        os.path.expanduser('~/.local/share/tux-assistant/assets/icons'),
+    ]
+    
+    for path in candidates:
+        if os.path.isdir(path):
+            return path
+    return None
+
+
+def get_icon_path(icon_name: str) -> Optional[str]:
+    """
+    Get the full path to a bundled icon file.
+    
+    Args:
+        icon_name: Icon name (with or without tux- prefix, with or without .svg)
+    
+    Returns:
+        Full path to the icon file, or None if not found
+    """
+    icons_dir = _get_bundled_icons_dir()
+    if not icons_dir:
+        return None
+    
+    # Normalize the icon name
+    name = icon_name
+    if not name.endswith('.svg'):
+        name = name + '.svg'
+    
+    # Try with tux- prefix
+    if not name.startswith('tux-'):
+        tux_path = os.path.join(icons_dir, 'tux-' + name)
+        if os.path.exists(tux_path):
+            return tux_path
+    
+    # Try as-is
+    direct_path = os.path.join(icons_dir, name)
+    if os.path.exists(direct_path):
+        return direct_path
+    
+    return None
+
+
+def create_icon(icon_name: str, size: int = 16, fallback: str = "application-x-executable-symbolic") -> Gtk.Image:
+    """
+    Create a Gtk.Image with robust fallback handling.
+    
+    This function ensures icons work across all desktop environments
+    and distributions by:
+    1. First trying to load from bundled tux- prefixed icons
+    2. Falling back to system icon theme
+    3. Using a generic fallback if all else fails
+    
+    Args:
+        icon_name: The icon name to load
+        size: Icon size in pixels (default 16)
+        fallback: Fallback icon name if primary not found
+    
+    Returns:
+        Gtk.Image widget with the icon
+    """
+    # First, try to load from bundled icons (tux- prefixed)
+    bundled_path = get_icon_path(icon_name)
+    if bundled_path:
+        try:
+            image = Gtk.Image.new_from_file(bundled_path)
+            image.set_pixel_size(size)
+            return image
+        except Exception:
+            pass
+    
+    # Try loading directly with tux- prefix from theme
+    if not icon_name.startswith('tux-'):
+        tux_name = 'tux-' + icon_name
+        # Check if icon exists in theme
+        theme = Gtk.IconTheme.get_for_display(Gtk.Widget.get_default_direction().__class__.get_default().get_display() if hasattr(Gtk.Widget, 'get_default_direction') else None)
+        if theme is None:
+            try:
+                theme = Gtk.IconTheme.get_for_display(None)
+            except:
+                pass
+        
+        if theme and theme.has_icon(tux_name):
+            image = Gtk.Image.new_from_icon_name(tux_name)
+            image.set_pixel_size(size)
+            return image
+    
+    # Try the original icon name from system theme
+    image = Gtk.Image.new_from_icon_name(icon_name)
+    image.set_pixel_size(size)
+    
+    # Check if the icon actually loaded (GTK4 doesn't have a direct check,
+    # but we tried our best with bundled icons first)
+    return image
+
+
+def create_icon_simple(icon_name: str, size: int = 16) -> Gtk.Image:
+    """
+    Create a Gtk.Image with robust fallback handling.
+    
+    For use in list rows and other places where Gtk.Image is added directly.
+    Tries multiple methods to ensure icons work across all DEs and distros.
+    
+    Args:
+        icon_name: The icon name (with or without tux- prefix)
+        size: Icon size in pixels (default 16)
+    
+    Returns:
+        Gtk.Image widget with the icon
+    """
+    # Normalize icon name to use tux- prefix
+    if not icon_name.startswith('tux-'):
+        icon_name = f'tux-{icon_name}'
+    
+    # Method 1: Try loading from bundled SVG file directly (most reliable)
+    bundled_path = get_icon_path(icon_name)
+    if bundled_path:
+        try:
+            image = Gtk.Image.new_from_file(bundled_path)
+            image.set_pixel_size(size)
+            return image
+        except Exception:
+            pass
+    
+    # Method 2: Try runtime icon theme (created at startup)
+    runtime_path = os.path.expanduser(f'~/.local/share/icons/tux-runtime/scalable/actions/{icon_name}.svg')
+    if os.path.exists(runtime_path):
+        try:
+            image = Gtk.Image.new_from_file(runtime_path)
+            image.set_pixel_size(size)
+            return image
+        except Exception:
+            pass
+    
+    # Method 3: Try system hicolor theme (installed icons)
+    for base in ['/usr/share/icons/hicolor', os.path.expanduser('~/.local/share/icons/hicolor')]:
+        for category in ['actions', 'status', 'apps', 'emblems']:
+            system_path = os.path.join(base, 'scalable', category, f'{icon_name}.svg')
+            if os.path.exists(system_path):
+                try:
+                    image = Gtk.Image.new_from_file(system_path)
+                    image.set_pixel_size(size)
+                    return image
+                except Exception:
+                    pass
+    
+    # Method 4: Fall back to GTK icon theme lookup (works if icon cache is updated)
+    image = Gtk.Image.new_from_icon_name(icon_name)
+    image.set_pixel_size(size)
+    return image
 
 
 class ModuleCategory(Enum):

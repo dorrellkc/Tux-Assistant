@@ -137,7 +137,7 @@ def get_debian_codename() -> str:
     id="repo_management",
     name="Repository Management",
     description="Configure package repositories and sources",
-    icon="drive-multidisk-symbolic",
+    icon="tux-drive-multidisk-symbolic",
     category=ModuleCategory.SETUP,
     order=1  # FIRST in Setup category - everything depends on this
 )

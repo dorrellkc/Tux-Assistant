@@ -6,6 +6,8 @@ from .registry import (
     ModuleInfo,
     ModuleCategory,
     register_module,
+    create_icon_simple,
+    get_icon_path,
 )
 
 # Explicit imports so all modules are guaranteed to be loaded when
@@ -34,4 +36,6 @@ __all__ = [
     'ModuleInfo',
     'ModuleCategory',
     'register_module',
+    'create_icon_simple',
+    'get_icon_path',
 ]

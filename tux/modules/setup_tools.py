@@ -2604,7 +2604,7 @@ class BatchAlternativeInstallDialog(Adw.Dialog):
     id="setup_tools",
     name="Setup Tools",
     description="Complete system setup, codecs, drivers, and apps",
-    icon="system-run-symbolic",
+    icon="tux-system-run-symbolic",
     category=ModuleCategory.SETUP,
     order=2  # First in Setup category
 )

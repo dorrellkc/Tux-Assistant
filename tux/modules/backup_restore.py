@@ -293,7 +293,7 @@ DEFAULT_BACKUP_FOLDERS = [
     id="backup_restore",
     name="Backup &amp; Restore",
     description="File backup and system snapshots",
-    icon="drive-harddisk-symbolic",
+    icon="tux-drive-harddisk-symbolic",
     category=ModuleCategory.SYSTEM,
     order=21  # System care tier
 )

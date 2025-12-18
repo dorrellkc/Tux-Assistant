@@ -364,7 +364,7 @@ def toggle_autostart_app(app: StartupApp, enable: bool) -> bool:
     id="system_maintenance",
     name="System Maintenance",
     description="Cleanup, updates, startup apps, storage",
-    icon="applications-system-symbolic",
+    icon="tux-applications-system-symbolic",
     category=ModuleCategory.SYSTEM,
     order=20  # System care tier
 )
