@@ -295,10 +295,18 @@ install_app() {
     cp tux-assistant.py "$INSTALL_DIR/"
     cp tux-helper "$INSTALL_DIR/"
     cp VERSION "$INSTALL_DIR/"
+    # Set executable permissions on all scripts
     chmod +x "$INSTALL_DIR/tux-assistant.py"
     chmod +x "$INSTALL_DIR/tux-helper"
     chmod +x "$INSTALL_DIR/tux/apps/tux_tunes/tux-tunes.py"
-    print_success "Copied application files"
+
+    # Ensure all Python files are readable
+    find "$INSTALL_DIR" -name "*.py" -exec chmod 644 {} \;
+    # Re-set executable on entry points
+    chmod +x "$INSTALL_DIR/tux-assistant.py"
+    chmod +x "$INSTALL_DIR/tux/apps/tux_tunes/tux-tunes.py"
+
+    print_success "Copied application files and set permissions"
     
     # Create Tux Assistant launcher (remove any existing symlink first!)
     rm -f "$BIN_LINK"
