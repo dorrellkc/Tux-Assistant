@@ -1,16 +1,152 @@
 post_install() {
-    # Install bundled icons to system icon directory
-    if [ -d /opt/tux-assistant/assets/icons ]; then
-        mkdir -p /usr/share/icons/hicolor/scalable/actions
-        mkdir -p /usr/share/icons/hicolor/scalable/status
-        mkdir -p /usr/share/icons/hicolor/scalable/apps
-        cp /opt/tux-assistant/assets/icons/*.svg /usr/share/icons/hicolor/scalable/actions/ 2>/dev/null || true
-        cp /opt/tux-assistant/assets/icons/*.svg /usr/share/icons/hicolor/scalable/status/ 2>/dev/null || true
-        cp /opt/tux-assistant/assets/icons/*.svg /usr/share/icons/hicolor/scalable/apps/ 2>/dev/null || true
+    # ==========================================================================
+    # BULLETPROOF ICON INSTALLATION FOR ALL DESKTOPS
+    # Works on: GNOME, KDE Plasma, Cinnamon, MATE, XFCE, LXQt, Budgie, Pantheon
+    # ==========================================================================
+    
+    local THEME_DIR="/opt/tux-assistant/icons/tux-icons"
+    local THEME_SCALABLE="$THEME_DIR/scalable"
+    local HICOLOR="/usr/share/icons/hicolor"
+    
+    # Create our self-contained icon theme
+    mkdir -p "$THEME_SCALABLE/apps"
+    mkdir -p "$THEME_SCALABLE/actions"
+    mkdir -p "$THEME_SCALABLE/status"
+    mkdir -p "$THEME_SCALABLE/emblems"
+    
+    # Create index.theme
+    cat > "$THEME_DIR/index.theme" << 'THEME_EOF'
+[Icon Theme]
+Name=Tux Icons
+Comment=Self-contained icon theme for Tux Assistant
+Inherits=hicolor,Adwaita,breeze,gnome,elementary
+Directories=scalable/apps,scalable/actions,scalable/status,scalable/emblems
+
+[scalable/apps]
+Size=64
+MinSize=16
+MaxSize=512
+Type=Scalable
+Context=Applications
+
+[scalable/actions]
+Size=64
+MinSize=16
+MaxSize=512
+Type=Scalable
+Context=Actions
+
+[scalable/status]
+Size=64
+MinSize=16
+MaxSize=512
+Type=Scalable
+Context=Status
+
+[scalable/emblems]
+Size=64
+MinSize=16
+MaxSize=512
+Type=Scalable
+Context=Emblems
+THEME_EOF
+
+    # Create hicolor directories
+    mkdir -p "$HICOLOR/scalable/apps"
+    mkdir -p "$HICOLOR/scalable/actions"
+    mkdir -p "$HICOLOR/scalable/status"
+    for size in 16 22 24 32 48 64 128 256; do
+        mkdir -p "$HICOLOR/${size}x${size}/apps"
+    done
+
+    # ==========================================================================
+    # MAIN APP ICONS - These are what .desktop files reference
+    # ==========================================================================
+    
+    # Tux Assistant main icon (icon.svg)
+    if [ -f /opt/tux-assistant/assets/icon.svg ]; then
+        # All the names .desktop files might use
+        cp /opt/tux-assistant/assets/icon.svg "$HICOLOR/scalable/apps/tux-assistant.svg"
+        cp /opt/tux-assistant/assets/icon.svg "$HICOLOR/scalable/apps/com.tuxassistant.app.svg"
+        cp /opt/tux-assistant/assets/icon.svg "$THEME_SCALABLE/apps/tux-assistant.svg"
+        cp /opt/tux-assistant/assets/icon.svg "$THEME_SCALABLE/apps/com.tuxassistant.app.svg"
+        # Multiple sizes for panel icons
+        for size in 16 22 24 32 48 64 128 256; do
+            cp /opt/tux-assistant/assets/icon.svg "$HICOLOR/${size}x${size}/apps/tux-assistant.svg"
+            cp /opt/tux-assistant/assets/icon.svg "$HICOLOR/${size}x${size}/apps/com.tuxassistant.app.svg"
+        done
     fi
     
-    gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor 2>/dev/null || true
-    update-desktop-database -q 2>/dev/null || true
+    # Tux Tunes icon
+    if [ -f /opt/tux-assistant/assets/tux-tunes.svg ]; then
+        cp /opt/tux-assistant/assets/tux-tunes.svg "$HICOLOR/scalable/apps/tux-tunes.svg"
+        cp /opt/tux-assistant/assets/tux-tunes.svg "$HICOLOR/scalable/apps/com.tuxassistant.tuxtunes.svg"
+        cp /opt/tux-assistant/assets/tux-tunes.svg "$THEME_SCALABLE/apps/tux-tunes.svg"
+        cp /opt/tux-assistant/assets/tux-tunes.svg "$THEME_SCALABLE/apps/com.tuxassistant.tuxtunes.svg"
+        for size in 16 22 24 32 48 64 128 256; do
+            cp /opt/tux-assistant/assets/tux-tunes.svg "$HICOLOR/${size}x${size}/apps/tux-tunes.svg"
+            cp /opt/tux-assistant/assets/tux-tunes.svg "$HICOLOR/${size}x${size}/apps/com.tuxassistant.tuxtunes.svg"
+        done
+    fi
+    
+    # Tux Browser icon
+    if [ -f /opt/tux-assistant/assets/tux-browser.svg ]; then
+        cp /opt/tux-assistant/assets/tux-browser.svg "$HICOLOR/scalable/apps/tux-browser.svg"
+        cp /opt/tux-assistant/assets/tux-browser.svg "$HICOLOR/scalable/apps/com.tuxassistant.tuxbrowser.svg"
+        cp /opt/tux-assistant/assets/tux-browser.svg "$THEME_SCALABLE/apps/tux-browser.svg"
+        cp /opt/tux-assistant/assets/tux-browser.svg "$THEME_SCALABLE/apps/com.tuxassistant.tuxbrowser.svg"
+        for size in 16 22 24 32 48 64 128 256; do
+            cp /opt/tux-assistant/assets/tux-browser.svg "$HICOLOR/${size}x${size}/apps/tux-browser.svg"
+            cp /opt/tux-assistant/assets/tux-browser.svg "$HICOLOR/${size}x${size}/apps/com.tuxassistant.tuxbrowser.svg"
+        done
+    fi
+    
+    # Tux Claude icon
+    if [ -f /opt/tux-assistant/assets/tux-claude.svg ]; then
+        cp /opt/tux-assistant/assets/tux-claude.svg "$HICOLOR/scalable/apps/tux-claude.svg"
+        cp /opt/tux-assistant/assets/tux-claude.svg "$THEME_SCALABLE/apps/tux-claude.svg"
+    fi
+
+    # ==========================================================================
+    # SYMBOLIC ICONS - For sidebar and UI elements
+    # ==========================================================================
+    
+    if [ -d /opt/tux-assistant/assets/icons ]; then
+        for icon_file in /opt/tux-assistant/assets/icons/*.svg; do
+            if [ -f "$icon_file" ]; then
+                icon_name=$(basename "$icon_file")
+                cp "$icon_file" "$THEME_SCALABLE/actions/$icon_name"
+                cp "$icon_file" "$THEME_SCALABLE/status/$icon_name"
+                cp "$icon_file" "$THEME_SCALABLE/apps/$icon_name"
+                cp "$icon_file" "$HICOLOR/scalable/actions/$icon_name"
+                cp "$icon_file" "$HICOLOR/scalable/status/$icon_name"
+                cp "$icon_file" "$HICOLOR/scalable/apps/$icon_name"
+            fi
+        done
+    fi
+
+    # ==========================================================================
+    # UPDATE ALL ICON CACHES - Every desktop environment
+    # ==========================================================================
+    
+    # GTK (GNOME, Cinnamon, MATE, XFCE, Budgie, Pantheon)
+    gtk-update-icon-cache -q -t -f "$HICOLOR" 2>/dev/null || true
+    gtk-update-icon-cache -q -t -f "$THEME_DIR" 2>/dev/null || true
+    
+    # GTK4
+    gtk4-update-icon-cache -f -t "$HICOLOR" 2>/dev/null || true
+    
+    # KDE Plasma 5
+    kbuildsycoca5 --noincremental 2>/dev/null || true
+    
+    # KDE Plasma 6
+    kbuildsycoca6 --noincremental 2>/dev/null || true
+    
+    # XDG (universal)
+    xdg-icon-resource forceupdate --theme hicolor 2>/dev/null || true
+    
+    # Desktop database
+    update-desktop-database -q /usr/share/applications 2>/dev/null || true
 }
 
 post_upgrade() {
@@ -18,11 +154,23 @@ post_upgrade() {
 }
 
 post_remove() {
-    # Remove bundled icons
+    # Remove our icon theme
+    rm -rf /opt/tux-assistant/icons 2>/dev/null || true
+    
+    # Remove from hicolor
+    rm -f /usr/share/icons/hicolor/scalable/apps/tux-*.svg 2>/dev/null || true
+    rm -f /usr/share/icons/hicolor/scalable/apps/com.tuxassistant.*.svg 2>/dev/null || true
     rm -f /usr/share/icons/hicolor/scalable/actions/tux-*.svg 2>/dev/null || true
     rm -f /usr/share/icons/hicolor/scalable/status/tux-*.svg 2>/dev/null || true
-    rm -f /usr/share/icons/hicolor/scalable/apps/tux-*.svg 2>/dev/null || true
     
+    for size in 16 22 24 32 48 64 128 256; do
+        rm -f /usr/share/icons/hicolor/${size}x${size}/apps/tux-*.svg 2>/dev/null || true
+        rm -f /usr/share/icons/hicolor/${size}x${size}/apps/com.tuxassistant.*.svg 2>/dev/null || true
+    done
+    
+    # Update caches
     gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor 2>/dev/null || true
-    update-desktop-database -q 2>/dev/null || true
+    kbuildsycoca5 --noincremental 2>/dev/null || true
+    kbuildsycoca6 --noincremental 2>/dev/null || true
+    update-desktop-database -q /usr/share/applications 2>/dev/null || true
 }

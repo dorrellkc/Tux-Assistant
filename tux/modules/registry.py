@@ -78,11 +78,7 @@ def get_icon_path(icon_name: str) -> Optional[str]:
 
 def create_icon(icon_name: str, size: int = 16, fallback: str = "application-x-executable-symbolic") -> Gtk.Image:
     """
-    Create a Gtk.Image using our tux-icons theme.
-    
-    Uses GTK's icon theme lookup which properly handles symbolic icon
-    coloring for light/dark mode. Our tux-icons theme is registered
-    at app startup and takes priority.
+    Create a Gtk.Image - BULLETPROOF version that loads files directly.
     
     Args:
         icon_name: The icon name to load
@@ -96,7 +92,19 @@ def create_icon(icon_name: str, size: int = 16, fallback: str = "application-x-e
     if not icon_name.startswith('tux-'):
         icon_name = f'tux-{icon_name}'
     
-    # Use GTK icon theme (handles symbolic coloring for light/dark mode)
+    # Direct file loading - bypasses all GTK theme complexity
+    icon_dirs = [
+        '/opt/tux-assistant/assets/icons',
+        '/usr/share/tux-assistant/assets/icons',
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'assets', 'icons'),
+    ]
+    for icon_dir in icon_dirs:
+        icon_path = os.path.join(icon_dir, f'{icon_name}.svg')
+        if os.path.isfile(icon_path):
+            image = Gtk.Image.new_from_file(icon_path)
+            image.set_pixel_size(size)
+            return image
+    # Fallback
     image = Gtk.Image.new_from_icon_name(icon_name)
     image.set_pixel_size(size)
     return image
@@ -104,11 +112,7 @@ def create_icon(icon_name: str, size: int = 16, fallback: str = "application-x-e
 
 def create_icon_simple(icon_name: str, size: int = 16) -> Gtk.Image:
     """
-    Create a Gtk.Image with robust fallback handling.
-    
-    For use in list rows and other places where Gtk.Image is added directly.
-    Uses our tux-icons theme first (for proper light/dark mode coloring),
-    falls back to direct file loading for development/source installs.
+    Create a Gtk.Image - BULLETPROOF version that loads files directly.
     
     Args:
         icon_name: The icon name (with or without tux- prefix)
@@ -121,8 +125,19 @@ def create_icon_simple(icon_name: str, size: int = 16) -> Gtk.Image:
     if not icon_name.startswith('tux-'):
         icon_name = f'tux-{icon_name}'
     
-    # Method 1: Use GTK icon theme (handles symbolic coloring for light/dark mode)
-    # Our tux-icons theme is registered at app startup
+    # Direct file loading - bypasses all GTK theme complexity
+    icon_dirs = [
+        '/opt/tux-assistant/assets/icons',
+        '/usr/share/tux-assistant/assets/icons',
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'assets', 'icons'),
+    ]
+    for icon_dir in icon_dirs:
+        icon_path = os.path.join(icon_dir, f'{icon_name}.svg')
+        if os.path.isfile(icon_path):
+            image = Gtk.Image.new_from_file(icon_path)
+            image.set_pixel_size(size)
+            return image
+    # Fallback
     image = Gtk.Image.new_from_icon_name(icon_name)
     image.set_pixel_size(size)
     return image
