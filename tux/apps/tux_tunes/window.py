@@ -304,15 +304,14 @@ class TuxTunesWindow(Adw.ApplicationWindow):
         stop_btn.connect("clicked", self._on_stop)
         box.append(stop_btn)
         
-        # Record button removed from UI - code preserved in _on_record_toggle() for future
-        # To re-enable: uncomment this block and set _recording_enabled = True
-        # self.record_button = Gtk.Button.new_from_icon_name("tux-media-record-symbolic")
-        # self.record_button.add_css_class("circular")
-        # self.record_button.set_tooltip_text("Start Recording")
-        # self.record_button.connect("clicked", self._on_record_toggle)
-        # self.record_button.set_sensitive(False)
-        # box.append(self.record_button)
-        self._recording_enabled = False
+        # Record button - enables split recording (each song saved separately)
+        self.record_button = Gtk.Button.new_from_icon_name("tux-media-record-symbolic")
+        self.record_button.add_css_class("circular")
+        self.record_button.set_tooltip_text("Start Recording")
+        self.record_button.connect("clicked", self._on_record_toggle)
+        self.record_button.set_sensitive(False)
+        box.append(self.record_button)
+        self._recording_enabled = True
         
         # Volume control
         self.volume_button = Gtk.VolumeButton()
@@ -821,9 +820,8 @@ class TuxTunesWindow(Adw.ApplicationWindow):
         """Play a station."""
         self.player.play(station)
         self.play_button.set_sensitive(True)
-        # Record button disabled - uncomment when fixed:
-        # if self._recording_enabled:
-        #     self.record_button.set_sensitive(True)
+        if self._recording_enabled:
+            self.record_button.set_sensitive(True)
         self.play_button.set_icon_name("tux-media-playback-pause-symbolic")
         
         # Update now playing
@@ -882,6 +880,10 @@ class TuxTunesWindow(Adw.ApplicationWindow):
         self.player.stop()
         self.play_button.set_icon_name("tux-media-playback-start-symbolic")
         self.play_button.set_sensitive(False)
+        if self._recording_enabled:
+            self.record_button.set_sensitive(False)
+            self.record_button.set_icon_name("tux-media-record-symbolic")
+            self.record_button.remove_css_class("destructive-action")
         self.now_playing_bar.set_visible(False)
         self.recording_indicator.set_visible(False)
     
@@ -939,15 +941,15 @@ class TuxTunesWindow(Adw.ApplicationWindow):
     def _on_recording_state(self, is_recording: bool):
         """Handle recording state change - show/hide indicator."""
         self.recording_indicator.set_visible(is_recording)
-        # Record button removed - uncomment when re-enabled:
-        # if is_recording:
-        #     self.record_button.set_icon_name("tux-media-playback-stop-symbolic")
-        #     self.record_button.add_css_class("destructive-action")
-        #     self.record_button.set_tooltip_text("Stop Recording")
-        # else:
-        #     self.record_button.set_icon_name("tux-media-record-symbolic")
-        #     self.record_button.remove_css_class("destructive-action")
-        #     self.record_button.set_tooltip_text("Start Recording")
+        if self._recording_enabled:
+            if is_recording:
+                self.record_button.set_icon_name("tux-media-playback-stop-symbolic")
+                self.record_button.add_css_class("destructive-action")
+                self.record_button.set_tooltip_text("Stop Recording")
+            else:
+                self.record_button.set_icon_name("tux-media-record-symbolic")
+                self.record_button.remove_css_class("destructive-action")
+                self.record_button.set_tooltip_text("Start Recording")
     
     def _on_recording_ready(self, cached):
         """Handle when a recording is ready to be saved."""

@@ -40,6 +40,7 @@ def load_widget_config() -> dict:
         "refresh_interval": 15,  # minutes
         "enabled_sources": ["Phoronix", "OMG! Ubuntu", "9to5Linux", "It's FOSS", 
                            "GamingOnLinux", "FOSS Force", "Brutalist Report"],
+        "custom_sources": [],  # List of {"name": "...", "url": "..."} dicts
     }
     
     try:
@@ -353,6 +354,7 @@ class NewsService:
         # Load config for enabled sources
         config = load_widget_config()
         enabled_sources = config.get("enabled_sources", [s[0] for s in self.LINUX_FEEDS])
+        custom_sources = config.get("custom_sources", [])
         headlines_count = config.get("headlines_count", max_items)
         
         cache_key = "linux"
@@ -365,11 +367,16 @@ class NewsService:
         
         items = []
         
-        # Filter to only enabled sources
+        # Filter to only enabled built-in sources
         active_feeds = [(name, url) for name, url in self.LINUX_FEEDS if name in enabled_sources]
         
-        # Fetch from each enabled source (limit to 4 sources for performance)
-        for source_name, feed_url in active_feeds[:4]:
+        # Add custom sources (always enabled if they exist)
+        for custom in custom_sources:
+            if isinstance(custom, dict) and "name" in custom and "url" in custom:
+                active_feeds.append((custom["name"], custom["url"]))
+        
+        # Fetch from each enabled source (limit to 6 sources for performance)
+        for source_name, feed_url in active_feeds[:6]:
             try:
                 items.extend(self._fetch_rss(feed_url, source_name, max_per_feed=2))
             except Exception as e:
@@ -986,6 +993,36 @@ class WidgetSettingsDialog(Adw.Dialog):
             sources_group.add(row)
             self.source_switches[source_name] = row
         
+        # === Custom Sources ===
+        custom_group = Adw.PreferencesGroup()
+        custom_group.set_title("Custom Sources")
+        custom_group.set_description("Add your own RSS feeds")
+        content.append(custom_group)
+        
+        # Store reference to rebuild later
+        self.custom_group = custom_group
+        self.custom_rows = []
+        
+        # Add existing custom sources
+        custom_sources = self.config.get("custom_sources", [])
+        for i, custom in enumerate(custom_sources):
+            if isinstance(custom, dict) and "name" in custom:
+                self._add_custom_source_row(custom_group, custom, i)
+        
+        # Add new source row
+        add_row = Adw.ActionRow()
+        add_row.set_title("Add Custom Source")
+        add_row.set_subtitle("Add an RSS feed URL")
+        add_btn = Gtk.Button()
+        add_btn.set_icon_name("tux-list-add-symbolic")
+        add_btn.add_css_class("flat")
+        add_btn.set_valign(Gtk.Align.CENTER)
+        add_btn.connect("clicked", self._on_add_custom_source)
+        add_row.add_suffix(add_btn)
+        add_row.set_activatable_widget(add_btn)
+        custom_group.add(add_row)
+        self.add_source_row = add_row
+        
         # === Refresh Settings ===
         refresh_group = Adw.PreferencesGroup()
         refresh_group.set_title("Refresh")
@@ -1067,3 +1104,117 @@ class WidgetSettingsDialog(Adw.Dialog):
             self.widget._do_refresh()
         if hasattr(self.parent_window, 'show_toast'):
             self.parent_window.show_toast("Refreshing weather and news...")
+    
+    def _add_custom_source_row(self, group, custom: dict, index: int):
+        """Add a row for an existing custom source."""
+        row = Adw.ActionRow()
+        row.set_title(custom.get("name", "Custom"))
+        row.set_subtitle(custom.get("url", ""))
+        
+        # Delete button
+        delete_btn = Gtk.Button()
+        delete_btn.set_icon_name("tux-edit-delete-symbolic")
+        delete_btn.add_css_class("flat")
+        delete_btn.add_css_class("error")
+        delete_btn.set_valign(Gtk.Align.CENTER)
+        delete_btn.set_tooltip_text("Remove this source")
+        delete_btn.connect("clicked", self._on_remove_custom_source, index)
+        row.add_suffix(delete_btn)
+        
+        group.add(row)
+        self.custom_rows.append(row)
+    
+    def _on_add_custom_source(self, button):
+        """Show dialog to add a custom RSS source."""
+        dialog = Adw.Dialog()
+        dialog.set_title("Add Custom Source")
+        dialog.set_content_width(350)
+        dialog.set_content_height(250)
+        
+        toolbar_view = Adw.ToolbarView()
+        dialog.set_child(toolbar_view)
+        
+        header = Adw.HeaderBar()
+        header.set_show_end_title_buttons(False)
+        toolbar_view.add_top_bar(header)
+        
+        # Cancel button
+        cancel_btn = Gtk.Button(label="Cancel")
+        cancel_btn.connect("clicked", lambda b: dialog.close())
+        header.pack_start(cancel_btn)
+        
+        # Add button
+        add_btn = Gtk.Button(label="Add")
+        add_btn.add_css_class("suggested-action")
+        header.pack_end(add_btn)
+        
+        # Content
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
+        content.set_margin_top(16)
+        content.set_margin_bottom(16)
+        content.set_margin_start(16)
+        content.set_margin_end(16)
+        toolbar_view.set_content(content)
+        
+        group = Adw.PreferencesGroup()
+        content.append(group)
+        
+        # Name entry
+        name_row = Adw.EntryRow()
+        name_row.set_title("Source Name")
+        group.add(name_row)
+        
+        # URL entry
+        url_row = Adw.EntryRow()
+        url_row.set_title("RSS Feed URL")
+        group.add(url_row)
+        
+        # Hint
+        hint = Gtk.Label(label="Enter the URL of an RSS or Atom feed")
+        hint.add_css_class("dim-label")
+        hint.set_halign(Gtk.Align.START)
+        content.append(hint)
+        
+        def do_add(btn):
+            name = name_row.get_text().strip()
+            url = url_row.get_text().strip()
+            
+            if not name or not url:
+                return
+            
+            # Add to config
+            custom_sources = self.config.get("custom_sources", [])
+            custom_sources.append({"name": name, "url": url})
+            self.config["custom_sources"] = custom_sources
+            save_widget_config(self.config)
+            
+            # Add row to UI
+            self._add_custom_source_row(self.custom_group, {"name": name, "url": url}, len(custom_sources) - 1)
+            
+            # Clear news cache
+            if hasattr(self.widget, 'news_service'):
+                self.widget.news_service.cache = {}
+            
+            dialog.close()
+        
+        add_btn.connect("clicked", do_add)
+        dialog.present(self)
+    
+    def _on_remove_custom_source(self, button, index: int):
+        """Remove a custom source."""
+        custom_sources = self.config.get("custom_sources", [])
+        
+        if 0 <= index < len(custom_sources):
+            custom_sources.pop(index)
+            self.config["custom_sources"] = custom_sources
+            save_widget_config(self.config)
+            
+            # Clear news cache
+            if hasattr(self.widget, 'news_service'):
+                self.widget.news_service.cache = {}
+            
+            # Rebuild the dialog (simplest way to update indices)
+            # Just close and reopen
+            if hasattr(self.parent_window, 'show_toast'):
+                self.parent_window.show_toast("Source removed")
+            self.close()

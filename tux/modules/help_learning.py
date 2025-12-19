@@ -65,7 +65,7 @@ TUTORIALS = [
         id="terminal_basics",
         title="Terminal Basics",
         description="Learn to use the command line - it's not as scary as it looks!",
-        icon="utilities-terminal-symbolic",
+        icon="tux-utilities-terminal-symbolic",
         category="basics",
         steps=[
             {
@@ -148,7 +148,7 @@ The more you practice, the more natural it becomes. Many Linux users actually pr
         id="software_install",
         title="Installing Software",
         description="Learn the different ways to install apps on Linux",
-        icon="system-software-install-symbolic",
+        icon="tux-system-software-install-symbolic",
         category="basics",
         steps=[
             {
@@ -216,7 +216,7 @@ Tux Assistant handles all this for you automatically!"""
         id="file_management",
         title="Files & Folders",
         description="Navigate your files like a pro",
-        icon="system-file-manager-symbolic",
+        icon="tux-system-file-manager-symbolic",
         category="basics",
         steps=[
             {
@@ -279,7 +279,7 @@ Most files in your home folder you have full access to. System files require adm
         id="updates_security",
         title="Updates & Security",
         description="Keep your system safe and up-to-date",
-        icon="system-software-update-symbolic",
+        icon="tux-system-software-update-symbolic",
         category="basics",
         steps=[
             {
@@ -342,7 +342,7 @@ TROUBLESHOOT_ITEMS = [
         id="no_sound",
         title="No Sound",
         description="Audio not working? Let's fix it.",
-        icon="audio-volume-muted-symbolic",
+        icon="tux-audio-volume-muted-symbolic",
         checks=[
             {
                 "name": "Check if audio is muted",
@@ -377,7 +377,7 @@ TROUBLESHOOT_ITEMS = [
         id="no_wifi",
         title="WiFi Not Working",
         description="Can't connect to WiFi? Let's diagnose.",
-        icon="network-wireless-offline-symbolic",
+        icon="tux-network-wireless-offline-symbolic",
         checks=[
             {
                 "name": "Check if WiFi is enabled",
@@ -411,7 +411,7 @@ TROUBLESHOOT_ITEMS = [
         id="no_print",
         title="Printer Not Working",
         description="Can't print? Let's troubleshoot.",
-        icon="printer-error-symbolic",
+        icon="tux-printer-error-symbolic",
         checks=[
             {
                 "name": "Check if printer is on and connected",
@@ -441,7 +441,7 @@ TROUBLESHOOT_ITEMS = [
         id="slow_system",
         title="System Running Slow",
         description="Computer feeling sluggish? Let's speed it up.",
-        icon="utilities-system-monitor-symbolic",
+        icon="tux-utilities-system-monitor-symbolic",
         checks=[
             {
                 "name": "Check what's using resources",
@@ -477,7 +477,7 @@ TROUBLESHOOT_ITEMS = [
         id="app_crash",
         title="App Keeps Crashing",
         description="Application crashing or freezing?",
-        icon="dialog-error-symbolic",
+        icon="tux-dialog-error-symbolic",
         checks=[
             {
                 "name": "Update the application",
@@ -511,7 +511,7 @@ TROUBLESHOOT_ITEMS = [
         id="bluetooth_issues",
         title="Bluetooth Problems",
         description="Bluetooth device not connecting?",
-        icon="network-bluetooth-symbolic",
+        icon="tux-network-bluetooth-symbolic",
         checks=[
             {
                 "name": "Check if Bluetooth is enabled",

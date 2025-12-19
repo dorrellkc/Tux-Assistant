@@ -78,13 +78,11 @@ def get_icon_path(icon_name: str) -> Optional[str]:
 
 def create_icon(icon_name: str, size: int = 16, fallback: str = "application-x-executable-symbolic") -> Gtk.Image:
     """
-    Create a Gtk.Image with robust fallback handling.
+    Create a Gtk.Image using our tux-icons theme.
     
-    This function ensures icons work across all desktop environments
-    and distributions by:
-    1. First trying to load from bundled tux- prefixed icons
-    2. Falling back to system icon theme
-    3. Using a generic fallback if all else fails
+    Uses GTK's icon theme lookup which properly handles symbolic icon
+    coloring for light/dark mode. Our tux-icons theme is registered
+    at app startup and takes priority.
     
     Args:
         icon_name: The icon name to load
@@ -94,38 +92,13 @@ def create_icon(icon_name: str, size: int = 16, fallback: str = "application-x-e
     Returns:
         Gtk.Image widget with the icon
     """
-    # First, try to load from bundled icons (tux- prefixed)
-    bundled_path = get_icon_path(icon_name)
-    if bundled_path:
-        try:
-            image = Gtk.Image.new_from_file(bundled_path)
-            image.set_pixel_size(size)
-            return image
-        except Exception:
-            pass
-    
-    # Try loading directly with tux- prefix from theme
+    # Normalize to use tux- prefix for our bundled icons
     if not icon_name.startswith('tux-'):
-        tux_name = 'tux-' + icon_name
-        # Check if icon exists in theme
-        theme = Gtk.IconTheme.get_for_display(Gtk.Widget.get_default_direction().__class__.get_default().get_display() if hasattr(Gtk.Widget, 'get_default_direction') else None)
-        if theme is None:
-            try:
-                theme = Gtk.IconTheme.get_for_display(None)
-            except Exception:
-                pass
-        
-        if theme and theme.has_icon(tux_name):
-            image = Gtk.Image.new_from_icon_name(tux_name)
-            image.set_pixel_size(size)
-            return image
+        icon_name = f'tux-{icon_name}'
     
-    # Try the original icon name from system theme
+    # Use GTK icon theme (handles symbolic coloring for light/dark mode)
     image = Gtk.Image.new_from_icon_name(icon_name)
     image.set_pixel_size(size)
-    
-    # Check if the icon actually loaded (GTK4 doesn't have a direct check,
-    # but we tried our best with bundled icons first)
     return image
 
 
@@ -134,7 +107,8 @@ def create_icon_simple(icon_name: str, size: int = 16) -> Gtk.Image:
     Create a Gtk.Image with robust fallback handling.
     
     For use in list rows and other places where Gtk.Image is added directly.
-    Tries multiple methods to ensure icons work across all DEs and distros.
+    Uses our tux-icons theme first (for proper light/dark mode coloring),
+    falls back to direct file loading for development/source installs.
     
     Args:
         icon_name: The icon name (with or without tux- prefix)
@@ -147,39 +121,8 @@ def create_icon_simple(icon_name: str, size: int = 16) -> Gtk.Image:
     if not icon_name.startswith('tux-'):
         icon_name = f'tux-{icon_name}'
     
-    # Method 1: Try loading from bundled SVG file directly (most reliable)
-    bundled_path = get_icon_path(icon_name)
-    if bundled_path:
-        try:
-            image = Gtk.Image.new_from_file(bundled_path)
-            image.set_pixel_size(size)
-            return image
-        except Exception:
-            pass
-    
-    # Method 2: Try runtime icon theme (created at startup)
-    runtime_path = os.path.expanduser(f'~/.local/share/icons/tux-runtime/scalable/actions/{icon_name}.svg')
-    if os.path.exists(runtime_path):
-        try:
-            image = Gtk.Image.new_from_file(runtime_path)
-            image.set_pixel_size(size)
-            return image
-        except Exception:
-            pass
-    
-    # Method 3: Try system hicolor theme (installed icons)
-    for base in ['/usr/share/icons/hicolor', os.path.expanduser('~/.local/share/icons/hicolor')]:
-        for category in ['actions', 'status', 'apps', 'emblems']:
-            system_path = os.path.join(base, 'scalable', category, f'{icon_name}.svg')
-            if os.path.exists(system_path):
-                try:
-                    image = Gtk.Image.new_from_file(system_path)
-                    image.set_pixel_size(size)
-                    return image
-                except Exception:
-                    pass
-    
-    # Method 4: Fall back to GTK icon theme lookup (works if icon cache is updated)
+    # Method 1: Use GTK icon theme (handles symbolic coloring for light/dark mode)
+    # Our tux-icons theme is registered at app startup
     image = Gtk.Image.new_from_icon_name(icon_name)
     image.set_pixel_size(size)
     return image

@@ -136,6 +136,7 @@ class Player:
         
         # Recording settings (DISABLED - set auto_record=True to re-enable)
         self.auto_record = False  # Disabled until GStreamer recording is fixed
+        self.manual_recording = False  # Set True when user clicks Record button
         self.min_recording_seconds = library.get_config('min_recording_seconds', 10)
         self.max_recording_seconds = library.get_config('max_recording_seconds', 600)
         
@@ -361,8 +362,8 @@ class Player:
         # Start tracking new track
         self._start_new_track(new_title, new_artist)
         
-        # Start recording the new track
-        if self.auto_record and self.is_playing:
+        # Start recording the new track (auto or manual mode)
+        if self.is_playing and (self.auto_record or self.manual_recording):
             self._start_auto_recording()
         
         return False  # Don't repeat
@@ -611,6 +612,7 @@ class Player:
         # Stop any ongoing recording (discard since we're stopping)
         if self.is_recording:
             self._stop_recording_internal(discard=True)
+        self.manual_recording = False  # Clear manual recording mode
         
         self.pipeline.set_state(Gst.State.NULL)
         self.is_playing = False
@@ -745,6 +747,7 @@ class Player:
                 return False
             
             self.is_recording = True
+            self.manual_recording = True  # Enable split recording on track change
             self.recording_start_time = datetime.now()
             print(f"Recording started: {self.recording_filepath}")
             return True
@@ -762,6 +765,7 @@ class Player:
         
         filepath = self.recording_filepath
         self.is_recording = False
+        self.manual_recording = False  # Disable split recording
         
         try:
             # Use a blocking pad probe to safely disconnect the recording branch
