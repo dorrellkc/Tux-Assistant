@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <!-- Claude AI symbolic icon - brain with sparkle/chat element -->
+  <style>
+    path, circle, rect { fill: currentColor; }
+  </style>
+  
+  <!-- Main circle (head/brain shape) -->
+  <circle cx="8" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.2"/>
+  
+  <!-- Inner brain pattern - simplified neural network -->
+  <circle cx="8" cy="7" r="2" fill="none" stroke="currentColor" stroke-width="0.8"/>
+  <circle cx="8" cy="7" r="0.8"/>
+  
+  <!-- Connection nodes -->
+  <circle cx="6" cy="5.5" r="0.6"/>
+  <circle cx="10" cy="5.5" r="0.6"/>
+  <circle cx="6" cy="8.5" r="0.6"/>
+  <circle cx="10" cy="8.5" r="0.6"/>
+  
+  <!-- Small sparkle top right indicating AI -->
+  <path d="M13 2 L13.5 1 L14 2 L15 2.5 L14 3 L13.5 4 L13 3 L12 2.5 Z"/>
+  
+  <!-- Chat indicator at bottom -->
+  <rect x="5" y="13" width="6" height="2" rx="1"/>
+  <rect x="3" y="13.5" width="1.5" height="1" rx="0.5"/>
+</svg>

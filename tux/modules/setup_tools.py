@@ -615,7 +615,7 @@ XFCE_ENHANCEMENTS = SetupTask(
 
 KDE_ENHANCEMENTS = SetupTask(
     id="kde_enhancements",
-    name="KDE Online Accounts &amp; Extras",
+    name="KDE Online Accounts & Extras",
     description="Fix Google/online account integration + media apps",
     category=SetupCategory.DESKTOP,
     desktop_specific=DesktopEnv.KDE,
@@ -643,7 +643,7 @@ KDE_ENHANCEMENTS = SetupTask(
 
 GNOME_ENHANCEMENTS = SetupTask(
     id="gnome_enhancements",
-    name="GNOME Extensions &amp; Tweaks Manager",
+    name="GNOME Extensions & Tweaks Manager",
     description="GUI tool to browse/install extensions and customize GNOME settings",
     category=SetupCategory.DESKTOP,
     desktop_specific=DesktopEnv.GNOME,
@@ -3739,7 +3739,7 @@ class SSHKeyRestoreDialog(Adw.Dialog):
         identity_group.add(self.email_entry)
         
         # Restore button
-        self.restore_btn = Gtk.Button(label="Restore Keys &amp; Setup Git")
+        self.restore_btn = Gtk.Button(label="Restore Keys & Setup Git")
         self.restore_btn.add_css_class("suggested-action")
         self.restore_btn.add_css_class("pill")
         self.restore_btn.set_sensitive(False)
@@ -3882,7 +3882,7 @@ class SSHKeyRestoreDialog(Adw.Dialog):
         except Exception as e:
             self.result_label.set_markup(f"<b>Error</b>\n\n{e}")
             self.result_box.set_visible(True)
-            button.set_label("Restore Keys &amp; Setup Git")
+            button.set_label("Restore Keys & Setup Git")
             button.set_sensitive(True)
 
 

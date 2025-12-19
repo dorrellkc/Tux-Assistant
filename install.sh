@@ -440,6 +440,9 @@ THEME_EOF
     cp "$INSTALL_DIR/assets/tux-browser.svg" "$THEME_SCALABLE/apps/tux-browser.svg"
     cp "$INSTALL_DIR/assets/tux-browser.svg" "$THEME_SCALABLE/apps/com.tuxassistant.tuxbrowser.svg"
     
+    # Tux Claude icon (AI assistant)
+    cp "$INSTALL_DIR/assets/tux-claude.svg" "$THEME_SCALABLE/apps/tux-claude.svg"
+    
     print_success "Installed app icons (friendly + app-id names)"
     
     # --------------------------------------------------------------------------
@@ -488,6 +491,7 @@ THEME_EOF
         cp "$INSTALL_DIR/assets/tux-tunes.svg" "$ICON_DIR/${size}x${size}/apps/com.tuxassistant.tuxtunes.svg"
         cp "$INSTALL_DIR/assets/tux-browser.svg" "$ICON_DIR/${size}x${size}/apps/tux-browser.svg"
         cp "$INSTALL_DIR/assets/tux-browser.svg" "$ICON_DIR/${size}x${size}/apps/com.tuxassistant.tuxbrowser.svg"
+        cp "$INSTALL_DIR/assets/tux-claude.svg" "$ICON_DIR/${size}x${size}/apps/tux-claude.svg"
     done
     
     # Scalable versions
@@ -497,6 +501,7 @@ THEME_EOF
     cp "$INSTALL_DIR/assets/tux-tunes.svg" "$ICON_DIR/scalable/apps/com.tuxassistant.tuxtunes.svg"
     cp "$INSTALL_DIR/assets/tux-browser.svg" "$ICON_DIR/scalable/apps/tux-browser.svg"
     cp "$INSTALL_DIR/assets/tux-browser.svg" "$ICON_DIR/scalable/apps/com.tuxassistant.tuxbrowser.svg"
+    cp "$INSTALL_DIR/assets/tux-claude.svg" "$ICON_DIR/scalable/apps/tux-claude.svg"
     
     # Install symbolic icons to hicolor actions (for apps that check there)
     mkdir -p "$ICON_DIR/scalable/actions"

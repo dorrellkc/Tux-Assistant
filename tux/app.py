@@ -1521,7 +1521,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             
             # Claude AI toggle button
             self.claude_toggle_btn = Gtk.ToggleButton()
-            self.claude_toggle_btn.set_icon_name("tux-user-available-symbolic")
+            self.claude_toggle_btn.set_icon_name("tux-claude")
             self.claude_toggle_btn.set_tooltip_text("Toggle Claude AI Assistant")
             self.claude_toggle_btn.add_css_class("claude-toggle-btn")
             self.claude_toggle_btn.connect("toggled", self._on_claude_toggle)

@@ -214,7 +214,7 @@ Tux Assistant handles all this for you automatically!"""
     ),
     Tutorial(
         id="file_management",
-        title="Files &amp; Folders",
+        title="Files & Folders",
         description="Navigate your files like a pro",
         icon="system-file-manager-symbolic",
         category="basics",
@@ -277,7 +277,7 @@ Most files in your home folder you have full access to. System files require adm
     ),
     Tutorial(
         id="updates_security",
-        title="Updates &amp; Security",
+        title="Updates & Security",
         description="Keep your system safe and up-to-date",
         icon="system-software-update-symbolic",
         category="basics",

@@ -1,5 +1,5 @@
 """
-Tux Assistant - Backup &amp; Restore Module
+Tux Assistant - Backup & Restore Module
 
 Simple file backup and Timeshift integration.
 Keeps it simple - backup folders to external drive, manage snapshots.
@@ -286,12 +286,12 @@ DEFAULT_BACKUP_FOLDERS = [
 
 
 # =============================================================================
-# Backup &amp; Restore Page
+# Backup & Restore Page
 # =============================================================================
 
 @register_module(
     id="backup_restore",
-    name="Backup &amp; Restore",
+    name="Backup & Restore",
     description="File backup and system snapshots",
     icon="tux-drive-harddisk-symbolic",
     category=ModuleCategory.SYSTEM,
@@ -301,7 +301,7 @@ class BackupRestorePage(Adw.NavigationPage):
     """Backup and restore module page."""
     
     def __init__(self, window):
-        super().__init__(title="Backup &amp; Restore")
+        super().__init__(title="Backup & Restore")
         
         self.window = window
         self.distro = get_distro()

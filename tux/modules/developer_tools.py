@@ -2993,7 +2993,7 @@ Replace X.X.X with your version number."""
         """Build and push to main branch."""
         dialog = Adw.MessageDialog(
             transient_for=self.window,
-            heading="Build &amp; Release",
+            heading="Build & Release",
             body=(
                 "This will:\n\n"
                 "1. Build the .run file\n"
@@ -3003,7 +3003,7 @@ Replace X.X.X with your version number."""
             )
         )
         dialog.add_response("cancel", "Cancel")
-        dialog.add_response("release", "Build &amp; Release")
+        dialog.add_response("release", "Build & Release")
         dialog.set_response_appearance("release", Adw.ResponseAppearance.DESTRUCTIVE)
         dialog.connect("response", self._do_ta_release)
         dialog.present()
