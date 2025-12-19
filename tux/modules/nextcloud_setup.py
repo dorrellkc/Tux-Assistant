@@ -627,7 +627,7 @@ class NextcloudInstallDialog(Adw.Dialog):
             # Ensure helper is executable
             try:
                 os.chmod(helper_path, 0o755)
-            except:
+            except Exception:
                 pass
             
             # Execute with pkexec
@@ -670,7 +670,7 @@ class NextcloudInstallDialog(Adw.Dialog):
             # Clean up plan file
             try:
                 os.unlink(plan_file.name)
-            except:
+            except Exception:
                 pass
             
             if process.returncode == 0:
@@ -700,7 +700,7 @@ class NextcloudInstallDialog(Adw.Dialog):
                 if status == 'running':
                     step_num = next((i for i, (sid, _, _) in enumerate(self.steps) if sid == step_id), 0) + 1
                     GLib.idle_add(self._update_progress, step_num, message)
-        except:
+        except Exception:
             pass
     
     def _create_installation_plan(self) -> dict:
@@ -927,8 +927,6 @@ class NextcloudSetupPage(Adw.NavigationPage):
     
     def _on_client_only_clicked(self, row):
         """Install just the Nextcloud desktop client."""
-        # TODO: Implement client-only installation
-        # For now, show a message
         dialog = Adw.MessageDialog(
             transient_for=self.window,
             heading="Install Desktop Client",
@@ -962,7 +960,20 @@ class NextcloudSetupPage(Adw.NavigationPage):
             return
         
         # Use tux-helper to install
-        # For simplicity, we'll just show the command for now
         self.window.show_toast(f"Installing {pkg}...")
         
-        # TODO: Actually run the installation
+        try:
+            result = subprocess.run(
+                ['pkexec', '/usr/bin/tux-helper', '--install', pkg],
+                capture_output=True,
+                text=True,
+                timeout=300
+            )
+            if result.returncode == 0:
+                self.window.show_toast("Nextcloud client installed successfully!")
+            else:
+                self.window.show_toast(f"Installation failed: {result.stderr[:100]}")
+        except subprocess.TimeoutExpired:
+            self.window.show_toast("Installation timed out")
+        except Exception as e:
+            self.window.show_toast(f"Installation error: {e}")

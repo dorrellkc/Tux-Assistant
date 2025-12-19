@@ -161,7 +161,7 @@ def check_updates_available(family: DistroFamily) -> Tuple[bool, int, str]:
                 return False, 0, ""
             else:
                 # Fallback: sync and check with pacman -Qu
-                subprocess.run(['sudo', 'pacman', '-Sy'], capture_output=True)
+                subprocess.run(['pkexec', 'pacman', '-Sy'], capture_output=True)
                 result = subprocess.run(
                     ['pacman', '-Qu'],
                     capture_output=True, text=True

@@ -106,7 +106,7 @@ def get_local_ip() -> str:
         ip = s.getsockname()[0]
         s.close()
         return ip
-    except:
+    except Exception:
         return "127.0.0.1"
 
 
@@ -144,7 +144,7 @@ class NetworkScanner:
         try:
             hostname, _, _ = socket.gethostbyaddr(ip)
             return hostname
-        except:
+        except Exception:
             return ""
     
     def scan_for_shares(self, scan_type: ScanType, callback, progress_callback=None) -> list[NetworkHost]:
@@ -251,7 +251,7 @@ class NetworkScanner:
         try:
             result = sock.connect_ex((ip, 445))
             return result == 0
-        except:
+        except Exception:
             return False
         finally:
             sock.close()
@@ -313,7 +313,7 @@ class NetworkScanner:
                         if mac:
                             hosts.append(NetworkHost(ip=ip, hostname=ip, mac=mac))
                             callback(f"Found (ARP cache): {ip}")
-            except:
+            except Exception:
                 pass
             
             # Then ping sweep for anything not in cache
@@ -332,7 +332,7 @@ class NetworkScanner:
                     if result.returncode == 0:
                         hosts.append(NetworkHost(ip=ip, hostname=ip))
                         callback(f"Found: {ip}")
-                except:
+                except Exception:
                     pass
         
         return hosts
@@ -361,7 +361,7 @@ class NetworkScanner:
                         # Skip system shares
                         if not share_name.endswith('$'):
                             shares.append(share_name)
-        except:
+        except Exception:
             pass
         
         return shares
@@ -468,7 +468,7 @@ class SambaManager:
                 for line in f:
                     if line.strip().lower().startswith('workgroup'):
                         return line.split('=')[1].strip()
-        except:
+        except Exception:
             pass
         return "WORKGROUP"
     
@@ -900,7 +900,7 @@ class ADManager:
                 for line in result.stdout.split('\n'):
                     if line and not line.startswith(' '):
                         return True, line.strip()
-        except:
+        except Exception:
             pass
         
         return False, ""
@@ -1067,7 +1067,7 @@ class FirewallManager:
                     elif line.strip().startswith('ports:'):
                         port_list = line.split(':', 1)[1].strip().split()
                         ports.extend(port_list)
-            except:
+            except Exception:
                 pass
         
         elif self.backend == FirewallBackend.UFW:
@@ -1081,7 +1081,7 @@ class FirewallManager:
                         parts = line.split()
                         if parts:
                             ports.append(parts[0])
-            except:
+            except Exception:
                 pass
         
         return ports
@@ -3450,7 +3450,7 @@ class QuickShareDialog(Adw.Dialog):
                     self.name_row.set_text(name)
                 
                 self._update_share_button()
-        except:
+        except Exception:
             pass
     
     def on_name_changed(self, row):
@@ -4345,7 +4345,7 @@ class PlanExecutionDialog(Adw.Dialog):
                             current = int(current)
                             fraction = current / total if total > 0 else 0
                             GLib.idle_add(self._update_progress, fraction, parts)
-                        except:
+                        except Exception:
                             pass
                     elif 'COMPLETE' in line:
                         GLib.idle_add(self._on_complete, "Complete")

@@ -331,66 +331,226 @@ EOF
 }
 
 install_icons() {
-    print_step "Installing icons..."
+    print_step "Installing self-contained icon theme..."
     
-    # Install Tux Assistant icon
-    for size in 16 24 32 48 64 128 256; do
-        local icon_path="$ICON_DIR/${size}x${size}/apps"
-        mkdir -p "$icon_path"
-        cp "$INSTALL_DIR/assets/icon.svg" "$icon_path/tux-assistant.svg"
-    done
-    mkdir -p "$ICON_DIR/scalable/apps"
-    cp "$INSTALL_DIR/assets/icon.svg" "$ICON_DIR/scalable/apps/tux-assistant.svg"
-    print_success "Installed Tux Assistant icon"
+    # ==========================================================================
+    # BULLETPROOF ICON STRATEGY
+    # ==========================================================================
+    # We create our OWN icon theme at /opt/tux-assistant/icons/tux-icons/
+    # This theme is self-contained and doesn't rely on system icon themes.
+    # The app prepends this path to GTK's icon search, so we're found FIRST.
+    #
+    # We ALSO install to hicolor as a backup (belt and suspenders).
+    # We ALSO update both GTK and KDE icon caches.
+    # ==========================================================================
     
-    # Install Tux Tunes icon
-    for size in 16 24 32 48 64 128 256; do
-        local icon_path="$ICON_DIR/${size}x${size}/apps"
-        mkdir -p "$icon_path"
-        cp "$INSTALL_DIR/assets/tux-tunes.svg" "$icon_path/tux-tunes.svg"
-    done
-    cp "$INSTALL_DIR/assets/tux-tunes.svg" "$ICON_DIR/scalable/apps/tux-tunes.svg"
-    print_success "Installed Tux Tunes icon"
+    local THEME_DIR="$INSTALL_DIR/icons/tux-icons"
+    local THEME_SCALABLE="$THEME_DIR/scalable"
     
-    # Install Tux Browser icon
-    for size in 16 24 32 48 64 128 256; do
-        local icon_path="$ICON_DIR/${size}x${size}/apps"
-        mkdir -p "$icon_path"
-        cp "$INSTALL_DIR/assets/tux-browser.svg" "$icon_path/tux-browser.svg"
-    done
-    cp "$INSTALL_DIR/assets/tux-browser.svg" "$ICON_DIR/scalable/apps/tux-browser.svg"
-    print_success "Installed Tux Browser icon"
+    # Create theme directory structure
+    mkdir -p "$THEME_SCALABLE/apps"
+    mkdir -p "$THEME_SCALABLE/actions"
+    mkdir -p "$THEME_SCALABLE/status"
+    mkdir -p "$THEME_SCALABLE/emblems"
+    mkdir -p "$THEME_SCALABLE/categories"
+    mkdir -p "$THEME_SCALABLE/devices"
+    mkdir -p "$THEME_SCALABLE/mimetypes"
+    mkdir -p "$THEME_SCALABLE/places"
     
-    # Install all bundled symbolic icons (for cross-DE compatibility)
+    # Create index.theme - this makes it a proper icon theme
+    cat > "$THEME_DIR/index.theme" << 'THEME_EOF'
+[Icon Theme]
+Name=Tux Icons
+Comment=Self-contained icon theme for Tux Assistant
+Inherits=hicolor,Adwaita,breeze,gnome,elementary
+Directories=scalable/apps,scalable/actions,scalable/status,scalable/emblems,scalable/categories,scalable/devices,scalable/mimetypes,scalable/places
+
+[scalable/apps]
+Size=64
+MinSize=16
+MaxSize=512
+Type=Scalable
+Context=Applications
+
+[scalable/actions]
+Size=64
+MinSize=16
+MaxSize=512
+Type=Scalable
+Context=Actions
+
+[scalable/status]
+Size=64
+MinSize=16
+MaxSize=512
+Type=Scalable
+Context=Status
+
+[scalable/emblems]
+Size=64
+MinSize=16
+MaxSize=512
+Type=Scalable
+Context=Emblems
+
+[scalable/categories]
+Size=64
+MinSize=16
+MaxSize=512
+Type=Scalable
+Context=Categories
+
+[scalable/devices]
+Size=64
+MinSize=16
+MaxSize=512
+Type=Scalable
+Context=Devices
+
+[scalable/mimetypes]
+Size=64
+MinSize=16
+MaxSize=512
+Type=Scalable
+Context=MimeTypes
+
+[scalable/places]
+Size=64
+MinSize=16
+MaxSize=512
+Type=Scalable
+Context=Places
+THEME_EOF
+    print_success "Created icon theme definition"
+    
+    # --------------------------------------------------------------------------
+    # Install app icons with BOTH friendly names AND app-id names
+    # This covers: GNOME (uses friendly name), KDE (often uses app-id)
+    # --------------------------------------------------------------------------
+    
+    # Tux Assistant icon
+    cp "$INSTALL_DIR/assets/icon.svg" "$THEME_SCALABLE/apps/tux-assistant.svg"
+    cp "$INSTALL_DIR/assets/icon.svg" "$THEME_SCALABLE/apps/com.tuxassistant.app.svg"
+    
+    # Tux Tunes icon
+    cp "$INSTALL_DIR/assets/tux-tunes.svg" "$THEME_SCALABLE/apps/tux-tunes.svg"
+    cp "$INSTALL_DIR/assets/tux-tunes.svg" "$THEME_SCALABLE/apps/com.tuxassistant.tuxtunes.svg"
+    
+    # Tux Browser icon  
+    cp "$INSTALL_DIR/assets/tux-browser.svg" "$THEME_SCALABLE/apps/tux-browser.svg"
+    cp "$INSTALL_DIR/assets/tux-browser.svg" "$THEME_SCALABLE/apps/com.tuxassistant.tuxbrowser.svg"
+    
+    print_success "Installed app icons (friendly + app-id names)"
+    
+    # --------------------------------------------------------------------------
+    # Install all symbolic icons to multiple contexts
+    # Different DEs look in different places, so we cover them all
+    # --------------------------------------------------------------------------
+    
+    local icon_count=0
     if [ -d "$INSTALL_DIR/assets/icons" ]; then
-        local icon_count=0
-        mkdir -p "$ICON_DIR/scalable/actions"
-        mkdir -p "$ICON_DIR/scalable/status"
-        mkdir -p "$ICON_DIR/scalable/apps"
-        mkdir -p "$ICON_DIR/scalable/devices"
-        mkdir -p "$ICON_DIR/scalable/places"
-        mkdir -p "$ICON_DIR/scalable/mimetypes"
-        mkdir -p "$ICON_DIR/scalable/categories"
-        mkdir -p "$ICON_DIR/scalable/emblems"
-        
         for icon_file in "$INSTALL_DIR/assets/icons/"*.svg; do
             if [ -f "$icon_file" ]; then
                 icon_name=$(basename "$icon_file")
-                # Install to multiple categories to ensure discovery
-                cp "$icon_file" "$ICON_DIR/scalable/actions/$icon_name"
-                cp "$icon_file" "$ICON_DIR/scalable/status/$icon_name"
-                cp "$icon_file" "$ICON_DIR/scalable/apps/$icon_name"
+                # Install to all relevant contexts
+                cp "$icon_file" "$THEME_SCALABLE/actions/$icon_name"
+                cp "$icon_file" "$THEME_SCALABLE/status/$icon_name"
+                cp "$icon_file" "$THEME_SCALABLE/apps/$icon_name"
+                cp "$icon_file" "$THEME_SCALABLE/emblems/$icon_name"
                 icon_count=$((icon_count + 1))
             fi
         done
-        print_success "Installed $icon_count bundled icons"
+        print_success "Installed $icon_count symbolic icons (4 contexts each)"
     fi
     
-    # Update icon cache
+    # --------------------------------------------------------------------------
+    # BACKUP: Also install to system hicolor theme
+    # This is belt-and-suspenders - if our theme somehow isn't found,
+    # hicolor is the universal fallback that every toolkit checks
+    # --------------------------------------------------------------------------
+    
+    print_info "Also installing to system hicolor (backup)..."
+    
+    # Create hicolor directories
+    for size in 16 24 32 48 64 128 256 scalable; do
+        if [ "$size" = "scalable" ]; then
+            mkdir -p "$ICON_DIR/scalable/apps"
+        else
+            mkdir -p "$ICON_DIR/${size}x${size}/apps"
+        fi
+    done
+    
+    # Install app icons to hicolor at multiple sizes
+    for size in 16 24 32 48 64 128 256; do
+        cp "$INSTALL_DIR/assets/icon.svg" "$ICON_DIR/${size}x${size}/apps/tux-assistant.svg"
+        cp "$INSTALL_DIR/assets/icon.svg" "$ICON_DIR/${size}x${size}/apps/com.tuxassistant.app.svg"
+        cp "$INSTALL_DIR/assets/tux-tunes.svg" "$ICON_DIR/${size}x${size}/apps/tux-tunes.svg"
+        cp "$INSTALL_DIR/assets/tux-tunes.svg" "$ICON_DIR/${size}x${size}/apps/com.tuxassistant.tuxtunes.svg"
+        cp "$INSTALL_DIR/assets/tux-browser.svg" "$ICON_DIR/${size}x${size}/apps/tux-browser.svg"
+        cp "$INSTALL_DIR/assets/tux-browser.svg" "$ICON_DIR/${size}x${size}/apps/com.tuxassistant.tuxbrowser.svg"
+    done
+    
+    # Scalable versions
+    cp "$INSTALL_DIR/assets/icon.svg" "$ICON_DIR/scalable/apps/tux-assistant.svg"
+    cp "$INSTALL_DIR/assets/icon.svg" "$ICON_DIR/scalable/apps/com.tuxassistant.app.svg"
+    cp "$INSTALL_DIR/assets/tux-tunes.svg" "$ICON_DIR/scalable/apps/tux-tunes.svg"
+    cp "$INSTALL_DIR/assets/tux-tunes.svg" "$ICON_DIR/scalable/apps/com.tuxassistant.tuxtunes.svg"
+    cp "$INSTALL_DIR/assets/tux-browser.svg" "$ICON_DIR/scalable/apps/tux-browser.svg"
+    cp "$INSTALL_DIR/assets/tux-browser.svg" "$ICON_DIR/scalable/apps/com.tuxassistant.tuxbrowser.svg"
+    
+    # Install symbolic icons to hicolor actions (for apps that check there)
+    mkdir -p "$ICON_DIR/scalable/actions"
+    mkdir -p "$ICON_DIR/scalable/status"
+    if [ -d "$INSTALL_DIR/assets/icons" ]; then
+        for icon_file in "$INSTALL_DIR/assets/icons/"*.svg; do
+            if [ -f "$icon_file" ]; then
+                icon_name=$(basename "$icon_file")
+                cp "$icon_file" "$ICON_DIR/scalable/actions/$icon_name"
+                cp "$icon_file" "$ICON_DIR/scalable/status/$icon_name"
+            fi
+        done
+    fi
+    
+    print_success "Installed to hicolor theme"
+    
+    # --------------------------------------------------------------------------
+    # Update ALL icon caches - GTK, KDE, and any others
+    # --------------------------------------------------------------------------
+    
+    print_info "Updating icon caches..."
+    
+    # GTK icon cache
     if command -v gtk-update-icon-cache &>/dev/null; then
         gtk-update-icon-cache -f -t "$ICON_DIR" 2>/dev/null || true
-        print_success "Updated icon cache"
+        gtk-update-icon-cache -f -t "$THEME_DIR" 2>/dev/null || true
+        print_success "Updated GTK icon cache"
     fi
+    
+    # GTK4 icon cache (some systems have separate command)
+    if command -v gtk4-update-icon-cache &>/dev/null; then
+        gtk4-update-icon-cache -f -t "$ICON_DIR" 2>/dev/null || true
+        gtk4-update-icon-cache -f -t "$THEME_DIR" 2>/dev/null || true
+        print_success "Updated GTK4 icon cache"
+    fi
+    
+    # KDE icon cache (Plasma 5)
+    if command -v kbuildsycoca5 &>/dev/null; then
+        kbuildsycoca5 --noincremental 2>/dev/null || true
+        print_success "Updated KDE5 cache"
+    fi
+    
+    # KDE icon cache (Plasma 6)
+    if command -v kbuildsycoca6 &>/dev/null; then
+        kbuildsycoca6 --noincremental 2>/dev/null || true
+        print_success "Updated KDE6 cache"
+    fi
+    
+    # XDG icon resource (used by some DEs)
+    if command -v xdg-icon-resource &>/dev/null; then
+        xdg-icon-resource forceupdate --theme hicolor 2>/dev/null || true
+    fi
+    
+    print_success "Icon installation complete"
 }
 
 install_desktop_entries() {
@@ -494,8 +654,8 @@ uninstall_app() {
         found_something=true
     fi
     
-    # Remove icons
-    for icon in "tux-assistant.svg" "tux-tunes.svg" "tux-browser.svg"; do
+    # Remove icons (both friendly names AND app-id names)
+    for icon in "tux-assistant.svg" "tux-tunes.svg" "tux-browser.svg" "com.tuxassistant.app.svg" "com.tuxassistant.tuxtunes.svg" "com.tuxassistant.tuxbrowser.svg"; do
         for size in 16 24 32 48 64 128 256 scalable; do
             local icon_path="$ICON_DIR/${size}x${size}/apps/$icon"
             if [ "$size" = "scalable" ]; then

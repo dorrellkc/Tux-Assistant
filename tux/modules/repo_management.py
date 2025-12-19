@@ -42,7 +42,7 @@ def check_debian_backports() -> bool:
             if 'backports' in line and not line.strip().startswith('#'):
                 return True
         return False
-    except:
+    except Exception:
         return False
 
 
@@ -54,7 +54,7 @@ def check_ubuntu_universe() -> bool:
             capture_output=True, text=True, timeout=10
         )
         return 'universe' in result.stdout
-    except:
+    except Exception:
         return False
 
 
@@ -66,7 +66,7 @@ def check_rpmfusion() -> tuple:
         free = 'rpmfusion-free-release' in packages
         nonfree = 'rpmfusion-nonfree-release' in packages
         return (free, nonfree)
-    except:
+    except Exception:
         return (False, False)
 
 
@@ -75,7 +75,7 @@ def check_packman() -> bool:
     try:
         result = subprocess.run(['zypper', 'lr'], capture_output=True, text=True, timeout=10)
         return 'packman' in result.stdout.lower()
-    except:
+    except Exception:
         return False
 
 
@@ -100,7 +100,7 @@ def check_arch_multilib() -> bool:
                     return True
                 break
         return False
-    except:
+    except Exception:
         return False
 
 
@@ -112,7 +112,7 @@ def detect_aur_helper() -> str:
             result = subprocess.run(['which', helper], capture_output=True, timeout=5)
             if result.returncode == 0:
                 return helper
-        except:
+        except Exception:
             continue
     return ""
 
@@ -125,7 +125,7 @@ def get_debian_codename() -> str:
             capture_output=True, text=True, timeout=5
         )
         return result.stdout.strip()
-    except:
+    except Exception:
         return ""
 
 

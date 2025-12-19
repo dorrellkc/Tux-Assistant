@@ -27,7 +27,7 @@ def get_api_servers() -> list[str]:
                 # Reverse DNS to get hostname
                 hostname = socket.gethostbyaddr(ip[4][0])[0]
                 hosts.add(hostname)
-            except:
+            except Exception:
                 pass
         if hosts:
             print(f"Found API servers via DNS: {hosts}")
@@ -232,12 +232,12 @@ class RadioBrowserAPI:
         """Register a click/play for a station."""
         try:
             self._request(f'url/{station_uuid}')
-        except:
+        except Exception:
             pass
     
     def vote(self, station_uuid: str):
         """Vote for a station."""
         try:
             self._request(f'vote/{station_uuid}')
-        except:
+        except Exception:
             pass

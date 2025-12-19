@@ -286,20 +286,68 @@ class TuxAssistantApp(Adw.Application):
         # GLib.idle_add(self._check_audio_dependencies)
     
     def _register_bundled_icons(self):
-        """Register bundled icons with GTK's icon theme.
+        """Register our self-contained icon theme with GTK.
         
-        This creates a proper icon theme structure at runtime so GTK can find
-        our bundled icons even if they weren't installed to the system theme.
+        BULLETPROOF ICON STRATEGY:
+        1. Prepend our self-contained theme directory to GTK's search path FIRST
+        2. This ensures our icons are found before any system theme
+        3. Works on GNOME, KDE, XFCE, Cinnamon, MATE - any DE
+        4. Works on Wayland and X11
+        5. Doesn't rely on system hicolor or any other theme
+        """
+        # Possible locations for our self-contained icon theme
+        theme_locations = [
+            # Installed to /opt (standard install)
+            '/opt/tux-assistant/icons',
+            # Running from source (development)
+            os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'icons'),
+            # Flatpak or alternative install locations
+            '/usr/share/tux-assistant/icons',
+            os.path.expanduser('~/.local/share/tux-assistant/icons'),
+        ]
+        
+        # Find where our theme actually is
+        theme_base = None
+        for location in theme_locations:
+            theme_dir = os.path.join(location, 'tux-icons')
+            if os.path.isdir(theme_dir) and os.path.isfile(os.path.join(theme_dir, 'index.theme')):
+                theme_base = location
+                break
+        
+        if not theme_base:
+            # Theme not found - fall back to old behavior for dev/source installs
+            self._register_bundled_icons_fallback()
+            return
+        
+        try:
+            # Get the icon theme for the current display
+            display = Gdk.Display.get_default()
+            if display:
+                icon_theme = Gtk.IconTheme.get_for_display(display)
+                
+                # PREPEND our theme directory - this makes it highest priority
+                # GTK will search here FIRST before any system themes
+                icon_theme.add_search_path(theme_base)
+                
+                # Also add standard paths as fallback (in case any icon is missing)
+                for fallback_path in ['/usr/share/icons', os.path.expanduser('~/.local/share/icons')]:
+                    if os.path.isdir(fallback_path):
+                        icon_theme.add_search_path(fallback_path)
+                        
+        except Exception as e:
+            # Non-fatal - log but continue
+            print(f"Warning: Could not register icon theme: {e}")
+    
+    def _register_bundled_icons_fallback(self):
+        """Fallback for development/source installs where theme isn't pre-built.
+        
+        Creates a minimal runtime theme from the assets/icons directory.
         """
         # Find the bundled icons directory
         icon_dirs = [
-            # Installed to /opt (most common)
             '/opt/tux-assistant/assets/icons',
-            # Running from source
             os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'assets', 'icons'),
-            # Installed to /usr/share
             '/usr/share/tux-assistant/assets/icons',
-            # Local install
             os.path.expanduser('~/.local/share/tux-assistant/assets/icons'),
         ]
         
@@ -314,53 +362,84 @@ class TuxAssistantApp(Adw.Application):
         
         # Create a runtime icon theme directory structure
         runtime_theme_dir = os.path.expanduser('~/.local/share/icons/tux-runtime')
-        scalable_dir = os.path.join(runtime_theme_dir, 'scalable', 'actions')
         
         try:
-            os.makedirs(scalable_dir, exist_ok=True)
+            # Create all necessary subdirectories
+            for subdir in ['scalable/actions', 'scalable/status', 'scalable/apps', 'scalable/emblems']:
+                os.makedirs(os.path.join(runtime_theme_dir, subdir), exist_ok=True)
             
             # Create index.theme file
             index_path = os.path.join(runtime_theme_dir, 'index.theme')
-            if not os.path.exists(index_path):
-                with open(index_path, 'w') as f:
-                    f.write("""[Icon Theme]
+            with open(index_path, 'w') as f:
+                f.write("""[Icon Theme]
 Name=Tux Runtime
 Comment=Runtime icons for Tux Assistant
-Inherits=hicolor
-Directories=scalable/actions
+Inherits=hicolor,Adwaita,breeze
+Directories=scalable/actions,scalable/status,scalable/apps,scalable/emblems
 
 [scalable/actions]
-Size=16
-MinSize=8
+Size=64
+MinSize=16
 MaxSize=512
 Type=Scalable
+Context=Actions
+
+[scalable/status]
+Size=64
+MinSize=16
+MaxSize=512
+Type=Scalable
+Context=Status
+
+[scalable/apps]
+Size=64
+MinSize=16
+MaxSize=512
+Type=Scalable
+Context=Applications
+
+[scalable/emblems]
+Size=64
+MinSize=16
+MaxSize=512
+Type=Scalable
+Context=Emblems
 """)
             
-            # Symlink all bundled icons to the runtime theme
+            # Copy icons to all relevant contexts
+            import shutil
             for icon_file in os.listdir(bundled_dir):
                 if icon_file.endswith('.svg'):
                     src = os.path.join(bundled_dir, icon_file)
-                    dst = os.path.join(scalable_dir, icon_file)
-                    if not os.path.exists(dst):
-                        try:
-                            os.symlink(src, dst)
-                        except OSError:
-                            # Fall back to copy if symlink fails
-                            import shutil
+                    for subdir in ['scalable/actions', 'scalable/status', 'scalable/apps', 'scalable/emblems']:
+                        dst = os.path.join(runtime_theme_dir, subdir, icon_file)
+                        if not os.path.exists(dst):
+                            shutil.copy2(src, dst)
+            
+            # Also copy main app icons with both names
+            assets_dir = os.path.dirname(bundled_dir)
+            main_icons = [
+                ('icon.svg', ['tux-assistant.svg', 'com.tuxassistant.app.svg']),
+                ('tux-tunes.svg', ['tux-tunes.svg', 'com.tuxassistant.tuxtunes.svg']),
+                ('tux-browser.svg', ['tux-browser.svg', 'com.tuxassistant.tuxbrowser.svg']),
+            ]
+            for src_name, dst_names in main_icons:
+                src = os.path.join(assets_dir, src_name)
+                if os.path.isfile(src):
+                    for dst_name in dst_names:
+                        dst = os.path.join(runtime_theme_dir, 'scalable/apps', dst_name)
+                        if not os.path.exists(dst):
                             shutil.copy2(src, dst)
             
             # Add to icon theme search path
-            icon_theme = Gtk.IconTheme.get_for_display(Gdk.Display.get_default())
-            icon_theme.add_search_path(os.path.expanduser('~/.local/share/icons'))
-            
-            # Also add hicolor as fallback (should already be there but ensure it)
-            for path in ['/usr/share/icons', os.path.expanduser('~/.local/share/icons')]:
-                if os.path.isdir(path):
-                    icon_theme.add_search_path(path)
-                    
+            display = Gdk.Display.get_default()
+            if display:
+                icon_theme = Gtk.IconTheme.get_for_display(display)
+                icon_theme.add_search_path(os.path.expanduser('~/.local/share/icons'))
+                
         except Exception as e:
-            # Non-fatal - icons will fall back to direct file loading
-            pass
+            # Non-fatal
+            print(f"Warning: Could not create runtime icon theme: {e}")
     
     def load_css(self):
         """Load custom CSS for improved readability."""
@@ -454,8 +533,8 @@ Type=Scalable
             license_type=Gtk.License.CUSTOM,
             license="GPL-3.0",
             comments="A comprehensive GTK4/Libadwaita system configuration and management application for Linux.\n\nSupports Arch, Fedora, Debian/Ubuntu, openSUSE and derivatives.",
-            website="https://github.com/dorrelkc/tux-assistant",
-            issue_url="https://github.com/dorrelkc/tux-assistant/issues",
+            website="https://github.com/dorrellkc/tux-assistant",
+            issue_url="https://github.com/dorrellkc/tux-assistant/issues",
             debug_info=f"Version: {APP_VERSION}\n"
                       f"Distribution: {distro.name} ({distro.family.value})\n"
                       f"Desktop: {desktop.display_name} ({desktop.session_type})\n"
@@ -564,7 +643,7 @@ Type=Scalable
                 print(f"Tux Assistant: Installing {pip_pkg}")
                 try:
                     subprocess.run(pkg_cmd + [pip_pkg], capture_output=True, timeout=120)
-                except:
+                except Exception:
                     pass
             
             # Step 3: Install pydub and librosa via pip
@@ -685,6 +764,10 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         
         self.set_title("Tux Assistant")
         
+        # Set window icon - ultimate fallback using absolute path
+        # This ensures taskbar/window icon shows even if theme lookup fails
+        self._set_window_icon()
+        
         # Load saved window size or use defaults
         width, height, maximized = self._load_window_size()
         self.set_default_size(width, height)
@@ -747,6 +830,46 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         window_key_controller = Gtk.EventControllerKey()
         window_key_controller.connect("key-pressed", self._on_window_key_pressed)
         self.add_controller(window_key_controller)
+    
+    def _set_window_icon(self):
+        """Set window icon from absolute path as ultimate fallback.
+        
+        This ensures the window/taskbar icon shows even if GTK theme lookup
+        fails completely. We try multiple approaches:
+        1. GThemedIcon with our icon name (uses theme system)
+        2. GFileIcon with absolute path (bypasses theme system entirely)
+        """
+        # Possible icon file locations
+        icon_paths = [
+            '/opt/tux-assistant/icons/tux-icons/scalable/apps/tux-assistant.svg',
+            '/opt/tux-assistant/assets/icon.svg',
+            '/usr/share/icons/hicolor/scalable/apps/tux-assistant.svg',
+            '/usr/share/icons/hicolor/scalable/apps/com.tuxassistant.app.svg',
+            os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'assets', 'icon.svg'),
+        ]
+        
+        try:
+            # First try: themed icon (respects user's icon theme)
+            themed_icon = Gio.ThemedIcon.new_with_default_fallbacks('tux-assistant')
+            self.set_icon(themed_icon)
+            
+            # Verify it actually worked by checking if the theme has the icon
+            display = Gdk.Display.get_default()
+            if display:
+                icon_theme = Gtk.IconTheme.get_for_display(display)
+                if icon_theme.has_icon('tux-assistant'):
+                    return  # Success with themed icon
+            
+            # Second try: absolute file path (bypasses theme system)
+            for icon_path in icon_paths:
+                if os.path.isfile(icon_path):
+                    file_icon = Gio.FileIcon.new(Gio.File.new_for_path(icon_path))
+                    self.set_icon(file_icon)
+                    return
+                    
+        except Exception as e:
+            # Non-fatal - window will show without custom icon
+            print(f"Warning: Could not set window icon: {e}")
     
     def _on_window_key_pressed(self, controller, keyval, keycode, state):
         """Handle window-level keyboard shortcuts."""
@@ -1099,7 +1222,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             count = cursor.fetchone()[0]
             conn.close()
             return count
-        except:
+        except Exception:
             return 0
     
     def _delete_history_entry(self, url):
@@ -1273,7 +1396,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
                                 settings['tts_voice'] = value
                             elif key == 'tts_rate':
                                 settings['tts_rate'] = value
-        except:
+        except Exception:
             pass
         return settings
     
@@ -1294,7 +1417,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
                         f.write(f"{key}={'true' if value else 'false'}\n")
                     else:
                         f.write(f"{key}={value}\n")
-        except:
+        except Exception:
             pass
     
     def _load_bookmarks_bar_visible(self):
@@ -1406,7 +1529,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         
         # Tux Tunes button (always available)
         tux_tunes_btn = Gtk.Button()
-        tux_tunes_btn.set_icon_name("tux-audio-headphones-symbolic")
+        tux_tunes_btn.set_icon_name("tux-tunes")
         tux_tunes_btn.set_tooltip_text("Launch Tux Tunes - Internet Radio")
         tux_tunes_btn.add_css_class("claude-toggle-btn")
         tux_tunes_btn.connect("clicked", self._on_tux_tunes_clicked)
@@ -1555,7 +1678,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
                 try:
                     context = self.claude_webview.get_context()
                     context.connect('download-started', self._on_claude_download_started)
-                except:
+                except Exception:
                     pass
         except Exception as e:
             print(f"WebKit setup error: {e}")
@@ -1581,12 +1704,12 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         ]:
             try:
                 getattr(settings, method)(value)
-            except:
+            except Exception:
                 pass
         
         try:
             settings.set_hardware_acceleration_policy(WebKit.HardwareAccelerationPolicy.ALWAYS)
-        except:
+        except Exception:
             pass
         
         # Chrome user agent - better CAPTCHA/Cloudflare compatibility
@@ -2399,6 +2522,12 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         
         nav_toolbar.append(settings_btn)
         
+        # Open in Firefox button - escape hatch for full browser power
+        open_firefox_btn = Gtk.Button.new_from_icon_name("tux-web-browser-symbolic")
+        open_firefox_btn.set_tooltip_text("Open current page in Firefox")
+        open_firefox_btn.connect("clicked", self._on_open_in_firefox)
+        nav_toolbar.append(open_firefox_btn)
+        
         # New tab button
         new_tab_btn = Gtk.Button.new_from_icon_name("tab-new-symbolic")
         new_tab_btn.set_tooltip_text("New tab (Ctrl+T)")
@@ -2813,7 +2942,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
                 try:
                     context = webview.get_context()
                     context.connect('download-started', self._on_browser_download_started)
-                except:
+                except Exception:
                     pass
         except Exception as e:
             print(f"WebView creation error: {e}")
@@ -2841,12 +2970,12 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         ]:
             try:
                 getattr(settings, method)(value)
-            except:
+            except Exception:
                 pass
         
         try:
             settings.set_hardware_acceleration_policy(WebKit.HardwareAccelerationPolicy.ALWAYS)
-        except:
+        except Exception:
             pass
         
         # Chrome user agent - better CAPTCHA/Cloudflare compatibility than Safari UA
@@ -2863,14 +2992,14 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             if hasattr(settings, attr):
                 try:
                     getattr(settings, attr)(value)
-                except:
+                except Exception:
                     pass
         
         # Apply saved zoom level
         try:
             zoom = self._load_zoom_level()
             webview.set_zoom_level(zoom)
-        except:
+        except Exception:
             pass
         
         # Connect signals
@@ -3340,6 +3469,24 @@ user_pref("browser.shell.checkDefaultBrowser", false);
         if webview:
             webview.load_uri(self.browser_home_url)
     
+    def _on_open_in_firefox(self, button):
+        """Open current page in Firefox for full browser capabilities."""
+        webview = self._get_current_browser_webview()
+        if webview:
+            uri = webview.get_uri()
+            if uri and uri != "about:blank":
+                try:
+                    # Use the managed Firefox profile for consistency
+                    profile_dir = os.path.join(self.CONFIG_DIR, 'firefox-profile')
+                    if os.path.isdir(profile_dir):
+                        subprocess.Popen(['firefox', '--profile', profile_dir, uri], 
+                                       start_new_session=True)
+                    else:
+                        subprocess.Popen(['firefox', uri], start_new_session=True)
+                    self.show_toast("Opened in Firefox")
+                except Exception as e:
+                    self.show_toast(f"Could not open Firefox: {e}")
+    
     def _on_browser_expand_toggle(self, button):
         """Toggle browser expanded view (hide/show sidebar)."""
         self.browser_expanded = not self.browser_expanded
@@ -3667,12 +3814,12 @@ user_pref("browser.shell.checkDefaultBrowser", false);
                 try:
                     pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(cache_file, 24, 24, True)
                     icon = Gtk.Image.new_from_pixbuf(pixbuf)
-                except:
+                except Exception:
                     pass
             else:
                 # Queue async favicon fetch (don't block UI)
                 GLib.idle_add(self._fetch_favicon_async, domain, cache_file)
-        except:
+        except Exception:
             pass
         
         return icon
@@ -3688,7 +3835,7 @@ user_pref("browser.shell.checkDefaultBrowser", false);
             
             # Fetch with timeout
             urllib.request.urlretrieve(favicon_url, cache_file)
-        except:
+        except Exception:
             pass
         
         return False  # Don't repeat
@@ -4849,7 +4996,7 @@ user_pref("browser.shell.checkDefaultBrowser", false);
         try:
             widget = drop_target.get_widget()
             widget.remove_css_class("suggested-action")
-        except:
+        except Exception:
             pass
     
     def _on_bookmark_drop_to_folder(self, drop_target, value, x, y):
@@ -6469,7 +6616,7 @@ user_pref("browser.shell.checkDefaultBrowser", false);
         return False
     
     def _on_browser_decide_policy(self, webview, decision, decision_type):
-        """Handle policy decisions for downloads, HTTPS upgrade, and blocking."""
+        """Handle policy decisions for downloads, HTTPS upgrade, OCS protocol, and blocking."""
         
         # Handle navigation actions (links, typed URLs)
         if decision_type == WebKit.PolicyDecisionType.NAVIGATION_ACTION:
@@ -6478,6 +6625,12 @@ user_pref("browser.shell.checkDefaultBrowser", false);
             uri = request.get_uri()
             
             if uri:
+                # Handle OCS:// protocol (theme/icon installs from gnome-look.org)
+                if uri.startswith('ocs://'):
+                    decision.ignore()
+                    self._handle_ocs_url(uri)
+                    return True
+                
                 # Check for blocked domains (ads/trackers)
                 if self._should_block_uri(uri):
                     decision.ignore()
@@ -6511,6 +6664,32 @@ user_pref("browser.shell.checkDefaultBrowser", false);
         decision.use()
         return False
     
+    def _handle_ocs_url(self, uri):
+        """Handle OCS:// protocol URLs for theme/icon installation."""
+        try:
+            # Call the OCS handler script
+            handler_paths = [
+                '/opt/tux-assistant/scripts/tux-ocs-handler',
+                os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
+                           'scripts', 'tux-ocs-handler'),
+            ]
+            
+            handler = None
+            for path in handler_paths:
+                if os.path.isfile(path) and os.access(path, os.X_OK):
+                    handler = path
+                    break
+            
+            if handler:
+                subprocess.Popen([handler, uri], start_new_session=True)
+                self.show_toast("Installing theme/icon...")
+            else:
+                # Fall back to xdg-open which should find the registered handler
+                subprocess.Popen(['xdg-open', uri], start_new_session=True)
+                self.show_toast("Installing theme/icon...")
+        except Exception as e:
+            self.show_toast(f"OCS install failed: {e}")
+    
     def _should_block_uri(self, uri):
         """Check if a URI should be blocked based on privacy settings."""
         if not uri:
@@ -6536,7 +6715,7 @@ user_pref("browser.shell.checkDefaultBrowser", false);
                 for tracker_domain in self.TRACKER_DOMAINS:
                     if tracker_domain in domain or domain.endswith('.' + tracker_domain):
                         return True
-        except:
+        except Exception:
             pass
         
         return False
@@ -6775,14 +6954,14 @@ user_pref("browser.shell.checkDefaultBrowser", false);
                         if not self.tts_playing:
                             try:
                                 os.remove(temp_path)
-                            except:
+                            except Exception:
                                 pass
                             return
                         
                         # Move to cache
                         try:
                             shutil.move(temp_path, cache_path)
-                        except:
+                        except Exception:
                             cache_path = temp_path  # Use temp if move fails
                         
                         if total_chunks == 1:
@@ -6820,9 +6999,9 @@ user_pref("browser.shell.checkDefaultBrowser", false);
                 self.tts_process.kill()
                 try:
                     self.tts_process.wait(timeout=1)
-                except:
+                except Exception:
                     pass
-            except:
+            except Exception:
                 pass
             finally:
                 self.tts_process = None
@@ -6832,7 +7011,7 @@ user_pref("browser.shell.checkDefaultBrowser", false);
                 if os_module.path.exists(self.tts_audio_file):
                     os_module.remove(self.tts_audio_file)
                 self.tts_audio_file = None
-            except:
+            except Exception:
                 pass
         
         # Update UI
@@ -7015,7 +7194,7 @@ user_pref("browser.shell.checkDefaultBrowser", false);
                     None
                 )
                 context_menu.append(read_item)
-            except:
+            except Exception:
                 # Fallback: Create with stock action and modify
                 pass
             
@@ -7033,7 +7212,7 @@ user_pref("browser.shell.checkDefaultBrowser", false);
                         None
                     )
                     context_menu.append(stop_item)
-                except:
+                except Exception:
                     pass
                     
         except Exception as e:
@@ -7243,7 +7422,7 @@ user_pref("browser.shell.checkDefaultBrowser", false);
                     conn.execute("DELETE FROM history")
                     conn.commit()
                     conn.close()
-            except:
+            except Exception:
                 pass
             
             # Clear cookies
@@ -7252,7 +7431,7 @@ user_pref("browser.shell.checkDefaultBrowser", false);
                 cookie_file = os.path.join(data_dir, 'cookies.sqlite')
                 if os.path.exists(cookie_file):
                     os.remove(cookie_file)
-            except:
+            except Exception:
                 pass
             
             # Clear cache
@@ -7262,7 +7441,7 @@ user_pref("browser.shell.checkDefaultBrowser", false);
                     import shutil
                     shutil.rmtree(cache_dir)
                     os.makedirs(cache_dir, exist_ok=True)
-            except:
+            except Exception:
                 pass
             
             self._show_toast("All browsing data cleared")
@@ -8364,7 +8543,7 @@ user_pref("browser.shell.checkDefaultBrowser", false);
                             break
                     # Don't update UI on every chunk - too slow
                     # UI updates on finish/fail
-        except:
+        except Exception:
             pass
     
     def _update_downloads_ui(self):
@@ -8463,7 +8642,7 @@ user_pref("browser.shell.checkDefaultBrowser", false);
         """Open a file with default application."""
         try:
             Gtk.FileLauncher.new(Gio.File.new_for_path(filepath)).launch(self, None, None, None)
-        except:
+        except Exception:
             import subprocess
             subprocess.Popen(["xdg-open", filepath])
     
@@ -8506,7 +8685,7 @@ user_pref("browser.shell.checkDefaultBrowser", false);
                         clean_name = resp_filename.strip()
                         if clean_name.lower() not in ('download', 'download file', 'file', 'blob'):
                             filename = clean_name
-            except:
+            except Exception:
                 pass
         
         if not filename:
@@ -8529,7 +8708,7 @@ user_pref("browser.shell.checkDefaultBrowser", false);
                             'text/x-python': '.py',
                         }
                         ext = mime_to_ext.get(mime_type, '')
-            except:
+            except Exception:
                 pass
             filename = f"claude_download_{timestamp}{ext}"
         

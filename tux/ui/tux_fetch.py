@@ -90,7 +90,7 @@ class TuxFetchSidebar(Gtk.Box):
             result = subprocess.run(['which', 'fastfetch'], 
                                    capture_output=True, text=True, timeout=2)
             return result.returncode == 0
-        except:
+        except Exception:
             return False
     
     def _install_fastfetch(self) -> bool:
@@ -123,7 +123,7 @@ class TuxFetchSidebar(Gtk.Box):
                     capture_output=True, text=True, timeout=120
                 )
                 return result.returncode == 0
-        except:
+        except Exception:
             pass
         
         return False
@@ -166,7 +166,7 @@ class TuxFetchSidebar(Gtk.Box):
                 return f"{hours}h {minutes}m"
             else:
                 return f"{minutes}m"
-        except:
+        except Exception:
             return "Unknown"
     
     def _get_shell(self) -> str:
@@ -194,7 +194,7 @@ class TuxFetchSidebar(Gtk.Box):
             used_gb = round(used / 1024 / 1024, 1)
             
             return f"{used_gb}GB / {total_gb}GB"
-        except:
+        except Exception:
             return "Unknown"
 
 

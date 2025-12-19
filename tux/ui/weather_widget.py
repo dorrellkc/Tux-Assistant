@@ -446,7 +446,7 @@ class NewsService:
                           if not k.startswith('utm_') and k not in ['ref', 'source']}
             clean_query = urllib.parse.urlencode(clean_params, doseq=True)
             return urllib.parse.urlunparse(parsed._replace(query=clean_query))
-        except:
+        except Exception:
             return url
 
 
@@ -574,7 +574,7 @@ class WeatherCard(Gtk.Box):
         """Open Open-Meteo in browser."""
         try:
             subprocess.Popen(['xdg-open', 'https://open-meteo.com'])
-        except:
+        except Exception:
             pass
 
 
@@ -731,7 +731,7 @@ class NewsCard(Gtk.Box):
             else:
                 # Fallback to system default browser
                 subprocess.Popen(['xdg-open', url])
-        except:
+        except Exception:
             pass
 
 
@@ -835,7 +835,7 @@ class WeatherWidget(Gtk.MenuButton):
             # Fallback to system browser
             try:
                 subprocess.Popen(['xdg-open', url])
-            except:
+            except Exception:
                 pass
     
     def _on_settings_clicked(self, button):

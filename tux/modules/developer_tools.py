@@ -619,7 +619,7 @@ class DeveloperToolsPage(Adw.NavigationPage):
             version_file = os.path.join(self.ta_repo_path, 'VERSION')
             with open(version_file, 'r') as f:
                 return f.read().strip()
-        except:
+        except Exception:
             return "unknown"
     
     def _on_install_from_zip(self, button):
@@ -1353,7 +1353,7 @@ exit 0
                 # Cleanup tarball
                 try:
                     os.remove(tarball_path)
-                except:
+                except Exception:
                     pass
                     
             except Exception as e:
@@ -1449,7 +1449,7 @@ exit 0
                                 return "suse"
                             elif "ubuntu" in content or "debian" in content or "mint" in content or "pop" in content:
                                 return "debian"
-                    except:
+                    except Exception:
                         pass
                     # Fallback: check for package managers
                     if os.path.exists("/usr/bin/pacman"):
@@ -1491,10 +1491,10 @@ exit 0
                 }
                 
                 pkg_install_cmds = {
-                    "arch": ["sudo", "pacman", "-S", "--noconfirm", "--needed"],
-                    "fedora": ["sudo", "dnf", "install", "-y"],
-                    "suse": ["sudo", "zypper", "--non-interactive", "install"],
-                    "debian": ["sudo", "apt", "install", "-y"],
+                    "arch": ["pkexec", "pacman", "-S", "--noconfirm", "--needed"],
+                    "fedora": ["pkexec", "dnf", "install", "-y"],
+                    "suse": ["pkexec", "zypper", "--non-interactive", "install"],
+                    "debian": ["pkexec", "apt", "install", "-y"],
                 }
                 
                 # Determine which tools we need based on package type
@@ -1539,7 +1539,7 @@ exit 0
                         result = subprocess.run(["which", "fpm"], capture_output=True, text=True, timeout=5)
                         if result.returncode == 0 and result.stdout.strip():
                             return result.stdout.strip()
-                    except:
+                    except Exception:
                         pass
                     
                     # Method 2: Ask Ruby directly where gems are installed
@@ -1560,7 +1560,7 @@ exit 0
                             matches = glob.glob(fpm_glob)
                             if matches:
                                 return matches[0]
-                    except:
+                    except Exception:
                         pass
                     
                     # Method 3: Check gem environment gempath
@@ -1581,7 +1581,7 @@ exit 0
                                 matches = glob.glob(fpm_glob)
                                 if matches:
                                     return matches[0]
-                    except:
+                    except Exception:
                         pass
                     
                     # Method 4: Brute force check common locations
@@ -1642,7 +1642,7 @@ exit 0
                                 else:
                                     GLib.idle_add(self._show_fpm_path_dialog, gem_dir)
                                     return
-                        except:
+                        except Exception:
                             GLib.idle_add(self._show_fpm_error_dialog)
                             return
                 
@@ -1996,7 +1996,7 @@ exit 0
                     if not os.path.exists(symlink_path):
                         try:
                             os.symlink(fpm_ruby_path, symlink_path)
-                        except:
+                        except Exception:
                             pass
                     return fpm_ruby_path
                 
@@ -2004,7 +2004,7 @@ exit 0
                 matches = glob.glob(os.path.join(gem_dir, 'gems', 'fpm-*', 'bin', 'fpm'))
                 if matches:
                     return matches[0]
-        except:
+        except Exception:
             pass
         
         return ""
@@ -2384,7 +2384,7 @@ exit 0
                 capture_output=True, text=True, timeout=5
             )
             return result.stdout.strip() or "unknown"
-        except:
+        except Exception:
             return "unknown"
     
     def _ta_has_changes(self) -> bool:
@@ -2396,7 +2396,7 @@ exit 0
                 capture_output=True, text=True, timeout=5
             )
             return bool(result.stdout.strip())
-        except:
+        except Exception:
             return False
     
     def _get_sync_status(self) -> dict:
@@ -3096,7 +3096,7 @@ Replace X.X.X with your version number."""
             version_file = os.path.join(self.ta_repo_path, 'VERSION')
             with open(version_file, 'r') as f:
                 version = f.read().strip()
-        except:
+        except Exception:
             self.window.show_toast("Could not read VERSION file")
             return
         
@@ -4078,25 +4078,25 @@ read'''
                     distro = "suse"
                 elif "ubuntu" in content or "debian" in content or "mint" in content or "pop" in content:
                     distro = "debian"
-        except:
+        except Exception:
             pass
         
         # Define packages needed per distro
         pkg_map = {
             "arch": {
-                "install_cmd": ["sudo", "pacman", "-S", "--noconfirm", "--needed"],
+                "install_cmd": ["pkexec", "pacman", "-S", "--noconfirm", "--needed"],
                 "packages": ["ruby", "binutils", "rpm-tools", "fakeroot"]
             },
             "fedora": {
-                "install_cmd": ["sudo", "dnf", "install", "-y"],
+                "install_cmd": ["pkexec", "dnf", "install", "-y"],
                 "packages": ["ruby", "ruby-devel", "binutils", "rpm-build", "gcc", "make"]
             },
             "suse": {
-                "install_cmd": ["sudo", "zypper", "--non-interactive", "install"],
+                "install_cmd": ["pkexec", "zypper", "--non-interactive", "install"],
                 "packages": ["ruby", "ruby-devel", "binutils", "rpm-build", "fakeroot", "gcc", "make"]
             },
             "debian": {
-                "install_cmd": ["sudo", "apt", "install", "-y"],
+                "install_cmd": ["pkexec", "apt", "install", "-y"],
                 "packages": ["ruby", "ruby-dev", "binutils", "rpm", "fakeroot", "build-essential"]
             }
         }
@@ -4146,7 +4146,7 @@ read'''
                                 try:
                                     os.symlink(fpm_ruby_path, symlink_path)
                                     results.append("✓ FPM symlink created")
-                                except:
+                                except Exception:
                                     pass
                 else:
                     results.append(f"⚠️ FPM install failed")
@@ -4469,7 +4469,7 @@ read'''
                         cloned += 1
                     else:
                         failed += 1
-                except:
+                except Exception:
                     failed += 1
             
             GLib.idle_add(lambda: self._clone_complete(cloned, failed))

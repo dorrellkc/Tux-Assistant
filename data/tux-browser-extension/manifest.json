@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "description": "Connects Firefox to Tux Assistant for one-click theme and extension installation",
   "author": "Christopher Dorrell",
-  "homepage_url": "https://github.com/kcdorrell/Tux-Assistant",
+  "homepage_url": "https://github.com/dorrellkc/Tux-Assistant",
   
   "permissions": [
     "nativeMessaging",

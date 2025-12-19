@@ -112,7 +112,7 @@ def create_icon(icon_name: str, size: int = 16, fallback: str = "application-x-e
         if theme is None:
             try:
                 theme = Gtk.IconTheme.get_for_display(None)
-            except:
+            except Exception:
                 pass
         
         if theme and theme.has_icon(tux_name):

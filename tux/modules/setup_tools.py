@@ -98,7 +98,7 @@ def check_rpmfusion_enabled() -> dict:
         output = proc.stdout.lower()
         result['free'] = 'rpmfusion-free' in output
         result['nonfree'] = 'rpmfusion-nonfree' in output
-    except:
+    except Exception:
         pass
     return result
 
@@ -119,7 +119,7 @@ def get_fedora_version() -> str:
     try:
         result = subprocess.run(['rpm', '-E', '%fedora'], capture_output=True, text=True)
         return result.stdout.strip()
-    except:
+    except Exception:
         return '40'
 
 
@@ -1933,13 +1933,13 @@ class AlternativeSourceInstallDialog(Adw.Dialog):
         
         try:
             if family_str == 'arch':
-                cmd = ['sudo', 'pacman', '-S', '--noconfirm', 'flatpak']
+                cmd = ['pkexec', 'pacman', '-S', '--noconfirm', 'flatpak']
             elif family_str == 'debian':
-                cmd = ['sudo', 'apt', 'install', '-y', 'flatpak']
+                cmd = ['pkexec', 'apt', 'install', '-y', 'flatpak']
             elif family_str == 'fedora':
-                cmd = ['sudo', 'dnf', 'install', '-y', 'flatpak']
+                cmd = ['pkexec', 'dnf', 'install', '-y', 'flatpak']
             elif family_str == 'opensuse':
-                cmd = ['sudo', 'zypper', 'install', '-y', 'flatpak']
+                cmd = ['pkexec', 'zypper', 'install', '-y', 'flatpak']
             else:
                 return False
             
@@ -2010,7 +2010,7 @@ class AlternativeSourceInstallDialog(Adw.Dialog):
             GLib.idle_add(self._append_output, "Installing prerequisites (git, base-devel)...")
             
             prereq_proc = subprocess.run(
-                ['sudo', 'pacman', '-S', '--needed', '--noconfirm', 'git', 'base-devel'],
+                ['pkexec', 'pacman', '-S', '--needed', '--noconfirm', 'git', 'base-devel'],
                 capture_output=True, text=True, timeout=120
             )
             
@@ -2126,7 +2126,7 @@ class AlternativeSourceInstallDialog(Adw.Dialog):
         # Ensure helper is executable
         try:
             os.chmod(helper_path, 0o755)
-        except:
+        except Exception:
             pass
         
         # Build command
@@ -2141,7 +2141,7 @@ class AlternativeSourceInstallDialog(Adw.Dialog):
         if use_pkexec:
             cmd = ['pkexec', helper_path] + cmd_args
         else:
-            cmd = ['sudo', helper_path] + cmd_args
+            cmd = ['pkexec', helper_path] + cmd_args
         
         GLib.idle_add(self._append_output, f"Running: {' '.join(cmd)}")
         GLib.idle_add(self.progress_bar.set_text, "Installing (authentication required)...")
@@ -2490,12 +2490,12 @@ class BatchAlternativeInstallDialog(Adw.Dialog):
     def _do_copr_install(self, repo_id: str, pkg_name: str) -> bool:
         """Enable COPR and install package."""
         # Enable COPR
-        subprocess.run(['sudo', 'dnf', 'copr', 'enable', '-y', repo_id],
+        subprocess.run(['pkexec', 'dnf', 'copr', 'enable', '-y', repo_id],
                       capture_output=True, timeout=60)
         
         # Install package
         result = subprocess.run(
-            ['sudo', 'dnf', 'install', '-y', pkg_name],
+            ['pkexec', 'dnf', 'install', '-y', pkg_name],
             capture_output=True, text=True, timeout=300
         )
         
@@ -2506,13 +2506,13 @@ class BatchAlternativeInstallDialog(Adw.Dialog):
         ppa = repo_id if repo_id.startswith('ppa:') else f'ppa:{repo_id}'
         
         # Add PPA
-        subprocess.run(['sudo', 'add-apt-repository', '-y', ppa],
+        subprocess.run(['pkexec', 'add-apt-repository', '-y', ppa],
                       capture_output=True, timeout=60)
-        subprocess.run(['sudo', 'apt', 'update'], capture_output=True, timeout=120)
+        subprocess.run(['pkexec', 'apt', 'update'], capture_output=True, timeout=120)
         
         # Install package
         result = subprocess.run(
-            ['sudo', 'apt', 'install', '-y', pkg_name],
+            ['pkexec', 'apt', 'install', '-y', pkg_name],
             capture_output=True, text=True, timeout=300
         )
         
@@ -2529,7 +2529,7 @@ class BatchAlternativeInstallDialog(Adw.Dialog):
         if 'rpmfusion-free' not in check_free.stdout.lower():
             GLib.idle_add(self._append_output, "=== Enabling RPM Fusion Free ===")
             enable_free = subprocess.run(
-                ['sudo', 'dnf', 'install', '-y',
+                ['pkexec', 'dnf', 'install', '-y',
                  f'https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-{self._get_fedora_version()}.noarch.rpm'],
                 capture_output=True, text=True, timeout=120
             )
@@ -2541,7 +2541,7 @@ class BatchAlternativeInstallDialog(Adw.Dialog):
         if 'rpmfusion-nonfree' not in check_free.stdout.lower():
             GLib.idle_add(self._append_output, "=== Enabling RPM Fusion Nonfree ===")
             enable_nonfree = subprocess.run(
-                ['sudo', 'dnf', 'install', '-y',
+                ['pkexec', 'dnf', 'install', '-y',
                  f'https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-{self._get_fedora_version()}.noarch.rpm'],
                 capture_output=True, text=True, timeout=120
             )
@@ -2552,7 +2552,7 @@ class BatchAlternativeInstallDialog(Adw.Dialog):
         # Now install the package
         GLib.idle_add(self._append_output, f"--- Installing {pkg_name} ---")
         result = subprocess.run(
-            ['sudo', 'dnf', 'install', '-y', pkg_name],
+            ['pkexec', 'dnf', 'install', '-y', pkg_name],
             capture_output=True, text=True, timeout=300
         )
         
@@ -2566,13 +2566,13 @@ class BatchAlternativeInstallDialog(Adw.Dialog):
         try:
             result = subprocess.run(['rpm', '-E', '%fedora'], capture_output=True, text=True)
             return result.stdout.strip()
-        except:
+        except Exception:
             return "41"  # Fallback to current stable
     
     def _do_packman_install(self, pkg_name: str) -> bool:
         """Install from Packman."""
         result = subprocess.run(
-            ['sudo', 'zypper', 'install', '-y', pkg_name],
+            ['pkexec', 'zypper', 'install', '-y', pkg_name],
             capture_output=True, text=True, timeout=300
         )
         
@@ -2597,7 +2597,7 @@ class BatchAlternativeInstallDialog(Adw.Dialog):
             GLib.idle_add(self._append_output, "Error: tux-helper not found!")
             return False
         
-        cmd = ['sudo', helper_path, '--enable-source', 'obs', '--repo-id', repo_id, '--install-package', pkg_name]
+        cmd = ['pkexec', helper_path, '--enable-source', 'obs', '--repo-id', repo_id, '--install-package', pkg_name]
         
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
         
@@ -3147,7 +3147,7 @@ class SetupToolsPage(Adw.NavigationPage):
                         'description': 'Pacman repository',
                         'type': 'pacman'
                     })
-        except:
+        except Exception:
             pass
         return repos
     
@@ -3169,7 +3169,7 @@ class SetupToolsPage(Adw.NavigationPage):
                             'description': parts[1] if len(parts) > 1 else '',
                             'type': 'dnf'
                         })
-        except:
+        except Exception:
             pass
         return repos
     
@@ -3205,9 +3205,9 @@ class SetupToolsPage(Adw.NavigationPage):
                                                 'url': url[:60] + '...' if len(url) > 60 else url,
                                                 'type': 'apt'
                                             })
-                except:
+                except Exception:
                     continue
-        except:
+        except Exception:
             pass
         return repos[:10]  # Limit to avoid UI clutter
     
@@ -3229,7 +3229,7 @@ class SetupToolsPage(Adw.NavigationPage):
                             'description': parts[2].strip() if len(parts) > 2 else '',
                             'type': 'zypper'
                         })
-        except:
+        except Exception:
             pass
         return repos
     
@@ -3251,7 +3251,7 @@ class SetupToolsPage(Adw.NavigationPage):
                             'url': parts[1] if len(parts) > 1 else '',
                             'type': 'Flatpak'
                         })
-        except:
+        except Exception:
             pass
         return repos
     
@@ -3268,7 +3268,7 @@ class SetupToolsPage(Adw.NavigationPage):
         try:
             result = subprocess.run(['flatpak', 'remotes'], capture_output=True, text=True, timeout=5)
             return 'flathub' in result.stdout.lower()
-        except:
+        except Exception:
             return False
     
     def _check_multilib_enabled(self) -> bool:
@@ -3282,7 +3282,7 @@ class SetupToolsPage(Adw.NavigationPage):
                     if line.strip() == '[multilib]':
                         return True
             return False
-        except:
+        except Exception:
             return False
     
     def _check_aur_helper_installed(self) -> bool:
@@ -3298,7 +3298,7 @@ class SetupToolsPage(Adw.NavigationPage):
         try:
             result = subprocess.run(['dnf', 'repolist'], capture_output=True, text=True, timeout=10)
             return 'rpmfusion-free' in result.stdout.lower()
-        except:
+        except Exception:
             return False
     
     def _check_rpmfusion_nonfree_enabled(self) -> bool:
@@ -3306,7 +3306,7 @@ class SetupToolsPage(Adw.NavigationPage):
         try:
             result = subprocess.run(['dnf', 'repolist'], capture_output=True, text=True, timeout=10)
             return 'rpmfusion-nonfree' in result.stdout.lower()
-        except:
+        except Exception:
             return False
     
     def _check_packman_enabled(self) -> bool:
@@ -3314,7 +3314,7 @@ class SetupToolsPage(Adw.NavigationPage):
         try:
             result = subprocess.run(['zypper', 'repos'], capture_output=True, text=True, timeout=10)
             return 'packman' in result.stdout.lower()
-        except:
+        except Exception:
             return False
     
     def _on_enable_flathub(self, button):
@@ -3346,12 +3346,12 @@ rm -rf yay-bin
     
     def _on_enable_rpmfusion_free(self, button):
         """Enable RPM Fusion Free repository."""
-        cmd = f"sudo dnf install -y https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm"
+        cmd = f"pkexec dnf install -y https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm"
         self._run_repo_command(button, cmd, "RPM Fusion Free")
     
     def _on_enable_rpmfusion_nonfree(self, button):
         """Enable RPM Fusion Nonfree repository."""
-        cmd = f"sudo dnf install -y https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm"
+        cmd = f"pkexec dnf install -y https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm"
         self._run_repo_command(button, cmd, "RPM Fusion Nonfree")
     
     def _on_enable_packman(self, button):
@@ -3375,6 +3375,8 @@ sudo zypper dup --from packman --allow-vendor-change -y"""
         
         def run():
             try:
+                # shell=True required for complex repo commands with pipes/redirects
+                # Commands are internal to the app, not user input - safe
                 result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=120)
                 if result.returncode == 0:
                     GLib.idle_add(self._repo_success, button, name)
@@ -3455,7 +3457,7 @@ read -p "Press Enter to close..."
                     # Re-enable button after delay for user to retry if needed
                     GLib.timeout_add_seconds(5, lambda: button.set_sensitive(True) or button.set_label("Enable"))
                     return
-            except:
+            except Exception:
                 continue
         
         button.set_sensitive(True)
@@ -4299,8 +4301,8 @@ class InstallationDialog(Adw.Dialog):
             # Then run any setup commands (like adding Flathub after flatpak is installed)
             if commands:
                 for cmd in commands:
-                    # Convert command list to string, skip 'sudo' prefix
-                    if cmd and cmd[0] == 'sudo':
+                    # Convert command list to string, skip 'sudo' or 'pkexec' prefix
+                    if cmd and cmd[0] in ('sudo', 'pkexec'):
                         cmd = cmd[1:]
                     cmd_str = ' '.join(cmd)
                     plan['tasks'].append({
@@ -4355,7 +4357,7 @@ class InstallationDialog(Adw.Dialog):
         # Ensure helper is executable (fixes permission denied on .run installs)
         try:
             os.chmod(helper_path, 0o755)
-        except:
+        except Exception:
             pass
         
         GLib.idle_add(self.append_output, f"Using helper: {helper_path}", "info")
@@ -4451,7 +4453,7 @@ class InstallationDialog(Adw.Dialog):
             # Clean up plan file
             try:
                 os.unlink(plan_file.name)
-            except:
+            except Exception:
                 pass
         
         # Done

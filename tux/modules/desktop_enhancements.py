@@ -29,12 +29,12 @@ try:
     gi.require_version('WebKit', '6.0')
     from gi.repository import WebKit
     HAS_WEBKIT = True
-except:
+except Exception:
     try:
         gi.require_version('WebKit2', '5.0')
         from gi.repository import WebKit2 as WebKit
         HAS_WEBKIT = True
-    except:
+    except Exception:
         HAS_WEBKIT = False
 
 from ..core import get_distro, get_desktop, DesktopEnv, DistroFamily
@@ -2754,7 +2754,7 @@ class ThemeManager:
                 capture_output=True, text=True, timeout=5
             )
             return result.stdout.strip().strip("'")
-        except:
+        except Exception:
             return ""
     
     def get_current_icon_theme(self) -> str:
@@ -2765,7 +2765,7 @@ class ThemeManager:
                 capture_output=True, text=True, timeout=5
             )
             return result.stdout.strip().strip("'")
-        except:
+        except Exception:
             return ""
     
     def get_current_cursor_theme(self) -> str:
@@ -2776,7 +2776,7 @@ class ThemeManager:
                 capture_output=True, text=True, timeout=5
             )
             return result.stdout.strip().strip("'")
-        except:
+        except Exception:
             return ""
     
     def apply_gtk_theme(self, theme_name: str) -> bool:
@@ -2833,7 +2833,7 @@ class ThemeManager:
                     except FileNotFoundError:
                         continue
             return True
-        except:
+        except Exception:
             return False
     
     def apply_icon_theme(self, theme_name: str) -> bool:
@@ -2881,7 +2881,7 @@ class ThemeManager:
                         except FileNotFoundError:
                             continue
             return True
-        except:
+        except Exception:
             return False
     
     def apply_cursor_theme(self, theme_name: str) -> bool:
@@ -2914,7 +2914,7 @@ class ThemeManager:
                     check=True, timeout=5
                 )
             return True
-        except:
+        except Exception:
             return False
     
     def apply_plasma_theme(self, theme_name: str) -> bool:
@@ -2934,7 +2934,7 @@ class ThemeManager:
                 capture_output=True, timeout=10
             )
             return result.returncode == 0
-        except:
+        except Exception:
             return False
     
     def apply_kvantum_theme(self, theme_name: str) -> bool:
@@ -2950,7 +2950,7 @@ class ThemeManager:
                 check=True, timeout=5
             )
             return True
-        except:
+        except Exception:
             return False
     
     def get_current_plasma_theme(self) -> str:
@@ -2970,7 +2970,7 @@ class ThemeManager:
                 capture_output=True, text=True, timeout=5
             )
             return result.stdout.strip()
-        except:
+        except Exception:
             return ""
     
     def get_current_kvantum_theme(self) -> str:
@@ -2983,7 +2983,7 @@ class ThemeManager:
                     for line in f:
                         if line.startswith('theme='):
                             return line.split('=', 1)[1].strip()
-        except:
+        except Exception:
             pass
         return ""
 
@@ -3019,7 +3019,7 @@ class TweakManager:
                     capture_output=True, text=True, timeout=5
                 )
                 return result.stdout.strip().strip("'")
-            except:
+            except Exception:
                 return None
         
         # KDE kconfig
@@ -3039,7 +3039,7 @@ class TweakManager:
                             return result.stdout.strip()
                     except FileNotFoundError:
                         continue
-            except:
+            except Exception:
                 return None
         
         # XFCE xfconf
@@ -3051,7 +3051,7 @@ class TweakManager:
                 )
                 if result.returncode == 0:
                     return result.stdout.strip()
-            except:
+            except Exception:
                 return None
         
         return None
@@ -3068,7 +3068,7 @@ class TweakManager:
                     check=True, timeout=5
                 )
                 return True
-            except:
+            except Exception:
                 return False
         
         # KDE kconfig
@@ -3092,7 +3092,7 @@ class TweakManager:
                             return True
                     except FileNotFoundError:
                         continue
-            except:
+            except Exception:
                 return False
         
         # XFCE xfconf
@@ -3107,7 +3107,7 @@ class TweakManager:
                 
                 subprocess.run(cmd, check=True, timeout=5)
                 return True
-            except:
+            except Exception:
                 return False
         
         return False
@@ -3131,7 +3131,7 @@ class ExtensionManager:
                 capture_output=True, timeout=5
             )
             return result.returncode == 0
-        except:
+        except Exception:
             return False
     
     def is_extension_enabled(self, uuid: str) -> bool:
@@ -3142,7 +3142,7 @@ class ExtensionManager:
                 capture_output=True, text=True, timeout=5
             )
             return 'State: ENABLED' in result.stdout
-        except:
+        except Exception:
             return False
     
     def enable_extension(self, uuid: str) -> bool:
@@ -3153,7 +3153,7 @@ class ExtensionManager:
                 check=True, timeout=5
             )
             return True
-        except:
+        except Exception:
             return False
     
     def disable_extension(self, uuid: str) -> bool:
@@ -3164,7 +3164,7 @@ class ExtensionManager:
                 check=True, timeout=5
             )
             return True
-        except:
+        except Exception:
             return False
 
 
@@ -3189,7 +3189,7 @@ def get_gnome_shell_version() -> Optional[str]:
             version = result.stdout.strip().split()[-1]
             major = version.split('.')[0]
             return major
-    except:
+    except Exception:
         pass
     return None
 
@@ -3226,7 +3226,7 @@ def get_installed_extensions_from_filesystem() -> tuple[dict, dict]:
                     item = item.strip().strip("'\"")
                     if item:
                         enabled_uuids.add(item)
-    except:
+    except Exception:
         pass
     
     def read_extensions_from_dir(base_path: str, is_user: bool) -> dict:
@@ -3260,7 +3260,7 @@ def get_installed_extensions_from_filesystem() -> tuple[dict, dict]:
                     'name': name,
                     'description': description[:100] if description else ''
                 }
-            except:
+            except Exception:
                 # If we can't read metadata, use folder name
                 uuid = ext_dir.name
                 extensions[uuid] = {
@@ -3316,7 +3316,7 @@ def get_extension_info(pk: int, shell_version: str) -> Optional[dict]:
         
         with urllib.request.urlopen(req, timeout=10) as response:
             return json.loads(response.read().decode())
-    except:
+    except Exception:
         return None
 
 
@@ -3412,7 +3412,7 @@ def enable_extension_by_uuid(uuid: str) -> bool:
             timeout=5
         )
         return result.returncode == 0
-    except:
+    except Exception:
         return False
 
 
@@ -3425,7 +3425,7 @@ def disable_extension_by_uuid(uuid: str) -> bool:
             timeout=5
         )
         return result.returncode == 0
-    except:
+    except Exception:
         return False
 
 
@@ -3438,7 +3438,7 @@ def uninstall_extension_by_uuid(uuid: str) -> bool:
             timeout=10
         )
         return result.returncode == 0
-    except:
+    except Exception:
         return False
 
 
@@ -3800,7 +3800,7 @@ class GnomeExtensionsBrowserPage(Adw.NavigationPage):
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL
             )
-        except:
+        except Exception:
             self.window.show_toast("Could not open settings")
     
     def _on_install(self, button, ext: dict):
@@ -3948,7 +3948,7 @@ class PlanExecutionDialog(Adw.Dialog):
                 import os
                 try:
                     os.unlink(plan_file)
-                except:
+                except Exception:
                     pass
         
         thread = threading.Thread(target=run_process, daemon=True)
@@ -3967,7 +3967,7 @@ class PlanExecutionDialog(Adw.Dialog):
                     pct = int(parts[1].replace('[Tux Assistant:PROGRESS]', ''))
                     self.progress.set_fraction(pct / 100)
                     self.progress.set_text(f"{pct}%")
-                except:
+                except Exception:
                     pass
         elif line.startswith('[Tux Assistant:STATUS]'):
             status = line.replace('[Tux Assistant:STATUS]', '').strip()
@@ -5590,7 +5590,7 @@ class ThemeDownloadDialog(Adw.Dialog):
                     self.window.show_toast(f"Installing {package} via {aur_helper}")
                     self.close()
                     return
-                except:
+                except Exception:
                     continue
         
         self.window.show_toast("Could not open terminal. Run manually: " + cmd)
@@ -6811,7 +6811,7 @@ class ToolSelectionPage(Adw.NavigationPage):
                         ['flatpak', 'install', '-y', 'flathub', app_id],
                         capture_output=True, timeout=300
                     )
-                except:
+                except Exception:
                     pass
             GLib.idle_add(self.window.show_toast, f"Installed {len(app_ids)} Flatpak(s)")
         

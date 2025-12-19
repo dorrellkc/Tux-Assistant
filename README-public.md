@@ -28,7 +28,7 @@ Tux Assistant is a modern, GTK4-based system configuration tool that makes setti
 
 ### Latest Release: v0.9.0
 
-**[⬇️ Download Tux-Assistant-v0.9.0.run](https://github.com/dorrelkc/tux-assistant/releases/download/v0.9.0/Tux-Assistant-v0.9.0.run)** (Recommended)
+**[⬇️ Download Tux-Assistant-v0.9.0.run](https://github.com/dorrellkc/tux-assistant/releases/download/v0.9.0/Tux-Assistant-v0.9.0.run)** (Recommended)
 
 Single executable file - works on any Linux distribution!
 
@@ -97,8 +97,8 @@ Tux Assistant includes **Tux Tunes** - a full-featured internet radio player!
 ## 🤝 Contributing
 
 Found a bug? Have a feature request? 
-- Open an [Issue](https://github.com/dorrelkc/tux-assistant/issues)
-- Submit a [Pull Request](https://github.com/dorrelkc/tux-assistant/pulls)
+- Open an [Issue](https://github.com/dorrellkc/tux-assistant/issues)
+- Submit a [Pull Request](https://github.com/dorrellkc/tux-assistant/pulls)
 
 ---
 

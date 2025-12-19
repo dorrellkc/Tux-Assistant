@@ -934,10 +934,10 @@ class HelpLearningPage(Adw.NavigationPage):
         """Open system settings."""
         try:
             subprocess.Popen(['gnome-control-center', section])
-        except:
+        except Exception:
             try:
                 subprocess.Popen(['systemsettings5'])
-            except:
+            except Exception:
                 self.window.show_toast("Could not open settings")
     
     def _open_system_monitor(self):
@@ -959,28 +959,28 @@ class HelpLearningPage(Adw.NavigationPage):
             subprocess.run(['systemctl', '--user', 'restart', 'pipewire'], capture_output=True)
             subprocess.run(['systemctl', '--user', 'restart', 'pipewire-pulse'], capture_output=True)
             self.window.show_toast("Audio service restarted")
-        except:
+        except Exception:
             try:
                 subprocess.run(['pulseaudio', '-k'], capture_output=True)
                 subprocess.run(['pulseaudio', '--start'], capture_output=True)
                 self.window.show_toast("PulseAudio restarted")
-            except:
+            except Exception:
                 self.window.show_toast("Could not restart audio")
     
     def _restart_network(self):
         """Restart network service."""
         try:
-            subprocess.run(['sudo', 'systemctl', 'restart', 'NetworkManager'], capture_output=True)
+            subprocess.run(['pkexec', 'systemctl', 'restart', 'NetworkManager'], capture_output=True)
             self.window.show_toast("Network service restarted")
-        except:
+        except Exception:
             self.window.show_toast("Could not restart network")
     
     def _restart_bluetooth(self):
         """Restart Bluetooth service."""
         try:
-            subprocess.run(['sudo', 'systemctl', 'restart', 'bluetooth'], capture_output=True)
+            subprocess.run(['pkexec', 'systemctl', 'restart', 'bluetooth'], capture_output=True)
             self.window.show_toast("Bluetooth service restarted")
-        except:
+        except Exception:
             self.window.show_toast("Could not restart Bluetooth")
 
 

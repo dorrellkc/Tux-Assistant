@@ -1607,7 +1607,7 @@ class SearchResultsPage(Adw.NavigationPage):
                 capture_output=True, text=True, timeout=5
             )
             return 'flathub' in result.stdout.lower()
-        except:
+        except Exception:
             return False
     
     def build_ui(self):
@@ -1801,7 +1801,7 @@ class SearchResultsPage(Adw.NavigationPage):
                 capture_output=True, timeout=5
             )
             return result.returncode == 0
-        except:
+        except Exception:
             return False
     
     def _get_native_source_name(self) -> str:
@@ -2196,7 +2196,7 @@ class SearchResultsPage(Adw.NavigationPage):
                     capture_output=True, timeout=5
                 )
                 return result.returncode == 0
-        except:
+        except Exception:
             pass
         
         return False
@@ -3050,7 +3050,7 @@ class AppInstallDialog(Adw.Dialog):
         # Ensure helper is executable
         try:
             os.chmod(helper_path, 0o755)
-        except:
+        except Exception:
             pass
         
         GLib.idle_add(self.append_output, "Requesting authentication...", "info")
@@ -3118,7 +3118,7 @@ class AppInstallDialog(Adw.Dialog):
         finally:
             try:
                 os.unlink(plan_file.name)
-            except:
+            except Exception:
                 pass
         
         GLib.idle_add(self._installation_complete)
