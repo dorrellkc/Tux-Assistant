@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.1
+Type=Application
+Name=Tux Tunes
+GenericName=Internet Radio
+Comment=Listen to internet radio stations with smart recording
+Exec=/opt/tux-assistant/tux/apps/tux_tunes/tux-tunes.py
+Icon=tux-tunes
+Terminal=false
+Categories=AudioVideo;Audio;Music;Player;
+Keywords=radio;internet;streaming;music;recording;
+StartupNotify=true
+StartupWMClass=com.tuxassistant.tuxtunes
+MimeType=x-scheme-handler/radio;

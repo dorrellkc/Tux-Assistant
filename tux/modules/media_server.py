@@ -6,7 +6,7 @@ Makes external drives accessible to media server services.
 
 "You will move it double quick time!" - Gunnery Sergeant Hartman
 
-Copyright (c) 2025 Christopher Dorrell. All Rights Reserved.
+Copyright (c) 2025 Christopher Dorrell. Licensed under GPL-3.0.
 """
 
 import gi
@@ -74,16 +74,16 @@ MEDIA_SERVERS = {
         },
         repo_setup={
             'debian': [
-                'curl https://downloads.plex.tv/plex-keys/PlexSign.key | gpg --dearmor | sudo tee /usr/share/keyrings/plex-archive-keyring.gpg >/dev/null',
-                'echo "deb [signed-by=/usr/share/keyrings/plex-archive-keyring.gpg] https://downloads.plex.tv/repo/deb public main" | sudo tee /etc/apt/sources.list.d/plexmediaserver.list',
-                'sudo apt update',
+                "pkexec bash -c 'curl -fsSL https://downloads.plex.tv/plex-keys/PlexSign.key | gpg --dearmor -o /usr/share/keyrings/plex-archive-keyring.gpg'",
+                "pkexec bash -c 'echo \"deb [signed-by=/usr/share/keyrings/plex-archive-keyring.gpg] https://downloads.plex.tv/repo/deb public main\" > /etc/apt/sources.list.d/plexmediaserver.list'",
+                'pkexec apt-get update',
             ],
             'fedora': [
-                'sudo dnf install -y https://downloads.plex.tv/plex-media-server-new/1.40.0.7998-c29d4c0c8/redhat/plexmediaserver-1.40.0.7998-c29d4c0c8.x86_64.rpm',
+                'pkexec dnf install -y https://downloads.plex.tv/plex-media-server-new/1.40.0.7998-c29d4c0c8/redhat/plexmediaserver-1.40.0.7998-c29d4c0c8.x86_64.rpm',
             ],
             'opensuse': [
-                'sudo rpm --import https://downloads.plex.tv/plex-keys/PlexSign.key',
-                'sudo zypper addrepo https://downloads.plex.tv/repo/rpm/x86_64/ plex',
+                'pkexec rpm --import https://downloads.plex.tv/plex-keys/PlexSign.key',
+                'pkexec zypper addrepo https://downloads.plex.tv/repo/rpm/x86_64/ plex',
             ],
         }
     ),
@@ -104,13 +104,13 @@ MEDIA_SERVERS = {
         },
         repo_setup={
             'debian': [
-                'curl -fsSL https://repo.jellyfin.org/ubuntu/jellyfin_team.gpg.key | gpg --dearmor | sudo tee /usr/share/keyrings/jellyfin-archive-keyring.gpg >/dev/null',
-                'echo "deb [signed-by=/usr/share/keyrings/jellyfin-archive-keyring.gpg] https://repo.jellyfin.org/ubuntu $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/jellyfin.list',
-                'sudo apt update',
+                "pkexec bash -c 'curl -fsSL https://repo.jellyfin.org/ubuntu/jellyfin_team.gpg.key | gpg --dearmor -o /usr/share/keyrings/jellyfin-archive-keyring.gpg'",
+                "pkexec bash -c 'echo \"deb [signed-by=/usr/share/keyrings/jellyfin-archive-keyring.gpg] https://repo.jellyfin.org/ubuntu $(lsb_release -cs) main\" > /etc/apt/sources.list.d/jellyfin.list'",
+                'pkexec apt-get update',
             ],
             'fedora': [
-                'sudo dnf install -y https://repo.jellyfin.org/releases/server/fedora/stable/server/jellyfin-server-latest.fc$(rpm -E %fedora).x86_64.rpm',
-                'sudo dnf install -y https://repo.jellyfin.org/releases/server/fedora/stable/web/jellyfin-web-latest.noarch.rpm',
+                'pkexec dnf install -y https://repo.jellyfin.org/releases/server/fedora/stable/server/jellyfin-server-latest.fc$(rpm -E %fedora).x86_64.rpm',
+                'pkexec dnf install -y https://repo.jellyfin.org/releases/server/fedora/stable/web/jellyfin-web-latest.noarch.rpm',
             ],
         }
     ),
@@ -131,9 +131,9 @@ MEDIA_SERVERS = {
         },
         repo_setup={
             'debian': [
-                'wget -qO- https://emby.media/emby-server-deb.gpg | sudo gpg --dearmor -o /usr/share/keyrings/emby-server.gpg',
-                'echo "deb [signed-by=/usr/share/keyrings/emby-server.gpg] https://deb.emby.media stable main" | sudo tee /etc/apt/sources.list.d/emby-server.list',
-                'sudo apt update',
+                "pkexec bash -c 'wget -qO- https://emby.media/emby-server-deb.gpg | gpg --dearmor -o /usr/share/keyrings/emby-server.gpg'",
+                "pkexec bash -c 'echo \"deb [signed-by=/usr/share/keyrings/emby-server.gpg] https://deb.emby.media stable main\" > /etc/apt/sources.list.d/emby-server.list'",
+                'pkexec apt-get update',
             ],
         }
     ),
@@ -249,7 +249,7 @@ def _parse_size_gb(size_str: str) -> float:
         elif size_str.endswith('M'):
             return float(size_str[:-1]) / 1024
         return 0
-    except:
+    except Exception:
         return 0
 
 
@@ -279,7 +279,7 @@ def detect_installed_media_server() -> Optional[MediaServer]:
     id="media_server",
     name="Media Server",
     description="Plex, Jellyfin, Emby setup and drive configuration",
-    icon="video-display-symbolic",
+    icon="tux-video-display-symbolic",
     category=ModuleCategory.SERVER,
     order=50  # Specialized tier
 )
@@ -297,11 +297,22 @@ class MediaServerPage(Adw.NavigationPage):
     
     def _build_ui(self):
         """Build the module UI."""
+        # Re-detect installed server on rebuild
+        self.installed_server = detect_installed_media_server()
+        
         toolbar_view = Adw.ToolbarView()
         self.set_child(toolbar_view)
         
         # Header (NavigationView handles back button automatically)
         header = Adw.HeaderBar()
+        
+        # Add refresh button
+        refresh_btn = Gtk.Button()
+        refresh_btn.set_icon_name("tux-view-refresh-symbolic")
+        refresh_btn.set_tooltip_text("Refresh")
+        refresh_btn.connect("clicked", lambda b: self._build_ui())
+        header.pack_end(refresh_btn)
+        
         toolbar_view.add_top_bar(header)
         
         # Scrollable content
@@ -324,7 +335,7 @@ class MediaServerPage(Adw.NavigationPage):
         
         # Hero section
         status_page = Adw.StatusPage()
-        status_page.set_icon_name("video-display-symbolic")
+        status_page.set_icon_name("tux-video-display-symbolic")
         status_page.set_title("Media Server Setup")
         
         if self.installed_server:
@@ -350,7 +361,7 @@ class MediaServerPage(Adw.NavigationPage):
                 row.set_subtitle(info.description)
                 row.set_activatable(True)
                 row.add_prefix(Gtk.Image.new_from_icon_name(info.icon))
-                row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+                row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
                 row.connect("activated", self._on_install_server, server_type)
                 install_group.add(row)
         
@@ -365,8 +376,8 @@ class MediaServerPage(Adw.NavigationPage):
         config_row.set_title("Configure Drive for Media Server")
         config_row.set_subtitle("Set up permissions for external/secondary drives")
         config_row.set_activatable(True)
-        config_row.add_prefix(Gtk.Image.new_from_icon_name("drive-harddisk-symbolic"))
-        config_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        config_row.add_prefix(Gtk.Image.new_from_icon_name("tux-drive-harddisk-symbolic"))
+        config_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         config_row.connect("activated", self._on_configure_drive)
         drive_group.add(config_row)
         
@@ -375,8 +386,8 @@ class MediaServerPage(Adw.NavigationPage):
         folder_row.set_title("Configure Media Folder")
         folder_row.set_subtitle("Set permissions on a specific folder recursively")
         folder_row.set_activatable(True)
-        folder_row.add_prefix(Gtk.Image.new_from_icon_name("folder-symbolic"))
-        folder_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        folder_row.add_prefix(Gtk.Image.new_from_icon_name("tux-folder-symbolic"))
+        folder_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         folder_row.connect("activated", self._on_configure_folder)
         drive_group.add(folder_row)
         
@@ -421,7 +432,7 @@ class MediaServerPage(Adw.NavigationPage):
             web_row.set_title("Open Web Interface")
             web_row.set_subtitle(f"http://localhost:{info.web_port}")
             web_row.set_activatable(True)
-            web_row.add_suffix(Gtk.Image.new_from_icon_name("web-browser-symbolic"))
+            web_row.add_suffix(Gtk.Image.new_from_icon_name("tux-web-browser-symbolic"))
             web_row.connect("activated", self._on_open_web)
             manage_group.add(web_row)
     
@@ -433,12 +444,12 @@ class MediaServerPage(Adw.NavigationPage):
                 capture_output=True, text=True
             )
             return result.stdout.strip() == 'active'
-        except:
+        except Exception:
             return False
     
     def _on_install_server(self, row, server_type: MediaServer):
         """Start server installation."""
-        dialog = InstallServerDialog(self.window, self.distro, server_type)
+        dialog = InstallServerDialog(self.window, self.distro, server_type, self._build_ui)
         dialog.present(self.window)
     
     def _on_configure_drive(self, row):
@@ -470,7 +481,7 @@ class MediaServerPage(Adw.NavigationPage):
             self.window.show_toast(f"Server {action}ed successfully")
             # Refresh the page
             self._build_ui()
-        except:
+        except Exception:
             self.window.show_toast(f"Failed to {action} server")
     
     def _on_open_web(self, row):
@@ -481,7 +492,7 @@ class MediaServerPage(Adw.NavigationPage):
         info = MEDIA_SERVERS[self.installed_server]
         url = f"http://localhost:{info.web_port}"
         
-        Gtk.show_uri(self.window, url, 0)
+        Gtk.show_uri(None, url, 0)
 
 
 # =============================================================================
@@ -491,13 +502,14 @@ class MediaServerPage(Adw.NavigationPage):
 class InstallServerDialog(Adw.Dialog):
     """Dialog for installing a media server."""
     
-    def __init__(self, window, distro, server_type: MediaServer):
+    def __init__(self, window, distro, server_type: MediaServer, on_complete_callback=None):
         super().__init__()
         
         self.window = window
         self.distro = distro
         self.server_type = server_type
         self.info = MEDIA_SERVERS[server_type]
+        self.on_complete_callback = on_complete_callback
         
         self.set_title(f"Install {self.info.name}")
         self.set_content_width(500)
@@ -549,7 +561,7 @@ class InstallServerDialog(Adw.Dialog):
             row = Adw.ActionRow()
             row.set_title(title)
             row.set_subtitle(subtitle)
-            row.add_prefix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
+            row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic"))
             info_group.add(row)
         
         # Install button
@@ -567,8 +579,8 @@ class InstallServerDialog(Adw.Dialog):
         # Create installation plan
         plan = self._create_plan()
         
-        # Show progress dialog
-        progress = InstallProgressDialog(self.window, plan, self.info)
+        # Show progress dialog with callback
+        progress = InstallProgressDialog(self.window, plan, self.info, self.on_complete_callback)
         progress.present(self.window)
     
     def _create_plan(self) -> dict:
@@ -588,12 +600,13 @@ class InstallServerDialog(Adw.Dialog):
 class InstallProgressDialog(Adw.Dialog):
     """Dialog showing installation progress."""
     
-    def __init__(self, window, plan: dict, info: MediaServerInfo):
+    def __init__(self, window, plan: dict, info: MediaServerInfo, on_complete_callback=None):
         super().__init__()
         
         self.window = window
         self.plan = plan
         self.info = info
+        self.on_complete_callback = on_complete_callback
         
         self.set_title(f"Installing {info.name}")
         self.set_content_width(500)
@@ -669,6 +682,8 @@ class InstallProgressDialog(Adw.Dialog):
             
             for cmd in self.plan.get('repo_setup', []):
                 GLib.idle_add(self._append_output, f"$ {cmd}")
+                # shell=True required for piped commands (curl|gpg|tee)
+                # Commands are hardcoded in MEDIA_SERVERS, not user input - safe
                 result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
                 if result.stdout:
                     GLib.idle_add(self._append_output, result.stdout)
@@ -682,13 +697,13 @@ class InstallProgressDialog(Adw.Dialog):
             packages = self.plan.get('packages', [])
             if packages:
                 if family == 'arch':
-                    cmd = ['sudo', 'pacman', '-S', '--noconfirm'] + packages
+                    cmd = ['pkexec', 'pacman', '-S', '--noconfirm'] + packages
                 elif family == 'debian':
-                    cmd = ['sudo', 'apt', 'install', '-y'] + packages
+                    cmd = ['pkexec', 'apt', 'install', '-y'] + packages
                 elif family == 'fedora':
-                    cmd = ['sudo', 'dnf', 'install', '-y'] + packages
+                    cmd = ['pkexec', 'dnf', 'install', '-y'] + packages
                 elif family == 'opensuse':
-                    cmd = ['sudo', 'zypper', 'install', '-y'] + packages
+                    cmd = ['pkexec', 'zypper', 'install', '-y'] + packages
                 else:
                     cmd = None
                 
@@ -703,14 +718,14 @@ class InstallProgressDialog(Adw.Dialog):
             GLib.idle_add(self.progress.set_fraction, 0.7)
             
             service = self.plan['service_name']
-            subprocess.run(['sudo', 'systemctl', 'enable', service], capture_output=True)
+            subprocess.run(['pkexec', 'systemctl', 'enable', service], capture_output=True)
             GLib.idle_add(self._append_output, f"Enabled {service}")
             
             # Step 4: Start service
             GLib.idle_add(self.status_label.set_text, "Starting service...")
             GLib.idle_add(self.progress.set_fraction, 0.9)
             
-            subprocess.run(['sudo', 'systemctl', 'start', service], capture_output=True)
+            subprocess.run(['pkexec', 'systemctl', 'start', service], capture_output=True)
             GLib.idle_add(self._append_output, f"Started {service}")
             
             # Done
@@ -729,6 +744,9 @@ class InstallProgressDialog(Adw.Dialog):
         """Show close button."""
         self.close_btn.set_visible(True)
         self.set_can_close(True)
+        # Trigger refresh callback when dialog closes
+        if self.on_complete_callback:
+            self.connect("closed", lambda d: GLib.timeout_add(300, self.on_complete_callback))
 
 
 # =============================================================================
@@ -840,7 +858,7 @@ class ConfigureDriveDialog(Adw.Dialog):
         for step in steps:
             row = Adw.ActionRow()
             row.set_title(step)
-            row.add_prefix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
+            row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic"))
             info_group.add(row)
         
         # Configure button
@@ -971,11 +989,11 @@ class DriveConfigProgressDialog(Adw.Dialog):
             GLib.idle_add(self.status_label.set_text, "Setting up media directory...")
             GLib.idle_add(self._append, f"Creating {media_base}")
             
-            subprocess.run(['sudo', 'mkdir', '-p', media_base], capture_output=True)
-            subprocess.run(['sudo', 'chmod', 'go+rx', media_base], capture_output=True)
+            subprocess.run(['pkexec', 'mkdir', '-p', media_base], capture_output=True)
+            subprocess.run(['pkexec', 'chmod', 'go+rx', media_base], capture_output=True)
             
             # Try to set ACL on base directory
-            subprocess.run(['sudo', 'setfacl', '-m', f'g:{server_group}:rx', media_base], 
+            subprocess.run(['pkexec', 'setfacl', '-m', f'g:{server_group}:rx', media_base], 
                           capture_output=True)
             
             for drive in self.drives:
@@ -989,7 +1007,7 @@ class DriveConfigProgressDialog(Adw.Dialog):
                 GLib.idle_add(self._append, f"\n=== Configuring {drive.display_name} ===")
                 GLib.idle_add(self._append, f"Mount point: {mount_point}")
                 
-                subprocess.run(['sudo', 'mkdir', '-p', mount_point], capture_output=True)
+                subprocess.run(['pkexec', 'mkdir', '-p', mount_point], capture_output=True)
                 
                 # Step 2: Add to fstab (if not already there)
                 current_step += 1
@@ -1008,7 +1026,7 @@ class DriveConfigProgressDialog(Adw.Dialog):
                         GLib.idle_add(self._append, f"  {fstab_line}")
                         
                         subprocess.run(
-                            ['sudo', 'bash', '-c', f'echo "{fstab_line}" >> /etc/fstab'],
+                            ['pkexec', 'bash', '-c', f'echo "{fstab_line}" >> /etc/fstab'],
                             capture_output=True
                         )
                     else:
@@ -1020,12 +1038,12 @@ class DriveConfigProgressDialog(Adw.Dialog):
                 GLib.idle_add(self.status_label.set_text, f"Mounting {drive_label}...")
                 
                 if not drive.is_mounted:
-                    result = subprocess.run(['sudo', 'mount', mount_point], capture_output=True, text=True)
+                    result = subprocess.run(['pkexec', 'mount', mount_point], capture_output=True, text=True)
                     if result.returncode == 0:
                         GLib.idle_add(self._append, f"Mounted at {mount_point}")
                     else:
                         # Try mounting by device
-                        subprocess.run(['sudo', 'mount', drive.device, mount_point], capture_output=True)
+                        subprocess.run(['pkexec', 'mount', drive.device, mount_point], capture_output=True)
                         GLib.idle_add(self._append, f"Mounted {drive.device} at {mount_point}")
                 else:
                     GLib.idle_add(self._append, f"Already mounted at {drive.mountpoint}")
@@ -1037,12 +1055,12 @@ class DriveConfigProgressDialog(Adw.Dialog):
                 GLib.idle_add(self.status_label.set_text, f"Setting permissions...")
                 
                 # Basic permissions
-                subprocess.run(['sudo', 'chmod', 'go+rx', mount_point], capture_output=True)
+                subprocess.run(['pkexec', 'chmod', 'go+rx', mount_point], capture_output=True)
                 GLib.idle_add(self._append, f"chmod go+rx {mount_point}")
                 
                 # ACL for media server
                 result = subprocess.run(
-                    ['sudo', 'setfacl', '-m', f'g:{server_group}:rx', mount_point],
+                    ['pkexec', 'setfacl', '-m', f'g:{server_group}:rx', mount_point],
                     capture_output=True, text=True
                 )
                 if result.returncode == 0:
@@ -1147,7 +1165,7 @@ class ConfigureFolderDialog(Adw.Dialog):
         folder_row.set_title("Select Folder")
         folder_row.set_subtitle("No folder selected")
         folder_row.set_activatable(True)
-        folder_row.add_suffix(Gtk.Image.new_from_icon_name("folder-open-symbolic"))
+        folder_row.add_suffix(Gtk.Image.new_from_icon_name("tux-folder-open-symbolic"))
         folder_row.connect("activated", self._on_select_folder)
         self.folder_row = folder_row
         folder_group.add(folder_row)
@@ -1155,7 +1173,7 @@ class ConfigureFolderDialog(Adw.Dialog):
         # Warning
         warning_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         warning_box.set_margin_top(12)
-        warning_icon = Gtk.Image.new_from_icon_name("dialog-warning-symbolic")
+        warning_icon = Gtk.Image.new_from_icon_name("tux-dialog-warning-symbolic")
         warning_icon.add_css_class("warning")
         warning_box.append(warning_icon)
         
@@ -1231,13 +1249,13 @@ class ConfigureFolderDialog(Adw.Dialog):
             try:
                 # chmod -R +rwX (capital X = execute only on directories)
                 subprocess.run(
-                    ['sudo', 'chmod', '-R', '+rwX', folder],
+                    ['pkexec', 'chmod', '-R', '+rwX', folder],
                     capture_output=True, timeout=300
                 )
                 
                 # Try to set ACL recursively
                 subprocess.run(
-                    ['sudo', 'setfacl', '-R', '-m', f'g:{group}:rx', folder],
+                    ['pkexec', 'setfacl', '-R', '-m', f'g:{group}:rx', folder],
                     capture_output=True, timeout=300
                 )
                 

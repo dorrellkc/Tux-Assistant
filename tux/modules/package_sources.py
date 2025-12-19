@@ -4,7 +4,7 @@ Tux Assistant - Alternative Package Sources Database
 Defines where to find packages that aren't in base repositories.
 Covers: COPR (Fedora), PPA (Debian/Ubuntu), AUR (Arch), OBS (OpenSUSE), Flatpak (universal)
 
-Copyright (c) 2025 Christopher Dorrell. All Rights Reserved.
+Copyright (c) 2025 Christopher Dorrell. Licensed under GPL-3.0.
 """
 
 from dataclasses import dataclass
@@ -153,6 +153,11 @@ ALTERNATIVE_SOURCES: dict[str, dict[str, PackageSource]] = {
             requires_helper=True,
             note="Requires yay or paru"
         ),
+        "opensuse": PackageSource(
+            SourceType.FLATPAK,
+            "com.google.Chrome",
+            note="Available via Flathub"
+        ),
     },
     
     "brave-browser": {
@@ -204,6 +209,11 @@ ALTERNATIVE_SOURCES: dict[str, dict[str, PackageSource]] = {
             "taw/vscode",
             note="Community COPR"
         ),
+        "opensuse": PackageSource(
+            SourceType.FLATPAK,
+            "com.visualstudio.code",
+            note="Available via Flathub"
+        ),
     },
     
     "sublime-text": {
@@ -219,6 +229,11 @@ ALTERNATIVE_SOURCES: dict[str, dict[str, PackageSource]] = {
             note="Requires yay or paru"
         ),
         "fedora": PackageSource(
+            SourceType.FLATPAK,
+            "com.sublimetext.three",
+            note="Available via Flathub"
+        ),
+        "opensuse": PackageSource(
             SourceType.FLATPAK,
             "com.sublimetext.three",
             note="Available via Flathub"
@@ -339,6 +354,11 @@ ALTERNATIVE_SOURCES: dict[str, dict[str, PackageSource]] = {
             requires_helper=True,
             note="Requires yay or paru"
         ),
+        "opensuse": PackageSource(
+            SourceType.OBS,
+            "Archiving:Backup",
+            note="From Archiving:Backup OBS repo"
+        ),
         # Debian/Ubuntu have it in repos
     },
     
@@ -360,6 +380,11 @@ ALTERNATIVE_SOURCES: dict[str, dict[str, PackageSource]] = {
             requires_helper=True,
             note="Requires yay or paru"
         ),
+        "opensuse": PackageSource(
+            SourceType.OBS,
+            "home:Dead_Mozay",
+            note="From OBS community repo"
+        ),
     },
     
     "btop": {
@@ -376,11 +401,21 @@ ALTERNATIVE_SOURCES: dict[str, dict[str, PackageSource]] = {
     # =========================================================================
     
     "libdvdcss": {
-        # DVD decryption - requires special repos
+        # DVD decryption - requires special repos (tainted)
         "fedora": PackageSource(
             SourceType.RPMFUSION,
-            "rpmfusion-free",
-            note="Requires RPM Fusion Free"
+            "rpmfusion-free-tainted",
+            note="Requires RPM Fusion Free Tainted repo"
+        ),
+    },
+    
+    "libdvdcss2": {
+        # DVD decryption for openSUSE - from OBS community repo
+        # home:tw_rocks_49 has confirmed Tumbleweed builds
+        "opensuse": PackageSource(
+            SourceType.OBS,
+            "home:tw_rocks_49",
+            note="From OBS community repo"
         ),
     },
     

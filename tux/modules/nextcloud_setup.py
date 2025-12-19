@@ -9,7 +9,7 @@ Self-hosted Nextcloud server with:
 
 Makes Grandpa cool with his own cloud. ☁️
 
-Copyright (c) 2025 Christopher Dorrell. All Rights Reserved.
+Copyright (c) 2025 Christopher Dorrell. Licensed under GPL-3.0.
 """
 
 import gi
@@ -218,7 +218,7 @@ class NextcloudSetupWizard(Adw.Dialog):
         
         # Welcome banner
         welcome = Adw.StatusPage()
-        welcome.set_icon_name("network-server-symbolic")
+        welcome.set_icon_name("tux-network-server-symbolic")
         welcome.set_title("Set Up Your Personal Cloud")
         welcome.set_description("Replace Google Drive with your own Nextcloud server.\nJust fill in a few details and we'll handle the rest.")
         content_box.append(welcome)
@@ -283,7 +283,7 @@ class NextcloudSetupWizard(Adw.Dialog):
         duckdns_help_row.set_activatable(True)
         duckdns_help_row.connect("activated", self._on_duckdns_help)
         
-        link_icon = Gtk.Image.new_from_icon_name("web-browser-symbolic")
+        link_icon = Gtk.Image.new_from_icon_name("tux-web-browser-symbolic")
         duckdns_help_row.add_suffix(link_icon)
         internet_group.add(duckdns_help_row)
         
@@ -328,7 +328,7 @@ class NextcloudSetupWizard(Adw.Dialog):
             row = Adw.ActionRow()
             row.set_title(name)
             row.set_subtitle(desc)
-            row.add_prefix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
+            row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic"))
             info_group.add(row)
         
         # Install button
@@ -376,7 +376,7 @@ class NextcloudSetupWizard(Adw.Dialog):
     
     def _on_duckdns_help(self, row):
         """Open DuckDNS website."""
-        Gtk.show_uri(self.window, "https://www.duckdns.org/", 0)
+        Gtk.show_uri(None, "https://www.duckdns.org/", 0)
     
     def _validate(self) -> tuple[bool, str]:
         """Validate all inputs."""
@@ -538,7 +538,7 @@ class NextcloudInstallDialog(Adw.Dialog):
             row.set_title(step_name)
             
             # Status icon
-            status_icon = Gtk.Image.new_from_icon_name("content-loading-symbolic")
+            status_icon = Gtk.Image.new_from_icon_name("tux-content-loading-symbolic")
             status_icon.add_css_class("dim-label")
             row.add_prefix(status_icon)
             
@@ -624,6 +624,12 @@ class NextcloudInstallDialog(Adw.Dialog):
                 GLib.idle_add(self._installation_failed, "tux-helper not found")
                 return
             
+            # Ensure helper is executable
+            try:
+                os.chmod(helper_path, 0o755)
+            except Exception:
+                pass
+            
             # Execute with pkexec
             import shutil
             use_pkexec = shutil.which('pkexec') is not None
@@ -664,7 +670,7 @@ class NextcloudInstallDialog(Adw.Dialog):
             # Clean up plan file
             try:
                 os.unlink(plan_file.name)
-            except:
+            except Exception:
                 pass
             
             if process.returncode == 0:
@@ -694,7 +700,7 @@ class NextcloudInstallDialog(Adw.Dialog):
                 if status == 'running':
                     step_num = next((i for i, (sid, _, _) in enumerate(self.steps) if sid == step_id), 0) + 1
                     GLib.idle_add(self._update_progress, step_num, message)
-        except:
+        except Exception:
             pass
     
     def _create_installation_plan(self) -> dict:
@@ -788,7 +794,7 @@ class NextcloudInstallDialog(Adw.Dialog):
     id="nextcloud_setup",
     name="Nextcloud Server",
     description="Set up your own personal cloud server",
-    icon="network-server-symbolic",
+    icon="tux-network-server-symbolic",
     category=ModuleCategory.SERVER,
     order=51  # Specialized tier
 )
@@ -832,7 +838,7 @@ class NextcloudSetupPage(Adw.NavigationPage):
         
         # Hero section
         status_page = Adw.StatusPage()
-        status_page.set_icon_name("network-server-symbolic")
+        status_page.set_icon_name("tux-network-server-symbolic")
         status_page.set_title("Your Personal Cloud")
         status_page.set_description(
             "Replace Google Drive with Nextcloud - your files, your server, your control.\n"
@@ -886,11 +892,11 @@ class NextcloudSetupPage(Adw.NavigationPage):
         setup_row = Adw.ActionRow()
         setup_row.set_title("Set Up Nextcloud Server")
         setup_row.set_subtitle("Install and configure everything automatically")
-        setup_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-system-symbolic"))
+        setup_row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-system-symbolic"))
         setup_row.set_activatable(True)
         setup_row.connect("activated", self._on_setup_clicked)
         
-        go_icon = Gtk.Image.new_from_icon_name("go-next-symbolic")
+        go_icon = Gtk.Image.new_from_icon_name("tux-go-next-symbolic")
         setup_row.add_suffix(go_icon)
         
         action_group.add(setup_row)
@@ -899,11 +905,11 @@ class NextcloudSetupPage(Adw.NavigationPage):
         client_row = Adw.ActionRow()
         client_row.set_title("Install Desktop Client Only")
         client_row.set_subtitle("Connect to an existing Nextcloud server")
-        client_row.add_prefix(Gtk.Image.new_from_icon_name("folder-remote-symbolic"))
+        client_row.add_prefix(Gtk.Image.new_from_icon_name("tux-folder-remote-symbolic"))
         client_row.set_activatable(True)
         client_row.connect("activated", self._on_client_only_clicked)
         
-        client_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        client_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         action_group.add(client_row)
     
     def _on_setup_clicked(self, row):
@@ -921,8 +927,6 @@ class NextcloudSetupPage(Adw.NavigationPage):
     
     def _on_client_only_clicked(self, row):
         """Install just the Nextcloud desktop client."""
-        # TODO: Implement client-only installation
-        # For now, show a message
         dialog = Adw.MessageDialog(
             transient_for=self.window,
             heading="Install Desktop Client",
@@ -956,7 +960,20 @@ class NextcloudSetupPage(Adw.NavigationPage):
             return
         
         # Use tux-helper to install
-        # For simplicity, we'll just show the command for now
         self.window.show_toast(f"Installing {pkg}...")
         
-        # TODO: Actually run the installation
+        try:
+            result = subprocess.run(
+                ['pkexec', '/usr/bin/tux-helper', '--install', pkg],
+                capture_output=True,
+                text=True,
+                timeout=300
+            )
+            if result.returncode == 0:
+                self.window.show_toast("Nextcloud client installed successfully!")
+            else:
+                self.window.show_toast(f"Installation failed: {result.stderr[:100]}")
+        except subprocess.TimeoutExpired:
+            self.window.show_toast("Installation timed out")
+        except Exception as e:
+            self.window.show_toast(f"Installation error: {e}")

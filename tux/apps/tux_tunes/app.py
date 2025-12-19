@@ -3,7 +3,7 @@ Tux Tunes - GTK4 Application
 
 Main application class for the internet radio player.
 
-Copyright (c) 2025 Christopher Dorrell. All Rights Reserved.
+Copyright (c) 2025 Christopher Dorrell. Licensed under GPL-3.0.
 """
 
 import sys
@@ -74,24 +74,15 @@ class TuxTunesApp(Adw.Application):
     
     def _check_audio_deps(self):
         """Check if audio analysis libraries are available."""
+        # Recording disabled - no need to notify user about missing libs
+        # Keeping the check for future debugging only
         try:
             from .audio_analyzer import check_requirements
             reqs = check_requirements()
             
             if not reqs['full_features']:
-                missing = []
-                if not reqs['numpy']:
-                    missing.append('numpy')
-                if not reqs['librosa']:
-                    missing.append('librosa')
-                if not reqs['pydub']:
-                    missing.append('pydub')
-                
-                if missing:
-                    msg = f"Smart recording limited. Missing: {', '.join(missing)}"
-                    print(f"Audio deps: {msg}")
-                    if self.window:
-                        self.window.show_toast(msg)
+                # Just log, don't show toast since recording is disabled
+                print("Audio deps: Some missing (recording disabled anyway)")
             else:
                 print("Audio analysis: All dependencies available")
         except Exception as e:
@@ -168,7 +159,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
         # Recording page
         recording_page = Adw.PreferencesPage()
         recording_page.set_title("Recording")
-        recording_page.set_icon_name("media-record-symbolic")
+        recording_page.set_icon_name("tux-media-record-symbolic")
         self.add(recording_page)
         
         # Recording settings group
@@ -225,7 +216,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
         # Playback page
         playback_page = Adw.PreferencesPage()
         playback_page.set_title("Playback")
-        playback_page.set_icon_name("multimedia-player-symbolic")
+        playback_page.set_icon_name("tux-multimedia-player-symbolic")
         self.add(playback_page)
         
         # Playback group

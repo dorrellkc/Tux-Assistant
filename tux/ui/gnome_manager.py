@@ -177,7 +177,7 @@ def get_gnome_shell_version() -> Optional[str]:
             version = result.stdout.strip().split()[-1]
             major = version.split('.')[0]
             return major
-    except:
+    except Exception:
         pass
     return None
 
@@ -244,7 +244,7 @@ def enable_extension(uuid: str) -> bool:
             capture_output=True
         )
         return result.returncode == 0
-    except:
+    except Exception:
         return False
 
 
@@ -256,7 +256,7 @@ def disable_extension(uuid: str) -> bool:
             capture_output=True
         )
         return result.returncode == 0
-    except:
+    except Exception:
         return False
 
 
@@ -268,7 +268,7 @@ def uninstall_extension(uuid: str) -> bool:
             capture_output=True
         )
         return result.returncode == 0
-    except:
+    except Exception:
         return False
 
 
@@ -282,7 +282,7 @@ def get_gsetting(schema: str, key: str) -> Optional[str]:
         )
         if result.returncode == 0:
             return result.stdout.strip()
-    except:
+    except Exception:
         pass
     return None
 
@@ -295,7 +295,7 @@ def set_gsetting(schema: str, key: str, value: str) -> bool:
             capture_output=True
         )
         return result.returncode == 0
-    except:
+    except Exception:
         return False
 
 

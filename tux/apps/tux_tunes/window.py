@@ -4,9 +4,10 @@ Tux Tunes - Main Window
 GTK4/Libadwaita user interface for the radio player.
 Features: Search, Genre browsing, Custom stations, Favorites, Recents
 
-Copyright (c) 2025 Christopher Dorrell. All Rights Reserved.
+Copyright (c) 2025 Christopher Dorrell. Licensed under GPL-3.0.
 """
 
+import os
 import threading
 import uuid as uuid_module
 from typing import Optional
@@ -232,7 +233,7 @@ class TuxTunesWindow(Adw.ApplicationWindow):
         box.add_css_class("card")
         
         # Station icon placeholder
-        icon = Gtk.Image.new_from_icon_name("audio-x-generic-symbolic")
+        icon = Gtk.Image.new_from_icon_name("tux-audio-x-generic-symbolic")
         icon.set_pixel_size(48)
         box.append(icon)
         self.now_playing_icon = icon
@@ -288,7 +289,7 @@ class TuxTunesWindow(Adw.ApplicationWindow):
         box.set_halign(Gtk.Align.CENTER)
         
         # Play/Pause button
-        self.play_button = Gtk.Button.new_from_icon_name("media-playback-start-symbolic")
+        self.play_button = Gtk.Button.new_from_icon_name("tux-media-playback-start-symbolic")
         self.play_button.add_css_class("circular")
         self.play_button.add_css_class("suggested-action")
         self.play_button.set_tooltip_text("Play/Pause (Space)")
@@ -297,11 +298,20 @@ class TuxTunesWindow(Adw.ApplicationWindow):
         box.append(self.play_button)
         
         # Stop button
-        stop_btn = Gtk.Button.new_from_icon_name("media-playback-stop-symbolic")
+        stop_btn = Gtk.Button.new_from_icon_name("tux-media-playback-stop-symbolic")
         stop_btn.add_css_class("circular")
         stop_btn.set_tooltip_text("Stop")
         stop_btn.connect("clicked", self._on_stop)
         box.append(stop_btn)
+        
+        # Record button - enables split recording (each song saved separately)
+        self.record_button = Gtk.Button.new_from_icon_name("tux-media-record-symbolic")
+        self.record_button.add_css_class("circular")
+        self.record_button.set_tooltip_text("Start Recording")
+        self.record_button.connect("clicked", self._on_record_toggle)
+        self.record_button.set_sensitive(False)
+        box.append(self.record_button)
+        self._recording_enabled = True
         
         # Volume control
         self.volume_button = Gtk.VolumeButton()
@@ -494,7 +504,7 @@ class TuxTunesWindow(Adw.ApplicationWindow):
         
         # Status page (shown when empty or loading)
         status = Adw.StatusPage()
-        status.set_icon_name("audio-x-generic-symbolic")
+        status.set_icon_name("tux-audio-x-generic-symbolic")
         status.set_title("No Stations")
         status.set_description("Add some stations to your favorites")
         content.append(status)
@@ -557,7 +567,7 @@ class TuxTunesWindow(Adw.ApplicationWindow):
             row.add_suffix(delete_btn)
         
         # Play button
-        play_btn = Gtk.Button.new_from_icon_name("media-playback-start-symbolic")
+        play_btn = Gtk.Button.new_from_icon_name("tux-media-playback-start-symbolic")
         play_btn.set_valign(Gtk.Align.CENTER)
         play_btn.add_css_class("flat")
         play_btn.set_tooltip_text("Play")
@@ -810,7 +820,9 @@ class TuxTunesWindow(Adw.ApplicationWindow):
         """Play a station."""
         self.player.play(station)
         self.play_button.set_sensitive(True)
-        self.play_button.set_icon_name("media-playback-pause-symbolic")
+        if self._recording_enabled:
+            self.record_button.set_sensitive(True)
+        self.play_button.set_icon_name("tux-media-playback-pause-symbolic")
         
         # Update now playing
         self.now_playing_bar.set_visible(True)
@@ -858,18 +870,51 @@ class TuxTunesWindow(Adw.ApplicationWindow):
         """Handle play/pause button."""
         if self.player.is_playing:
             self.player.pause()
-            self.play_button.set_icon_name("media-playback-start-symbolic")
+            self.play_button.set_icon_name("tux-media-playback-start-symbolic")
         else:
             self.player.resume()
-            self.play_button.set_icon_name("media-playback-pause-symbolic")
+            self.play_button.set_icon_name("tux-media-playback-pause-symbolic")
     
     def _on_stop(self, button):
         """Handle stop button."""
         self.player.stop()
-        self.play_button.set_icon_name("media-playback-start-symbolic")
+        self.play_button.set_icon_name("tux-media-playback-start-symbolic")
         self.play_button.set_sensitive(False)
+        if self._recording_enabled:
+            self.record_button.set_sensitive(False)
+            self.record_button.set_icon_name("tux-media-record-symbolic")
+            self.record_button.remove_css_class("destructive-action")
         self.now_playing_bar.set_visible(False)
         self.recording_indicator.set_visible(False)
+    
+    def _on_record_toggle(self, button):
+        """Handle record button - start or stop recording."""
+        if self.player.is_recording:
+            filepath = self.player.stop_recording()
+            if filepath and os.path.exists(filepath):
+                # Copy from cache to recordings folder
+                import shutil
+                recordings_dir = self.library.get_recordings_dir()
+                os.makedirs(recordings_dir, exist_ok=True)
+                
+                # Generate filename from current station/title
+                from datetime import datetime
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                station_name = self.now_playing_station.get_label() or "Unknown"
+                safe_name = "".join(c for c in station_name if c.isalnum() or c in ' -_').strip()
+                filename = f"{safe_name}_{timestamp}.ogg"
+                dest_path = os.path.join(recordings_dir, filename)
+                
+                try:
+                    shutil.copy2(filepath, dest_path)
+                    os.remove(filepath)  # Clean up cache
+                    self._show_toast(f"Recording saved: {filename}")
+                except Exception as e:
+                    self._show_toast(f"Failed to save recording: {e}")
+        else:
+            success = self.player.start_recording()
+            if not success:
+                self._show_toast("Could not start recording")
     
     def _on_volume_changed(self, button, value):
         """Handle volume change."""
@@ -878,9 +923,9 @@ class TuxTunesWindow(Adw.ApplicationWindow):
     def _on_player_state_changed(self, state: str):
         """Handle player state change."""
         if state == "playing":
-            self.play_button.set_icon_name("media-playback-pause-symbolic")
+            self.play_button.set_icon_name("tux-media-playback-pause-symbolic")
         elif state == "paused":
-            self.play_button.set_icon_name("media-playback-start-symbolic")
+            self.play_button.set_icon_name("tux-media-playback-start-symbolic")
     
     def _on_metadata_changed(self, title: str, artist: str):
         """Handle metadata change from stream."""
@@ -896,6 +941,15 @@ class TuxTunesWindow(Adw.ApplicationWindow):
     def _on_recording_state(self, is_recording: bool):
         """Handle recording state change - show/hide indicator."""
         self.recording_indicator.set_visible(is_recording)
+        if self._recording_enabled:
+            if is_recording:
+                self.record_button.set_icon_name("tux-media-playback-stop-symbolic")
+                self.record_button.add_css_class("destructive-action")
+                self.record_button.set_tooltip_text("Stop Recording")
+            else:
+                self.record_button.set_icon_name("tux-media-record-symbolic")
+                self.record_button.remove_css_class("destructive-action")
+                self.record_button.set_tooltip_text("Start Recording")
     
     def _on_recording_ready(self, cached):
         """Handle when a recording is ready to be saved."""
@@ -980,7 +1034,7 @@ class TuxTunesWindow(Adw.ApplicationWindow):
         """Handle player error."""
         self._show_toast(message)
         self.now_playing_bar.set_visible(False)
-        self.play_button.set_icon_name("media-playback-start-symbolic")
+        self.play_button.set_icon_name("tux-media-playback-start-symbolic")
         self.play_button.set_sensitive(False)
     
     def show_toast(self, message: str, timeout: int = 3):

@@ -6,21 +6,27 @@ from .registry import (
     ModuleInfo,
     ModuleCategory,
     register_module,
+    create_icon_simple,
+    get_icon_path,
 )
 
 # Explicit imports so all modules are guaranteed to be loaded when
 # the application starts. This avoids relying solely on implicit
 # discovery and ensures @register_module decorators are executed.
+from . import repo_management  # First in Setup - everything depends on repos
 from . import system_maintenance
 from . import backup_restore
 from . import gaming
 from . import hardware_manager
+from . import printer_wizard     # Printer detection and setup
 from . import desktop_enhancements
 from . import software_center
 from . import networking
 from . import setup_tools
 from . import developer_tools
-from . import iso_creator
+from . import media_server       # Plex/Jellyfin/Emby setup
+from . import nextcloud_setup    # Nextcloud client and server setup
+
 from . import tux_tunes
 from . import help_learning
 from . import placeholders  # placeholder registrations (if any remain)
@@ -30,4 +36,6 @@ __all__ = [
     'ModuleInfo',
     'ModuleCategory',
     'register_module',
+    'create_icon_simple',
+    'get_icon_path',
 ]

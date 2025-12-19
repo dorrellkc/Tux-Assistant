@@ -3,7 +3,7 @@ Tux Assistant - Distribution Detection
 
 Detects the Linux distribution and family for package management.
 
-Copyright (c) 2025 Christopher Dorrell. All Rights Reserved.
+Copyright (c) 2025 Christopher Dorrell. Licensed under GPL-3.0.
 """
 
 import os
@@ -27,7 +27,7 @@ class DistroFamily(Enum):
 DISTRO_FAMILY_MAP = {
     DistroFamily.ARCH: [
         'arch', 'manjaro', 'cachyos', 'endeavouros', 'garuda', 'artix',
-        'arcolinux', 'archcraft', 'rebornos', 'bluestar', 'startde'
+        'arcolinux', 'archcraft', 'rebornos', 'bluestar', 'startde', 'pearos'
     ],
     DistroFamily.DEBIAN: [
         'debian', 'ubuntu', 'linuxmint', 'pop', 'elementary', 'zorin',

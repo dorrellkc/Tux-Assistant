@@ -4,7 +4,7 @@ Tux Assistant - Gaming Module
 Simple gaming setup: install Steam, Lutris, and gaming utilities.
 Keeps it simple - installs the tools, lets them do their job.
 
-Copyright (c) 2025 Christopher Dorrell. All Rights Reserved.
+Copyright (c) 2025 Christopher Dorrell. Licensed under GPL-3.0.
 """
 
 import gi
@@ -252,7 +252,7 @@ def check_32bit_support(family: DistroFamily) -> Tuple[bool, str]:
     id="gaming",
     name="Gaming",
     description="Steam, Lutris, and gaming utilities",
-    icon="applications-games-symbolic",
+    icon="tux-applications-games-symbolic",
     category=ModuleCategory.SETUP,
     order=50  # After Setup Tools and Software Center
 )
@@ -279,7 +279,7 @@ class GamingPage(Adw.NavigationPage):
         
         # Refresh button
         refresh_btn = Gtk.Button()
-        refresh_btn.set_icon_name("view-refresh-symbolic")
+        refresh_btn.set_icon_name("tux-view-refresh-symbolic")
         refresh_btn.set_tooltip_text("Refresh")
         refresh_btn.connect("clicked", lambda b: self._refresh_status())
         header.pack_end(refresh_btn)
@@ -322,14 +322,14 @@ class GamingPage(Adw.NavigationPage):
         self.lib32_row = Adw.ActionRow()
         self.lib32_row.set_title("32-bit Support")
         self.lib32_row.set_subtitle("Checking...")
-        self.lib32_row.add_prefix(Gtk.Image.new_from_icon_name("application-x-executable-symbolic"))
+        self.lib32_row.add_prefix(Gtk.Image.new_from_icon_name("tux-application-x-executable-symbolic"))
         self.status_group.add(self.lib32_row)
         
         # Vulkan row
         self.vulkan_row = Adw.ActionRow()
         self.vulkan_row.set_title("Vulkan Support")
         self.vulkan_row.set_subtitle("Checking...")
-        self.vulkan_row.add_prefix(Gtk.Image.new_from_icon_name("video-display-symbolic"))
+        self.vulkan_row.add_prefix(Gtk.Image.new_from_icon_name("tux-video-display-symbolic"))
         self.status_group.add(self.vulkan_row)
     
     def _build_platforms_section(self):
@@ -371,7 +371,7 @@ class GamingPage(Adw.NavigationPage):
         info_row = Adw.ActionRow()
         info_row.set_title("Controllers")
         info_row.set_subtitle("Xbox and PlayStation controllers usually work automatically. Just plug in or pair via Bluetooth.")
-        info_row.add_prefix(Gtk.Image.new_from_icon_name("input-gaming-symbolic"))
+        info_row.add_prefix(Gtk.Image.new_from_icon_name("tux-input-gaming-symbolic"))
         self.controller_group.add(info_row)
     
     def _build_tips_section(self):
@@ -391,17 +391,17 @@ class GamingPage(Adw.NavigationPage):
             row = Adw.ActionRow()
             row.set_title(title)
             row.set_subtitle(subtitle)
-            row.add_prefix(Gtk.Image.new_from_icon_name("dialog-information-symbolic"))
+            row.add_prefix(Gtk.Image.new_from_icon_name("tux-dialog-information-symbolic"))
             tips_group.add(row)
         
         # ProtonDB link
         protondb_row = Adw.ActionRow()
         protondb_row.set_title("ProtonDB")
         protondb_row.set_subtitle("Check game compatibility at protondb.com")
-        protondb_row.add_prefix(Gtk.Image.new_from_icon_name("web-browser-symbolic"))
+        protondb_row.add_prefix(Gtk.Image.new_from_icon_name("tux-web-browser-symbolic"))
         protondb_row.set_activatable(True)
         protondb_row.connect("activated", self._on_open_protondb)
-        protondb_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        protondb_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         tips_group.add(protondb_row)
     
     def _create_app_row(self, app: GamingApp) -> Adw.ActionRow:
@@ -430,7 +430,7 @@ class GamingPage(Adw.NavigationPage):
         
         # Launch button (hidden initially)
         launch_btn = Gtk.Button()
-        launch_btn.set_icon_name("media-playback-start-symbolic")
+        launch_btn.set_icon_name("tux-media-playback-start-symbolic")
         launch_btn.set_tooltip_text(f"Launch {app.name}")
         launch_btn.set_valign(Gtk.Align.CENTER)
         launch_btn.connect("clicked", self._on_launch_app, app)

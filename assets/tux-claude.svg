@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!-- Background circle - Warm coral/orange gradient (Claude's colors) -->
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#e8956a"/>
+      <stop offset="100%" style="stop-color:#c45d35"/>
+    </linearGradient>
+    <linearGradient id="bubbleGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffffff"/>
+      <stop offset="100%" style="stop-color:#f0f0f0"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Coral circle background -->
+  <circle cx="64" cy="64" r="60" fill="url(#bgGrad)"/>
+  
+  <!-- Subtle top highlight for depth -->
+  <ellipse cx="64" cy="40" rx="50" ry="30" fill="#ffffff" opacity="0.1"/>
+  
+  <!-- AI Sparkles (background decoration) -->
+  <g fill="#ffffff" opacity="0.6">
+    <!-- Sparkle 1 - top left -->
+    <path d="M22 32 L24 28 L26 32 L30 34 L26 36 L24 40 L22 36 L18 34 Z"/>
+    <!-- Sparkle 2 - top right -->
+    <path d="M98 38 L100 34 L102 38 L106 40 L102 42 L100 46 L98 42 L94 40 Z"/>
+    <!-- Sparkle 3 - bottom left -->
+    <path d="M18 88 L20 85 L22 88 L25 89 L22 91 L20 94 L18 91 L15 89 Z"/>
+  </g>
+  
+  <!-- Chat bubble behind Tux (left - user) -->
+  <g transform="translate(12, 50)">
+    <rect x="0" y="0" width="24" height="18" rx="6" fill="url(#bubbleGrad)" opacity="0.9"/>
+    <polygon points="20,15 26,22 18,15" fill="url(#bubbleGrad)" opacity="0.9"/>
+    <!-- Dots indicating text -->
+    <circle cx="7" cy="9" r="2" fill="#c45d35" opacity="0.5"/>
+    <circle cx="12" cy="9" r="2" fill="#c45d35" opacity="0.5"/>
+    <circle cx="17" cy="9" r="2" fill="#c45d35" opacity="0.5"/>
+  </g>
+  
+  <!-- Chat bubble behind Tux (right - Claude response) -->
+  <g transform="translate(92, 42)">
+    <rect x="0" y="0" width="26" height="20" rx="6" fill="url(#bubbleGrad)" opacity="0.95"/>
+    <polygon points="4,17 -4,24 8,17" fill="url(#bubbleGrad)" opacity="0.95"/>
+    <!-- Lines indicating response text -->
+    <rect x="5" y="6" width="16" height="2" rx="1" fill="#c45d35" opacity="0.4"/>
+    <rect x="5" y="10" width="12" height="2" rx="1" fill="#c45d35" opacity="0.4"/>
+    <rect x="5" y="14" width="14" height="2" rx="1" fill="#c45d35" opacity="0.4"/>
+  </g>
+  
+  <!-- Tux Body -->
+  <ellipse cx="64" cy="82" rx="24" ry="28" fill="#1a1a1a"/>
+  
+  <!-- Tux Belly -->
+  <ellipse cx="64" cy="86" rx="15" ry="20" fill="#f8f8f8"/>
+  
+  <!-- Tux Head -->
+  <ellipse cx="64" cy="44" rx="19" ry="17" fill="#1a1a1a"/>
+  
+  <!-- Tux Face/White patches -->
+  <ellipse cx="56" cy="42" rx="6" ry="7" fill="#f8f8f8"/>
+  <ellipse cx="72" cy="42" rx="6" ry="7" fill="#f8f8f8"/>
+  
+  <!-- Tux Eyes (curious/engaged look) -->
+  <ellipse cx="56" cy="43" rx="2.8" ry="3.2" fill="#1a1a1a"/>
+  <ellipse cx="72" cy="43" rx="2.8" ry="3.2" fill="#1a1a1a"/>
+  <circle cx="55" cy="42" r="1" fill="#ffffff"/>
+  <circle cx="71" cy="42" r="1" fill="#ffffff"/>
+  
+  <!-- Tux Beak (slight smile) -->
+  <ellipse cx="64" cy="52" rx="6" ry="3.5" fill="#f4a223"/>
+  <ellipse cx="64" cy="51" rx="4" ry="2" fill="#f9b84a" opacity="0.5"/>
+  
+  <!-- Tux Feet -->
+  <ellipse cx="52" cy="108" rx="8" ry="4" fill="#f4a223"/>
+  <ellipse cx="76" cy="108" rx="8" ry="4" fill="#f4a223"/>
+  
+  <!-- Tux Flippers (welcoming/presenting pose) -->
+  <ellipse cx="36" cy="74" rx="6" ry="15" fill="#1a1a1a" transform="rotate(-30 36 74)"/>
+  <ellipse cx="92" cy="74" rx="6" ry="15" fill="#1a1a1a" transform="rotate(30 92 74)"/>
+  
+  <!-- AI Brain/thought indicator above head -->
+  <g transform="translate(64, 18)">
+    <circle cx="0" cy="0" r="8" fill="#ffffff" opacity="0.9"/>
+    <!-- Simplified brain/circuit pattern -->
+    <circle cx="0" cy="0" r="5" fill="none" stroke="#c45d35" stroke-width="1.5" opacity="0.7"/>
+    <circle cx="0" cy="0" r="2" fill="#c45d35" opacity="0.8"/>
+    <!-- Connection dots -->
+    <circle cx="-3" cy="-3" r="1" fill="#c45d35" opacity="0.6"/>
+    <circle cx="3" cy="-3" r="1" fill="#c45d35" opacity="0.6"/>
+    <circle cx="0" cy="4" r="1" fill="#c45d35" opacity="0.6"/>
+  </g>
+</svg>

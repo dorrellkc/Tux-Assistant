@@ -5,7 +5,7 @@
 <policyconfig>
 
   <vendor>Tux Assistant</vendor>
-  <vendor_url>https://github.com/dorrelkc/tux-assistant</vendor_url>
+  <vendor_url>https://github.com/dorrellkc/tux-assistant</vendor_url>
 
   <action id="com.tuxassistant.helper">
     <description>Run Tux Assistant Helper</description>

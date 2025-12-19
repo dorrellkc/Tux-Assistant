@@ -4,7 +4,7 @@ Tux Tunes - Tux Assistant Module
 Internet radio player with smart recording.
 Listen to 50,000+ stations while you work!
 
-Copyright (c) 2025 Christopher Dorrell. All Rights Reserved.
+Copyright (c) 2025 Christopher Dorrell. Licensed under GPL-3.0.
 """
 
 import os
@@ -190,7 +190,7 @@ class TuxTunesPage(Adw.NavigationPage):
         title_box.set_halign(Gtk.Align.CENTER)
         title_box.set_margin_bottom(16)
         
-        icon = Gtk.Image.new_from_icon_name("audio-x-generic-symbolic")
+        icon = Gtk.Image.new_from_icon_name("tux-audio-x-generic-symbolic")
         icon.set_pixel_size(64)
         icon.add_css_class("dim-label")
         title_box.append(icon)
@@ -221,13 +221,13 @@ class TuxTunesPage(Adw.NavigationPage):
             gst_row = Adw.ActionRow()
             gst_row.set_title("GStreamer Ready")
             gst_row.set_subtitle("Audio playback available")
-            gst_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
+            gst_row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic"))
             status_group.add(gst_row)
         else:
             gst_row = Adw.ActionRow()
             gst_row.set_title("GStreamer Needed")
             gst_row.set_subtitle("Required for audio playback")
-            gst_row.add_prefix(Gtk.Image.new_from_icon_name("dialog-warning-symbolic"))
+            gst_row.add_prefix(Gtk.Image.new_from_icon_name("tux-dialog-warning-symbolic"))
             status_group.add(gst_row)
         
         # Audio analysis status
@@ -235,14 +235,14 @@ class TuxTunesPage(Adw.NavigationPage):
             audio_row = Adw.ActionRow()
             audio_row.set_title("Smart Recording Ready")
             audio_row.set_subtitle("Audio analysis libraries installed")
-            audio_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
+            audio_row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic"))
             status_group.add(audio_row)
         else:
             missing = [k for k, v in deps['audio_analysis'].items() if not v]
             audio_row = Adw.ActionRow()
             audio_row.set_title("Smart Recording Limited")
             audio_row.set_subtitle(f"Missing: {', '.join(missing)}")
-            audio_row.add_prefix(Gtk.Image.new_from_icon_name("dialog-information-symbolic"))
+            audio_row.add_prefix(Gtk.Image.new_from_icon_name("tux-dialog-information-symbolic"))
             status_group.add(audio_row)
         
         # Install buttons if needed
@@ -251,8 +251,8 @@ class TuxTunesPage(Adw.NavigationPage):
             install_row.set_title("Install All Dependencies")
             install_row.set_subtitle("Install GStreamer and audio analysis libraries")
             install_row.set_activatable(True)
-            install_row.add_prefix(Gtk.Image.new_from_icon_name("system-software-install-symbolic"))
-            install_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+            install_row.add_prefix(Gtk.Image.new_from_icon_name("tux-system-software-install-symbolic"))
+            install_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
             install_row.connect("activated", self._on_install_deps)
             status_group.add(install_row)
         
@@ -290,12 +290,12 @@ class TuxTunesPage(Adw.NavigationPage):
         elif not audio_ok:
             launch_row.set_subtitle("Basic mode (install full deps for smart recording)")
             launch_row.set_activatable(True)
-            launch_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+            launch_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         else:
             launch_row.set_subtitle("Full features ready")
             launch_row.set_activatable(True)
-            launch_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
-        launch_row.add_prefix(Gtk.Image.new_from_icon_name("media-playback-start-symbolic"))
+            launch_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
+        launch_row.add_prefix(Gtk.Image.new_from_icon_name("tux-media-playback-start-symbolic"))
         launch_row.connect("activated", self._on_launch)
         actions_group.add(launch_row)
         
@@ -304,8 +304,8 @@ class TuxTunesPage(Adw.NavigationPage):
         shortcut_row.set_title("Create Desktop Shortcut")
         shortcut_row.set_subtitle("Add Tux Tunes to your applications menu")
         shortcut_row.set_activatable(True)
-        shortcut_row.add_prefix(Gtk.Image.new_from_icon_name("application-x-executable-symbolic"))
-        shortcut_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        shortcut_row.add_prefix(Gtk.Image.new_from_icon_name("tux-application-x-executable-symbolic"))
+        shortcut_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         shortcut_row.connect("activated", self._on_create_shortcut)
         actions_group.add(shortcut_row)
         

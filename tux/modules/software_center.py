@@ -3,7 +3,7 @@ Tux Assistant - Software Center Module
 
 Browse and install applications by category.
 
-Copyright (c) 2025 Christopher Dorrell. All Rights Reserved.
+Copyright (c) 2025 Christopher Dorrell. Licensed under GPL-3.0.
 """
 
 import gi
@@ -22,6 +22,7 @@ from typing import Optional
 from enum import Enum
 
 from ..core import get_distro, get_package_manager, DistroFamily
+from .registry import register_module, ModuleCategory, create_icon_simple
 
 
 # =============================================================================
@@ -80,7 +81,7 @@ def build_catalog() -> list[Category]:
             id="browsers",
             name="Web Browsers",
             description="Browse the internet",
-            icon="web-browser-symbolic",
+            icon="tux-web-browser-symbolic",
             apps=[
                 App(
                     id="firefox",
@@ -170,7 +171,7 @@ def build_catalog() -> list[Category]:
             id="media",
             name="Media Players",
             description="Play videos, music, and streaming content",
-            icon="multimedia-player-symbolic",
+            icon="tux-multimedia-player-symbolic",
             apps=[
                 App(
                     id="vlc",
@@ -275,7 +276,7 @@ def build_catalog() -> list[Category]:
             id="office",
             name="Office and Productivity",
             description="Documents, spreadsheets, and productivity tools",
-            icon="x-office-document-symbolic",
+            icon="tux-x-office-document-symbolic",
             apps=[
                 App(
                     id="libreoffice",
@@ -374,7 +375,7 @@ def build_catalog() -> list[Category]:
             id="graphics",
             name="Graphics and Design",
             description="Image editing, drawing, and design tools",
-            icon="applications-graphics-symbolic",
+            icon="tux-applications-graphics-symbolic",
             apps=[
                 App(
                     id="gimp",
@@ -482,7 +483,7 @@ def build_catalog() -> list[Category]:
             id="communication",
             name="Communication",
             description="Chat, video calls, and messaging",
-            icon="user-available-symbolic",
+            icon="tux-user-available-symbolic",
             apps=[
                 App(
                     id="discord",
@@ -565,7 +566,7 @@ def build_catalog() -> list[Category]:
             id="development",
             name="Development Tools",
             description="Code editors, IDEs, and programming tools",
-            icon="applications-development-symbolic",
+            icon="tux-applications-development-symbolic",
             apps=[
                 App(
                     id="vscode",
@@ -664,7 +665,7 @@ def build_catalog() -> list[Category]:
             id="gaming",
             name="Gaming",
             description="Games, game launchers, and gaming tools",
-            icon="applications-games-symbolic",
+            icon="tux-applications-games-symbolic",
             apps=[
                 App(
                     id="steam",
@@ -753,7 +754,7 @@ def build_catalog() -> list[Category]:
             id="system",
             name="System Tools",
             description="System utilities and management tools",
-            icon="preferences-system-symbolic",
+            icon="tux-preferences-system-symbolic",
             apps=[
                 App(
                     id="gnome-tweaks",
@@ -852,7 +853,7 @@ def build_catalog() -> list[Category]:
             id="video",
             name="Video Production",
             description="Video editing and screen recording",
-            icon="camera-video-symbolic",
+            icon="tux-camera-video-symbolic",
             apps=[
                 App(
                     id="kdenlive",
@@ -934,7 +935,7 @@ def build_catalog() -> list[Category]:
             id="audio",
             name="Audio Production",
             description="Audio editing and music production",
-            icon="audio-x-generic-symbolic",
+            icon="tux-audio-x-generic-symbolic",
             apps=[
                 App(
                     id="audacity",
@@ -1004,7 +1005,7 @@ def build_catalog() -> list[Category]:
             id="files",
             name="File Management",
             description="File managers and cloud sync",
-            icon="folder-symbolic",
+            icon="tux-folder-symbolic",
             apps=[
                 App(
                     id="nautilus",
@@ -1110,7 +1111,7 @@ def build_catalog() -> list[Category]:
             id="security",
             name="Security and Privacy",
             description="Security tools and VPNs",
-            icon="security-high-symbolic",
+            icon="tux-security-high-symbolic",
             apps=[
                 App(
                     id="keepassxc",
@@ -1191,7 +1192,7 @@ def build_catalog() -> list[Category]:
             id="special",
             name="Special Installation",
             description="Apps requiring additional setup or external repositories",
-            icon="emblem-important-symbolic",
+            icon="tux-emblem-important-symbolic",
             apps=[
                 App(
                     id="surfshark",
@@ -1205,6 +1206,26 @@ def build_catalog() -> list[Category]:
                         "fedora": ["SPECIAL:surfshark"],
                         "opensuse": ["SPECIAL:surfshark"],
                     },
+                ),
+                App(
+                    id="rustdesk",
+                    name="RustDesk",
+                    description="Open-source remote desktop (native packages)",
+                    icon="tux-computer-symbolic",
+                    special=True,
+                    packages={
+                        "arch": ["SPECIAL:rustdesk"],
+                        "debian": ["SPECIAL:rustdesk"],
+                        "fedora": ["SPECIAL:rustdesk"],
+                        "opensuse": ["SPECIAL:rustdesk"],
+                    },
+                ),
+                App(
+                    id="plex-desktop",
+                    name="Plex Desktop",
+                    description="Plex media player client",
+                    icon="multimedia-player-symbolic",
+                    flatpak="tv.plex.PlexDesktop",
                 ),
                 App(
                     id="duckietv",
@@ -1275,14 +1296,6 @@ def build_catalog() -> list[Category]:
                         "arch": ["dropbox"],
                     },
                 ),
-                App(
-                    id="plex-desktop",
-                    name="Plex Desktop",
-                    description="Plex media player client",
-                    icon="plex-symbolic",
-                    special=True,
-                    flatpak="tv.plex.PlexDesktop",
-                ),
             ]
         ),
     ]
@@ -1299,7 +1312,7 @@ from .registry import register_module, ModuleCategory
     id="software_center",
     name="Software Center",
     description="Browse and install applications by category",
-    icon="system-software-install-symbolic",
+    icon="tux-system-software-install-symbolic",
     category=ModuleCategory.SETUP,
     order=3  # Third - install apps like app store
 )
@@ -1368,7 +1381,7 @@ class SoftwareCenterPage(Adw.NavigationPage):
         
         # Search button
         search_btn = Gtk.Button()
-        search_btn.set_icon_name("system-search-symbolic")
+        search_btn.set_icon_name("tux-system-search-symbolic")
         search_btn.set_valign(Gtk.Align.CENTER)
         search_btn.add_css_class("flat")
         search_btn.connect("clicked", self.on_search_activated)
@@ -1390,8 +1403,8 @@ class SoftwareCenterPage(Adw.NavigationPage):
             row.set_title(category.name)
             row.set_subtitle(f"{category.description} ({available_count} apps)")
             row.set_activatable(True)
-            row.add_prefix(Gtk.Image.new_from_icon_name(category.icon))
-            row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+            row.add_prefix(create_icon_simple(category.icon))
+            row.add_suffix(create_icon_simple("tux-go-next-symbolic"))
             row.connect("activated", self.on_category_clicked, category)
             group.add(row)
     
@@ -1462,7 +1475,7 @@ class PackageDetailPage(Adw.NavigationPage):
         name_row = Adw.ActionRow()
         name_row.set_title("Package Name")
         name_row.set_subtitle(self.pkg.get('name', 'Unknown'))
-        name_row.add_prefix(Gtk.Image.new_from_icon_name("package-x-generic-symbolic"))
+        name_row.add_prefix(Gtk.Image.new_from_icon_name("tux-package-x-generic-symbolic"))
         info_group.add(name_row)
         
         # Description row
@@ -1470,7 +1483,7 @@ class PackageDetailPage(Adw.NavigationPage):
             desc_row = Adw.ActionRow()
             desc_row.set_title("Description")
             desc_row.set_subtitle(self.pkg.get('description'))
-            desc_row.add_prefix(Gtk.Image.new_from_icon_name("document-properties-symbolic"))
+            desc_row.add_prefix(Gtk.Image.new_from_icon_name("tux-document-properties-symbolic"))
             info_group.add(desc_row)
         
         # Version row
@@ -1478,7 +1491,7 @@ class PackageDetailPage(Adw.NavigationPage):
             ver_row = Adw.ActionRow()
             ver_row.set_title("Version")
             ver_row.set_subtitle(self.pkg.get('version'))
-            ver_row.add_prefix(Gtk.Image.new_from_icon_name("software-update-available-symbolic"))
+            ver_row.add_prefix(Gtk.Image.new_from_icon_name("tux-software-update-available-symbolic"))
             info_group.add(ver_row)
         
         # Source row
@@ -1486,9 +1499,9 @@ class PackageDetailPage(Adw.NavigationPage):
         source_row.set_title("Source")
         source_row.set_subtitle(self.source_display)
         if self.source == "flatpak":
-            source_row.add_prefix(Gtk.Image.new_from_icon_name("system-software-install-symbolic"))
+            source_row.add_prefix(Gtk.Image.new_from_icon_name("tux-system-software-install-symbolic"))
         else:
-            source_row.add_prefix(Gtk.Image.new_from_icon_name("drive-harddisk-symbolic"))
+            source_row.add_prefix(Gtk.Image.new_from_icon_name("tux-drive-harddisk-symbolic"))
         info_group.add(source_row)
         
         # Flatpak App ID if available
@@ -1496,7 +1509,7 @@ class PackageDetailPage(Adw.NavigationPage):
             appid_row = Adw.ActionRow()
             appid_row.set_title("Flatpak App ID")
             appid_row.set_subtitle(self.pkg.get('app_id'))
-            appid_row.add_prefix(Gtk.Image.new_from_icon_name("application-x-executable-symbolic"))
+            appid_row.add_prefix(Gtk.Image.new_from_icon_name("tux-application-x-executable-symbolic"))
             info_group.add(appid_row)
         
         # Installation status
@@ -1505,7 +1518,7 @@ class PackageDetailPage(Adw.NavigationPage):
             status_row = Adw.ActionRow()
             status_row.set_title("Status")
             status_row.set_subtitle("Already installed on your system")
-            status_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
+            status_row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic"))
             info_group.add(status_row)
         
         # Action buttons
@@ -1594,7 +1607,7 @@ class SearchResultsPage(Adw.NavigationPage):
                 capture_output=True, text=True, timeout=5
             )
             return 'flathub' in result.stdout.lower()
-        except:
+        except Exception:
             return False
     
     def build_ui(self):
@@ -1788,7 +1801,7 @@ class SearchResultsPage(Adw.NavigationPage):
                 capture_output=True, timeout=5
             )
             return result.returncode == 0
-        except:
+        except Exception:
             return False
     
     def _get_native_source_name(self) -> str:
@@ -1863,16 +1876,27 @@ class SearchResultsPage(Adw.NavigationPage):
             if line.startswith('='):
                 continue
             
-            # dnf5 format: " package.arch   Description here"
-            # Starts with space, has .arch suffix, multiple spaces before description
+            # dnf5 format: " package.arch   Description here" or " package.arch\tDescription here"
+            # Starts with space, has .arch suffix, multiple spaces OR tab before description
             if line.startswith(' '):
                 line = line.strip()
                 
-                # Split on multiple spaces (2 or more) to separate name from description
+                # Split on tabs first (dnf5 may use tabs), then fall back to multiple spaces
                 import re
-                parts = re.split(r'\s{2,}', line, maxsplit=1)
+                # Match: package.arch followed by (tab OR 2+ spaces OR single space) then description
+                # Try tab first, then 2+ spaces, then single space as last resort
+                parts = None
+                if '\t' in line:
+                    parts = line.split('\t', 1)
+                elif '  ' in line:
+                    parts = re.split(r'\s{2,}', line, maxsplit=1)
+                else:
+                    # Single space separator - find first space after package.arch
+                    match = re.match(r'^(\S+)\s+(.*)$', line)
+                    if match:
+                        parts = [match.group(1), match.group(2)]
                 
-                if len(parts) >= 1:
+                if parts and len(parts) >= 1:
                     name_arch = parts[0].strip()
                     desc = parts[1].strip() if len(parts) > 1 else ""
                     
@@ -1882,6 +1906,12 @@ class SearchResultsPage(Adw.NavigationPage):
                         if name.endswith(suffix):
                             name = name[:-len(suffix)]
                             break
+                    
+                    # SAFETY: If name still has tab or description attached, strip it
+                    if '\t' in name:
+                        name = name.split('\t')[0]
+                    # Also strip any remaining whitespace/description
+                    name = name.split()[0] if ' ' in name else name
                     
                     if name:  # Only add if we got a valid name
                         results.append({
@@ -2099,7 +2129,7 @@ class SearchResultsPage(Adw.NavigationPage):
             row.connect("activated", self._on_package_row_clicked, pkg, source, pkg_key, source_display)
             
             # Arrow to show clickable
-            arrow = Gtk.Image.new_from_icon_name("go-next-symbolic")
+            arrow = Gtk.Image.new_from_icon_name("tux-go-next-symbolic")
             row.add_suffix(arrow)
             
             group.add(row)
@@ -2110,7 +2140,7 @@ class SearchResultsPage(Adw.NavigationPage):
             hint_box.set_halign(Gtk.Align.CENTER)
             hint_box.set_margin_top(10)
             
-            hint_icon = Gtk.Image.new_from_icon_name("dialog-information-symbolic")
+            hint_icon = Gtk.Image.new_from_icon_name("tux-dialog-information-symbolic")
             hint_icon.add_css_class("dim-label")
             hint_box.append(hint_icon)
             
@@ -2166,7 +2196,7 @@ class SearchResultsPage(Adw.NavigationPage):
                     capture_output=True, timeout=5
                 )
                 return result.returncode == 0
-        except:
+        except Exception:
             pass
         
         return False
@@ -2304,21 +2334,46 @@ class SearchResultsPage(Adw.NavigationPage):
         if response != "install":
             return
         
+        def sanitize_package_name(name: str) -> str:
+            """Clean package name - remove arch suffix, description, and whitespace."""
+            if not name:
+                return name
+            # Remove any tab-separated description
+            if '\t' in name:
+                name = name.split('\t')[0]
+            # Remove any space-separated description  
+            if ' ' in name:
+                name = name.split()[0]
+            # Remove arch suffix
+            for suffix in ['.x86_64', '.noarch', '.i686', '.aarch64', '.armv7hl']:
+                if name.endswith(suffix):
+                    name = name[:-len(suffix)]
+                    break
+            return name.strip()
+        
         # Install native packages via tux-helper
         if native_packages:
             apps = [App(
-                id=pkg['name'],
-                name=pkg['name'],
-                description=f"Package: {pkg['name']}",
-                packages={self.distro.family.value: [pkg['name']]}
+                id=sanitize_package_name(pkg['name']),
+                name=sanitize_package_name(pkg['name']),
+                description=f"Package: {sanitize_package_name(pkg['name'])}",
+                packages={self.distro.family.value: [sanitize_package_name(pkg['name'])]}
             ) for pkg in native_packages]
             
-            install_dialog = AppInstallDialog(self.window, apps, self.distro)
+            install_dialog = AppInstallDialog(self.window, apps, self.distro, self._clear_selection_after_install)
             install_dialog.present()
         
         # Install Flatpak packages (no sudo needed)
         if flatpak_packages:
             self._install_flatpaks(flatpak_packages)
+    
+    def _clear_selection_after_install(self):
+        """Clear selection and refresh after install."""
+        self.selected_packages.clear()
+        for checkbox in self.pkg_checkboxes.values():
+            checkbox.set_active(False)
+        self.install_btn.set_sensitive(False)
+        self.window.show_toast("✓ Installation complete - selection cleared")
     
     def _install_flatpaks(self, packages: list):
         """Install Flatpak packages."""
@@ -2428,7 +2483,7 @@ class AppDetailPage(Adw.NavigationPage):
         desc_row = Adw.ActionRow()
         desc_row.set_title("Description")
         desc_row.set_subtitle(self.app.description)
-        desc_row.add_prefix(Gtk.Image.new_from_icon_name("document-properties-symbolic"))
+        desc_row.add_prefix(Gtk.Image.new_from_icon_name("tux-document-properties-symbolic"))
         info_group.add(desc_row)
         
         # Installation method
@@ -2437,13 +2492,13 @@ class AppDetailPage(Adw.NavigationPage):
             method_row = Adw.ActionRow()
             method_row.set_title("Installation Method")
             method_row.set_subtitle(f"Native packages via {self.distro.package_manager}")
-            method_row.add_prefix(Gtk.Image.new_from_icon_name("drive-harddisk-symbolic"))
+            method_row.add_prefix(Gtk.Image.new_from_icon_name("tux-drive-harddisk-symbolic"))
             info_group.add(method_row)
         elif self.app.flatpak:
             method_row = Adw.ActionRow()
             method_row.set_title("Installation Method")
             method_row.set_subtitle("Flatpak from Flathub")
-            method_row.add_prefix(Gtk.Image.new_from_icon_name("system-software-install-symbolic"))
+            method_row.add_prefix(Gtk.Image.new_from_icon_name("tux-system-software-install-symbolic"))
             info_group.add(method_row)
         
         # Special requirements
@@ -2451,7 +2506,7 @@ class AppDetailPage(Adw.NavigationPage):
             special_row = Adw.ActionRow()
             special_row.set_title("Special Requirements")
             special_row.set_subtitle("This app may require additional setup steps")
-            special_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-important-symbolic"))
+            special_row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-important-symbolic"))
             info_group.add(special_row)
         
         # Packages section
@@ -2464,7 +2519,7 @@ class AppDetailPage(Adw.NavigationPage):
             for pkg in packages:
                 pkg_row = Adw.ActionRow()
                 pkg_row.set_title(pkg)
-                pkg_row.add_prefix(Gtk.Image.new_from_icon_name("package-x-generic-symbolic"))
+                pkg_row.add_prefix(Gtk.Image.new_from_icon_name("tux-package-x-generic-symbolic"))
                 pkg_group.add(pkg_row)
         
         # Flatpak info
@@ -2476,7 +2531,7 @@ class AppDetailPage(Adw.NavigationPage):
             flatpak_row = Adw.ActionRow()
             flatpak_row.set_title("Flatpak App ID")
             flatpak_row.set_subtitle(self.app.flatpak)
-            flatpak_row.add_prefix(Gtk.Image.new_from_icon_name("application-x-executable-symbolic"))
+            flatpak_row.add_prefix(Gtk.Image.new_from_icon_name("tux-application-x-executable-symbolic"))
             flatpak_group.add(flatpak_row)
         
         # Action buttons
@@ -2627,7 +2682,7 @@ class CategoryPage(Adw.NavigationPage):
             row.connect("activated", self._on_app_row_clicked, app)
             
             # Arrow to show clickable
-            arrow = Gtk.Image.new_from_icon_name("go-next-symbolic")
+            arrow = Gtk.Image.new_from_icon_name("tux-go-next-symbolic")
             row.add_suffix(arrow)
             
             # Flatpak indicator
@@ -2638,7 +2693,7 @@ class CategoryPage(Adw.NavigationPage):
             
             # Special indicator
             if app.special:
-                special_icon = Gtk.Image.new_from_icon_name("emblem-important-symbolic")
+                special_icon = Gtk.Image.new_from_icon_name("tux-emblem-important-symbolic")
                 special_icon.set_tooltip_text("Requires additional setup")
                 row.add_suffix(special_icon)
             
@@ -2767,20 +2822,29 @@ class CategoryPage(Adw.NavigationPage):
     def _on_confirm_response(self, dialog, response, apps_to_install):
         """Handle confirmation dialog response."""
         if response == "install":
-            install_dialog = AppInstallDialog(self.window, apps_to_install, self.distro)
+            install_dialog = AppInstallDialog(self.window, apps_to_install, self.distro, self._clear_selection_after_install)
             install_dialog.present()
+    
+    def _clear_selection_after_install(self):
+        """Clear selection after install."""
+        self.selected_apps.clear()
+        for checkbox in self.app_checkboxes.values():
+            checkbox.set_active(False)
+        self.install_btn.set_sensitive(False)
+        self.window.show_toast("✓ Installation complete - selection cleared")
 
 
 class AppInstallDialog(Adw.Dialog):
     """Dialog for installing applications."""
     
-    def __init__(self, parent: Gtk.Window, apps: list[App], distro):
+    def __init__(self, parent: Gtk.Window, apps: list[App], distro, on_complete_callback=None):
         super().__init__()
         
         self.parent_window = parent
         self.apps = apps
         self.distro = distro
         self.cancelled = False
+        self.on_complete_callback = on_complete_callback
         
         self.successful_apps = []
         self.failed_apps = []
@@ -2983,6 +3047,12 @@ class AppInstallDialog(Adw.Dialog):
             GLib.idle_add(self._installation_complete)
             return
         
+        # Ensure helper is executable
+        try:
+            os.chmod(helper_path, 0o755)
+        except Exception:
+            pass
+        
         GLib.idle_add(self.append_output, "Requesting authentication...", "info")
         GLib.idle_add(self.append_output, "")
         
@@ -3048,7 +3118,7 @@ class AppInstallDialog(Adw.Dialog):
         finally:
             try:
                 os.unlink(plan_file.name)
-            except:
+            except Exception:
                 pass
         
         GLib.idle_add(self._installation_complete)
@@ -3085,3 +3155,6 @@ class AppInstallDialog(Adw.Dialog):
     def on_close(self, button):
         """Handle close."""
         self.close()
+        # Trigger refresh callback
+        if self.on_complete_callback:
+            GLib.timeout_add(300, self.on_complete_callback)

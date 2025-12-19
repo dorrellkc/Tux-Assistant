@@ -7,7 +7,7 @@ Comprehensive networking tools including:
 - Active Directory / Domain join
 - Firewall management
 
-Copyright (c) 2025 Christopher Dorrell. All Rights Reserved.
+Copyright (c) 2025 Christopher Dorrell. Licensed under GPL-3.0.
 """
 
 import gi
@@ -19,7 +19,7 @@ import subprocess
 import threading
 import json
 import tempfile
-from gi.repository import Gtk, Adw, GLib, Gio
+from gi.repository import Gtk, Adw, GLib, Gio, Gdk
 from dataclasses import dataclass
 from typing import Optional
 from enum import Enum
@@ -106,7 +106,7 @@ def get_local_ip() -> str:
         ip = s.getsockname()[0]
         s.close()
         return ip
-    except:
+    except Exception:
         return "127.0.0.1"
 
 
@@ -144,7 +144,7 @@ class NetworkScanner:
         try:
             hostname, _, _ = socket.gethostbyaddr(ip)
             return hostname
-        except:
+        except Exception:
             return ""
     
     def scan_for_shares(self, scan_type: ScanType, callback, progress_callback=None) -> list[NetworkHost]:
@@ -251,7 +251,7 @@ class NetworkScanner:
         try:
             result = sock.connect_ex((ip, 445))
             return result == 0
-        except:
+        except Exception:
             return False
         finally:
             sock.close()
@@ -313,7 +313,7 @@ class NetworkScanner:
                         if mac:
                             hosts.append(NetworkHost(ip=ip, hostname=ip, mac=mac))
                             callback(f"Found (ARP cache): {ip}")
-            except:
+            except Exception:
                 pass
             
             # Then ping sweep for anything not in cache
@@ -332,7 +332,7 @@ class NetworkScanner:
                     if result.returncode == 0:
                         hosts.append(NetworkHost(ip=ip, hostname=ip))
                         callback(f"Found: {ip}")
-                except:
+                except Exception:
                     pass
         
         return hosts
@@ -361,7 +361,7 @@ class NetworkScanner:
                         # Skip system shares
                         if not share_name.endswith('$'):
                             shares.append(share_name)
-        except:
+        except Exception:
             pass
         
         return shares
@@ -424,6 +424,16 @@ class SambaManager:
         }
         return packages.get(self.distro.family, ["samba", "smbclient"])
     
+    def get_discovery_packages(self) -> list[str]:
+        """Get network discovery packages (avahi/mDNS and wsdd for Windows)."""
+        packages = {
+            DistroFamily.ARCH: ["avahi", "nss-mdns", "wsdd"],
+            DistroFamily.DEBIAN: ["avahi-daemon", "libnss-mdns", "wsdd"],
+            DistroFamily.FEDORA: ["avahi", "nss-mdns", "wsdd"],
+            DistroFamily.OPENSUSE: ["avahi", "nss-mdns", "wsdd"],
+        }
+        return packages.get(self.distro.family, ["avahi"])
+    
     def get_samba_service(self) -> str:
         """Get the Samba service name for this distro."""
         if self.distro.family == DistroFamily.DEBIAN:
@@ -433,7 +443,14 @@ class SambaManager:
     def is_installed(self) -> bool:
         """Check if Samba is installed."""
         import shutil
-        return shutil.which('smbd') is not None
+        import os
+        # Check standard PATH
+        if shutil.which('smbd') is not None:
+            return True
+        # Also check /usr/sbin (openSUSE, some other distros)
+        if os.path.exists('/usr/sbin/smbd'):
+            return True
+        return False
     
     def is_running(self) -> bool:
         """Check if Samba service is running."""
@@ -451,13 +468,15 @@ class SambaManager:
                 for line in f:
                     if line.strip().lower().startswith('workgroup'):
                         return line.split('=')[1].strip()
-        except:
+        except Exception:
             pass
         return "WORKGROUP"
     
     def get_shares(self) -> list[SambaShare]:
-        """Parse existing shares from smb.conf."""
+        """Parse existing shares from smb.conf AND usershares."""
         shares = []
+        
+        # First, check smb.conf for admin-created shares
         try:
             with open(self.SMB_CONF, 'r') as f:
                 content = f.read()
@@ -497,9 +516,45 @@ class SambaManager:
                 if share.path:
                     shares.append(share)
         
-        except Exception as e:
-            # Log silently - caller can handle empty list
-            # Avoid print() to stdout in production
+        except Exception:
+            pass
+        
+        # Second, check for usershares (Dolphin, Nautilus, etc. created shares)
+        try:
+            result = subprocess.run(
+                ['net', 'usershare', 'info', '--long'],
+                capture_output=True, text=True, timeout=5
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                current_share = None
+                for line in result.stdout.split('\n'):
+                    line = line.strip()
+                    if line.startswith('[') and line.endswith(']'):
+                        # New share section
+                        if current_share and current_share.path:
+                            shares.append(current_share)
+                        name = line[1:-1]
+                        current_share = SambaShare(name=name, path="")
+                    elif '=' in line and current_share:
+                        key, value = line.split('=', 1)
+                        key = key.strip().lower()
+                        value = value.strip()
+                        
+                        if key == 'path':
+                            current_share.path = value
+                        elif key == 'comment':
+                            current_share.comment = value
+                        elif key == 'guest_ok':
+                            current_share.guest_ok = value.lower() in ('y', 'yes', 'true', '1')
+                        elif key == 'usershare_acl':
+                            # If ACL includes write permissions, mark as writable
+                            current_share.writable = ':F' in value or ':f' in value
+                
+                # Don't forget the last share
+                if current_share and current_share.path:
+                    shares.append(current_share)
+        
+        except Exception:
             pass
         
         return shares
@@ -539,6 +594,129 @@ class SambaManager:
                     "type": "command",
                     "name": "Enable NetBIOS service", 
                     "command": "systemctl enable --now nmb || systemctl enable --now nmbd || true"
+                }
+            ]
+        }
+    
+    def create_full_sharing_plan(self) -> dict:
+        """Create a comprehensive plan to enable full file sharing capabilities.
+        
+        This includes:
+        - Samba packages and services
+        - Avahi/mDNS for network discovery
+        - wsdd for Windows network discovery
+        - Firewall rules
+        - Basic smb.conf configuration
+        """
+        service = self.get_samba_service()
+        hostname = subprocess.run(['hostname'], capture_output=True, text=True).stdout.strip() or 'tux-pc'
+        
+        # Get firewall commands based on backend
+        fw_backend = get_firewall_backend()
+        if fw_backend == FirewallBackend.FIREWALLD:
+            fw_samba_cmd = "firewall-cmd --permanent --add-service=samba && firewall-cmd --permanent --add-service=mdns && firewall-cmd --reload"
+        elif fw_backend == FirewallBackend.UFW:
+            fw_samba_cmd = "ufw allow samba && ufw allow mdns"
+        else:
+            fw_samba_cmd = "echo 'No firewall detected - skipping firewall configuration'"
+        
+        # Basic smb.conf with good defaults for home sharing
+        smb_conf_content = f'''[global]
+   workgroup = WORKGROUP
+   server string = {hostname}
+   server role = standalone server
+   
+   # Security settings
+   security = user
+   map to guest = Bad User
+   
+   # Performance
+   socket options = TCP_NODELAY IPTOS_LOWDELAY
+   
+   # macOS compatibility
+   vfs objects = fruit streams_xattr
+   fruit:metadata = stream
+   fruit:model = MacSamba
+   fruit:posix_rename = yes
+   fruit:veto_appledouble = no
+   fruit:nfs_aces = no
+   fruit:wipe_intentionally_left_blank_rfork = yes
+   fruit:delete_empty_adfiles = yes
+   
+   # Logging
+   log file = /var/log/samba/log.%m
+   max log size = 1000
+   logging = file
+   
+   # Disable printing (most home users don't need it)
+   load printers = no
+   printing = bsd
+   printcap name = /dev/null
+   disable spoolss = yes
+'''
+        
+        # Escape for shell
+        escaped_conf = smb_conf_content.replace("'", "'\\''")
+        
+        return {
+            "tasks": [
+                # Install all required packages
+                {
+                    "type": "install",
+                    "name": "Install Samba packages",
+                    "packages": self.get_samba_packages()
+                },
+                {
+                    "type": "install",
+                    "name": "Install network discovery (Avahi, wsdd)",
+                    "packages": self.get_discovery_packages()
+                },
+                # Backup existing config
+                {
+                    "type": "command",
+                    "name": "Backup existing smb.conf (if any)",
+                    "command": "[ -f /etc/samba/smb.conf ] && cp /etc/samba/smb.conf /etc/samba/smb.conf.bak-$(date +%Y%m%d-%H%M%S) || echo 'No existing config'"
+                },
+                # Create new smb.conf
+                {
+                    "type": "command",
+                    "name": "Create optimized smb.conf",
+                    "command": f"echo '{escaped_conf}' > /etc/samba/smb.conf"
+                },
+                # Enable Avahi for mDNS
+                {
+                    "type": "command",
+                    "name": "Enable Avahi (mDNS/Bonjour)",
+                    "command": "systemctl enable --now avahi-daemon || true"
+                },
+                # Enable wsdd for Windows discovery
+                {
+                    "type": "command",
+                    "name": "Enable wsdd (Windows discovery)",
+                    "command": "systemctl enable --now wsdd || systemctl enable --now wsdd2 || true"
+                },
+                # Enable Samba services
+                {
+                    "type": "command",
+                    "name": "Enable Samba service",
+                    "command": f"systemctl enable --now {service}"
+                },
+                {
+                    "type": "command",
+                    "name": "Enable NetBIOS service",
+                    "command": "systemctl enable --now nmb || systemctl enable --now nmbd || true"
+                },
+                # Configure firewall
+                {
+                    "type": "command",
+                    "name": "Open firewall ports",
+                    "command": fw_samba_cmd
+                },
+                # Test configuration
+                {
+                    "type": "command",
+                    "name": "Test Samba configuration",
+                    "command": "testparm -s 2>/dev/null || echo 'Configuration test complete'"
                 }
             ]
         }
@@ -722,7 +900,7 @@ class ADManager:
                 for line in result.stdout.split('\n'):
                     if line and not line.startswith(' '):
                         return True, line.strip()
-        except:
+        except Exception:
             pass
         
         return False, ""
@@ -889,7 +1067,7 @@ class FirewallManager:
                     elif line.strip().startswith('ports:'):
                         port_list = line.split(':', 1)[1].strip().split()
                         ports.extend(port_list)
-            except:
+            except Exception:
                 pass
         
         elif self.backend == FirewallBackend.UFW:
@@ -903,7 +1081,7 @@ class FirewallManager:
                         parts = line.split()
                         if parts:
                             ports.append(parts[0])
-            except:
+            except Exception:
                 pass
         
         return ports
@@ -953,7 +1131,7 @@ class FirewallManager:
     id="networking_simple",
     name="Networking",
     description="WiFi, file sharing, hotspot, and speed test",
-    icon="network-wireless-symbolic",
+    icon="tux-network-wireless-symbolic",
     category=ModuleCategory.NETWORK,
     order=12  # Windows refugee essential
 )
@@ -980,7 +1158,7 @@ class SimpleNetworkingPage(Adw.NavigationPage):
         header = Adw.HeaderBar()
         
         refresh_btn = Gtk.Button()
-        refresh_btn.set_icon_name("view-refresh-symbolic")
+        refresh_btn.set_icon_name("tux-view-refresh-symbolic")
         refresh_btn.set_tooltip_text("Refresh status")
         refresh_btn.connect("clicked", self.on_refresh)
         header.pack_end(refresh_btn)
@@ -1004,23 +1182,24 @@ class SimpleNetworkingPage(Adw.NavigationPage):
         clamp.set_margin_end(20)
         self.scrolled.set_child(clamp)
         
-        content_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
-        clamp.set_child(content_box)
+        self.content_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
+        clamp.set_child(self.content_box)
         
         # Simple status (just IP and connection)
-        content_box.append(self._create_simple_status())
+        self.content_box.append(self._create_simple_status())
         
         # WiFi section
-        content_box.append(self._create_wifi_section())
+        self.content_box.append(self._create_wifi_section())
         
-        # Quick file sharing
-        content_box.append(self._create_quick_share_section())
+        # Quick file sharing - store reference for refresh
+        self.share_section = self._create_quick_share_section()
+        self.content_box.append(self.share_section)
         
         # Find shared folders
-        content_box.append(self._create_find_shares_section())
+        self.content_box.append(self._create_find_shares_section())
         
         # Network tools (hotspot, speed test)
-        content_box.append(self._create_network_tools_section())
+        self.content_box.append(self._create_network_tools_section())
     
     def _create_simple_status(self) -> Gtk.Widget:
         """Create simple status section."""
@@ -1033,10 +1212,10 @@ class SimpleNetworkingPage(Adw.NavigationPage):
         status_row.set_title("Connection")
         if ip and ip != "127.0.0.1":
             status_row.set_subtitle(f"Connected ({ip})")
-            status_row.add_prefix(Gtk.Image.new_from_icon_name("network-wired-symbolic"))
+            status_row.add_prefix(Gtk.Image.new_from_icon_name("tux-network-wired-symbolic"))
         else:
             status_row.set_subtitle("Not connected")
-            status_row.add_prefix(Gtk.Image.new_from_icon_name("network-offline-symbolic"))
+            status_row.add_prefix(Gtk.Image.new_from_icon_name("tux-network-offline-symbolic"))
         group.add(status_row)
         
         # WiFi status
@@ -1045,14 +1224,29 @@ class SimpleNetworkingPage(Adw.NavigationPage):
         wifi_row.set_title("WiFi")
         if wifi_status['connected']:
             wifi_row.set_subtitle(f"Connected to {wifi_status['ssid']}")
-            wifi_row.add_prefix(Gtk.Image.new_from_icon_name("network-wireless-signal-excellent-symbolic"))
+            wifi_row.add_prefix(Gtk.Image.new_from_icon_name("tux-network-wireless-signal-excellent-symbolic"))
         elif wifi_status['enabled']:
             wifi_row.set_subtitle("Enabled but not connected")
-            wifi_row.add_prefix(Gtk.Image.new_from_icon_name("network-wireless-offline-symbolic"))
+            wifi_row.add_prefix(Gtk.Image.new_from_icon_name("tux-network-wireless-offline-symbolic"))
         else:
             wifi_row.set_subtitle("Disabled")
-            wifi_row.add_prefix(Gtk.Image.new_from_icon_name("network-wireless-disabled-symbolic"))
+            wifi_row.add_prefix(Gtk.Image.new_from_icon_name("tux-network-wireless-disabled-symbolic"))
         group.add(wifi_row)
+        
+        # Hostname (editable)
+        self.host_row = Adw.ActionRow()
+        self.host_row.set_title("Hostname")
+        self.host_row.set_subtitle(get_hostname())
+        self.host_row.add_prefix(Gtk.Image.new_from_icon_name("tux-computer-symbolic"))
+        
+        edit_btn = Gtk.Button()
+        edit_btn.set_icon_name("tux-document-edit-symbolic")
+        edit_btn.set_valign(Gtk.Align.CENTER)
+        edit_btn.add_css_class("flat")
+        edit_btn.set_tooltip_text("Change hostname")
+        edit_btn.connect("clicked", self._on_edit_hostname)
+        self.host_row.add_suffix(edit_btn)
+        group.add(self.host_row)
         
         return group
     
@@ -1068,7 +1262,7 @@ class SimpleNetworkingPage(Adw.NavigationPage):
             info_row = Adw.ActionRow()
             info_row.set_title("NetworkManager Not Found")
             info_row.set_subtitle("WiFi management requires NetworkManager")
-            info_row.add_prefix(Gtk.Image.new_from_icon_name("dialog-warning-symbolic"))
+            info_row.add_prefix(Gtk.Image.new_from_icon_name("tux-dialog-warning-symbolic"))
             group.add(info_row)
             return group
         
@@ -1076,20 +1270,20 @@ class SimpleNetworkingPage(Adw.NavigationPage):
         settings_row = Adw.ActionRow()
         settings_row.set_title("WiFi Settings")
         settings_row.set_subtitle("Connect to networks, manage saved connections")
-        settings_row.add_prefix(Gtk.Image.new_from_icon_name("network-wireless-symbolic"))
+        settings_row.add_prefix(Gtk.Image.new_from_icon_name("tux-network-wireless-symbolic"))
         settings_row.set_activatable(True)
         settings_row.connect("activated", self._on_open_wifi_settings)
-        settings_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        settings_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         group.add(settings_row)
         
         # Connect to hidden network
         hidden_row = Adw.ActionRow()
         hidden_row.set_title("Connect to Hidden Network")
         hidden_row.set_subtitle("Join a network that doesn't broadcast its name")
-        hidden_row.add_prefix(Gtk.Image.new_from_icon_name("network-wireless-acquiring-symbolic"))
+        hidden_row.add_prefix(Gtk.Image.new_from_icon_name("tux-network-wireless-acquiring-symbolic"))
         hidden_row.set_activatable(True)
         hidden_row.connect("activated", self._on_connect_hidden_network)
-        hidden_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        hidden_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         group.add(hidden_row)
         
         return group
@@ -1101,16 +1295,16 @@ class SimpleNetworkingPage(Adw.NavigationPage):
         group.set_description("Share folders with other computers on your network")
         
         if not self.samba.is_installed():
-            # Offer to install
+            # Offer to install with full setup
             install_row = Adw.ActionRow()
             install_row.set_title("File Sharing Not Installed")
-            install_row.set_subtitle("Install Samba to share files with other computers")
-            install_row.add_prefix(Gtk.Image.new_from_icon_name("folder-remote-symbolic"))
+            install_row.set_subtitle("Set up Samba, network discovery, and firewall rules")
+            install_row.add_prefix(Gtk.Image.new_from_icon_name("tux-folder-remote-symbolic"))
             
-            install_btn = Gtk.Button(label="Install")
+            install_btn = Gtk.Button(label="Set Up File Sharing")
             install_btn.set_valign(Gtk.Align.CENTER)
             install_btn.add_css_class("suggested-action")
-            install_btn.connect("clicked", self.on_install_samba)
+            install_btn.connect("clicked", self._on_enable_full_sharing)
             install_row.add_suffix(install_btn)
             
             group.add(install_row)
@@ -1119,23 +1313,111 @@ class SimpleNetworkingPage(Adw.NavigationPage):
             share_row = Adw.ActionRow()
             share_row.set_title("Share a Folder")
             share_row.set_subtitle("Quickly share a folder on your network")
-            share_row.add_prefix(Gtk.Image.new_from_icon_name("folder-publicshare-symbolic"))
+            share_row.add_prefix(Gtk.Image.new_from_icon_name("tux-folder-publicshare-symbolic"))
             share_row.set_activatable(True)
             share_row.connect("activated", self.on_quick_share)
-            share_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+            share_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
             group.add(share_row)
             
-            # Status
+            # List current shares
             if self.samba.is_running():
                 shares = self.samba.get_shares()
                 if shares:
-                    status_row = Adw.ActionRow()
-                    status_row.set_title("Currently Sharing")
-                    status_row.set_subtitle(f"{len(shares)} folder(s) shared")
-                    status_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
-                    group.add(status_row)
+                    # Add each share as a clickable row
+                    for share in shares:
+                        share_item = Adw.ActionRow()
+                        share_item.set_title(share.name)
+                        share_item.set_subtitle(share.path)
+                        
+                        # Icon based on permissions
+                        if share.guest_ok:
+                            share_item.add_prefix(Gtk.Image.new_from_icon_name("tux-folder-publicshare-symbolic"))
+                        elif share.writable:
+                            share_item.add_prefix(Gtk.Image.new_from_icon_name("tux-folder-documents-symbolic"))
+                        else:
+                            share_item.add_prefix(Gtk.Image.new_from_icon_name("tux-folder-symbolic"))
+                        
+                        # Make it clickable to open in file manager
+                        share_item.set_activatable(True)
+                        share_item.connect("activated", self._on_open_share_folder, share.path)
+                        
+                        # Show folder icon as suffix to indicate clickable
+                        open_icon = Gtk.Image.new_from_icon_name("tux-folder-open-symbolic")
+                        open_icon.set_tooltip_text("Open in file manager")
+                        share_item.add_suffix(open_icon)
+                        
+                        group.add(share_item)
+                else:
+                    # No shares configured
+                    no_shares_row = Adw.ActionRow()
+                    no_shares_row.set_title("No folders shared")
+                    no_shares_row.set_subtitle("Click 'Share a Folder' above to get started")
+                    no_shares_row.add_prefix(Gtk.Image.new_from_icon_name("tux-folder-symbolic"))
+                    no_shares_row.add_css_class("dim-label")
+                    group.add(no_shares_row)
+            else:
+                # Samba not running - offer to enable full sharing
+                enable_row = Adw.ActionRow()
+                enable_row.set_title("File sharing service not running")
+                enable_row.set_subtitle("Click to enable file sharing with all required services")
+                enable_row.add_prefix(Gtk.Image.new_from_icon_name("tux-dialog-warning-symbolic"))
+                
+                enable_btn = Gtk.Button(label="Enable File Sharing")
+                enable_btn.set_valign(Gtk.Align.CENTER)
+                enable_btn.add_css_class("suggested-action")
+                enable_btn.connect("clicked", self._on_enable_full_sharing)
+                enable_row.add_suffix(enable_btn)
+                
+                group.add(enable_row)
         
         return group
+    
+    def _on_open_share_folder(self, row, path: str):
+        """Open a shared folder in the file manager."""
+        try:
+            # Use Gtk.show_uri with file:// URI - this properly focuses the window
+            Gtk.show_uri(None, f"file://{path}", Gdk.CURRENT_TIME)
+        except Exception as e:
+            if hasattr(self, 'window') and self.window:
+                self.window.show_toast(f"Could not open folder: {e}")
+    
+    def _on_enable_full_sharing(self, button):
+        """Enable full file sharing with all required services."""
+        # Get the comprehensive plan
+        plan = self.samba.create_full_sharing_plan()
+        
+        # Execute the plan with refresh callback
+        self._execute_plan_with_refresh(plan, "Enable File Sharing")
+    
+    def _refresh_share_section(self):
+        """Refresh just the share section after changes."""
+        if hasattr(self, 'share_section') and hasattr(self, 'content_box'):
+            # Find position of share section
+            idx = 2  # Default position (after status and wifi)
+            
+            # Remove old section
+            self.content_box.remove(self.share_section)
+            
+            # Create new section
+            self.share_section = self._create_quick_share_section()
+            
+            # Insert at same position
+            # Get child at idx position to insert before
+            child = self.content_box.get_first_child()
+            for _ in range(idx):
+                if child:
+                    child = child.get_next_sibling()
+            
+            if child:
+                self.content_box.insert_child_after(self.share_section, child.get_prev_sibling())
+            else:
+                self.content_box.append(self.share_section)
+    
+    def _execute_plan_with_refresh(self, plan: dict, title: str):
+        """Execute plan and refresh share section when dialog closes."""
+        dialog = PlanExecutionDialog(self.window, plan, title, self.distro)
+        dialog.connect("closed", lambda d: GLib.timeout_add(500, self._refresh_share_section))
+        dialog.present()
     
     def _create_find_shares_section(self) -> Gtk.Widget:
         """Create section to find shared folders."""
@@ -1147,20 +1429,20 @@ class SimpleNetworkingPage(Adw.NavigationPage):
         scan_row = Adw.ActionRow()
         scan_row.set_title("Scan for Shared Folders")
         scan_row.set_subtitle("Find computers sharing files on your network")
-        scan_row.add_prefix(Gtk.Image.new_from_icon_name("folder-remote-symbolic"))
+        scan_row.add_prefix(Gtk.Image.new_from_icon_name("tux-folder-remote-symbolic"))
         scan_row.set_activatable(True)
         scan_row.connect("activated", self.on_quick_scan)
-        scan_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        scan_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         group.add(scan_row)
         
         # Browse network
         browse_row = Adw.ActionRow()
         browse_row.set_title("Browse Network")
         browse_row.set_subtitle("Open network location in file manager")
-        browse_row.add_prefix(Gtk.Image.new_from_icon_name("network-workgroup-symbolic"))
+        browse_row.add_prefix(Gtk.Image.new_from_icon_name("tux-network-workgroup-symbolic"))
         browse_row.set_activatable(True)
         browse_row.connect("activated", self.on_browse_network)
-        browse_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        browse_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         group.add(browse_row)
         
         return group
@@ -1174,30 +1456,30 @@ class SimpleNetworkingPage(Adw.NavigationPage):
         hotspot_row = Adw.ActionRow()
         hotspot_row.set_title("Create WiFi Hotspot")
         hotspot_row.set_subtitle("Share your internet connection wirelessly")
-        hotspot_row.add_prefix(Gtk.Image.new_from_icon_name("network-wireless-hotspot-symbolic"))
+        hotspot_row.add_prefix(Gtk.Image.new_from_icon_name("tux-network-wireless-hotspot-symbolic"))
         hotspot_row.set_activatable(True)
         hotspot_row.connect("activated", self._on_create_hotspot)
-        hotspot_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        hotspot_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         group.add(hotspot_row)
         
         # Speed test
         speed_row = Adw.ActionRow()
         speed_row.set_title("Speed Test")
         speed_row.set_subtitle("Test your internet connection speed")
-        speed_row.add_prefix(Gtk.Image.new_from_icon_name("utilities-system-monitor-symbolic"))
+        speed_row.add_prefix(Gtk.Image.new_from_icon_name("tux-utilities-system-monitor-symbolic"))
         speed_row.set_activatable(True)
         speed_row.connect("activated", self._on_run_speedtest)
-        speed_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        speed_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         group.add(speed_row)
         
         # Network settings
         settings_row = Adw.ActionRow()
         settings_row.set_title("Network Settings")
         settings_row.set_subtitle("Open system network configuration")
-        settings_row.add_prefix(Gtk.Image.new_from_icon_name("preferences-system-network-symbolic"))
+        settings_row.add_prefix(Gtk.Image.new_from_icon_name("tux-preferences-system-network-symbolic"))
         settings_row.set_activatable(True)
         settings_row.connect("activated", self._on_open_network_settings)
-        settings_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        settings_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         group.add(settings_row)
         
         return group
@@ -1206,6 +1488,17 @@ class SimpleNetworkingPage(Adw.NavigationPage):
         """Refresh the status."""
         self._build_content()
         self.window.show_toast("Status refreshed")
+    
+    def _on_edit_hostname(self, button):
+        """Show dialog to change hostname."""
+        dialog = ChangeHostnameDialog(self.window, self._on_hostname_changed)
+        dialog.present(self.window)
+    
+    def _on_hostname_changed(self, new_hostname: str):
+        """Callback when hostname is changed successfully."""
+        if hasattr(self, 'host_row'):
+            self.host_row.set_subtitle(new_hostname)
+        self.window.show_toast(f"Hostname changed to '{new_hostname}'")
     
     def _get_wifi_status(self) -> dict:
         """Get current WiFi status."""
@@ -1305,7 +1598,7 @@ class SimpleNetworkingPage(Adw.NavigationPage):
             self._execute_plan(plan, "Installing File Sharing")
     
     def on_quick_share(self, row):
-        dialog = QuickShareDialog(self.window, self.samba, self._execute_plan)
+        dialog = QuickShareDialog(self.window, self.samba, self._execute_plan_with_refresh)
         dialog.present()
     
     def on_quick_scan(self, row):
@@ -1384,6 +1677,7 @@ class SimpleNetworkingPage(Adw.NavigationPage):
             self.window.show_toast(f"Error: {str(e)}")
     
     def _on_run_speedtest(self, row):
+        """Run internet speed test."""
         if subprocess.run(['which', 'speedtest-cli'], capture_output=True).returncode != 0:
             dialog = Adw.MessageDialog(transient_for=self.window, heading="Speed Test Required",
                                         body="speedtest-cli is needed.")
@@ -1393,7 +1687,10 @@ class SimpleNetworkingPage(Adw.NavigationPage):
             dialog.connect("response", self._on_install_speedtest)
             dialog.present()
             return
-        self._run_in_terminal('echo "Speed Test"; echo ""; speedtest-cli; echo ""; read -p "Press Enter..."')
+        
+        # Use bash script that keeps terminal open
+        script = 'echo "=== Internet Speed Test ===" && speedtest-cli; echo ""; read -p "Press Enter to close..."'
+        self._run_in_terminal(script)
     
     def _on_install_speedtest(self, dialog, response):
         if response == "install":
@@ -1417,13 +1714,29 @@ class SimpleNetworkingPage(Adw.NavigationPage):
         self.window.show_toast("Could not open network settings")
     
     def _run_in_terminal(self, script: str):
-        terminals = [('konsole', ['konsole', '-e', 'bash', '-c', script]),
-                     ('gnome-terminal', ['gnome-terminal', '--', 'bash', '-c', script]),
-                     ('xfce4-terminal', ['xfce4-terminal', '-e', f'bash -c \'{script}\''])]
-        for name, cmd in terminals:
-            if subprocess.run(['which', name], capture_output=True).returncode == 0:
-                subprocess.Popen(cmd)
-                return
+        """Run a script in a terminal window."""
+        # Try various terminals - ptyxis first for modern Fedora
+        terminals = [
+            ('ptyxis', ['ptyxis', '-e', 'bash', '-c', script]),
+            ('gnome-terminal', ['gnome-terminal', '--', 'bash', '-c', script]),
+            ('kgx', ['kgx', '-e', 'bash', '-c', script]),
+            ('konsole', ['konsole', '--hold', '-e', 'bash', '-c', script]),
+            ('xfce4-terminal', ['xfce4-terminal', '--hold', '-e', f'bash -c "{script}"']),
+            ('tilix', ['tilix', '-e', f'bash -c "{script}"']),
+            ('alacritty', ['alacritty', '--hold', '-e', 'bash', '-c', script]),
+            ('kitty', ['kitty', '--hold', 'bash', '-c', script]),
+            ('xterm', ['xterm', '-hold', '-e', f'bash -c "{script}"']),
+        ]
+        
+        for term_name, term_cmd in terminals:
+            try:
+                if subprocess.run(['which', term_name], capture_output=True).returncode == 0:
+                    subprocess.Popen(term_cmd, start_new_session=True)
+                    return
+            except Exception:
+                continue
+        
+        self.window.show_toast("Could not find a terminal emulator")
     
     def _execute_plan(self, plan: dict, title: str):
         dialog = PlanExecutionDialog(self.window, plan, title, self.distro)
@@ -1434,7 +1747,7 @@ class SimpleNetworkingPage(Adw.NavigationPage):
     id="networking_advanced",
     name="Advanced Networking",
     description="VPN, Active Directory, firewall, and advanced sharing",
-    icon="network-server-symbolic",
+    icon="tux-network-server-symbolic",
     category=ModuleCategory.NETWORK,
     order=31  # Power user tier
 )
@@ -1466,7 +1779,7 @@ class NetworkingPage(Adw.NavigationPage):
         
         # Refresh button
         refresh_btn = Gtk.Button()
-        refresh_btn.set_icon_name("view-refresh-symbolic")
+        refresh_btn.set_icon_name("tux-view-refresh-symbolic")
         refresh_btn.set_tooltip_text("Refresh status")
         refresh_btn.connect("clicked", self.on_refresh)
         header.pack_end(refresh_btn)
@@ -1525,6 +1838,17 @@ class NetworkingPage(Adw.NavigationPage):
         self._build_content()
         self.window.show_toast("Status refreshed")
     
+    def _on_edit_hostname(self, button):
+        """Show dialog to change hostname."""
+        dialog = ChangeHostnameDialog(self.window, self._on_hostname_changed)
+        dialog.present(self.window)
+    
+    def _on_hostname_changed(self, new_hostname: str):
+        """Callback when hostname is changed successfully."""
+        if hasattr(self, 'host_row'):
+            self.host_row.set_subtitle(new_hostname)
+        self.window.show_toast(f"Hostname changed to '{new_hostname}'")
+    
     def _create_status_banner(self) -> Gtk.Widget:
         """Create status info banner."""
         group = Adw.PreferencesGroup()
@@ -1534,15 +1858,24 @@ class NetworkingPage(Adw.NavigationPage):
         ip_row = Adw.ActionRow()
         ip_row.set_title("Local IP Address")
         ip_row.set_subtitle(get_local_ip())
-        ip_row.add_prefix(Gtk.Image.new_from_icon_name("network-wired-symbolic"))
+        ip_row.add_prefix(Gtk.Image.new_from_icon_name("tux-network-wired-symbolic"))
         group.add(ip_row)
         
-        # Hostname
-        host_row = Adw.ActionRow()
-        host_row.set_title("Hostname")
-        host_row.set_subtitle(get_hostname())
-        host_row.add_prefix(Gtk.Image.new_from_icon_name("computer-symbolic"))
-        group.add(host_row)
+        # Hostname (editable)
+        self.host_row = Adw.ActionRow()
+        self.host_row.set_title("Hostname")
+        self.host_row.set_subtitle(get_hostname())
+        self.host_row.add_prefix(Gtk.Image.new_from_icon_name("tux-computer-symbolic"))
+        
+        # Edit button
+        edit_btn = Gtk.Button()
+        edit_btn.set_icon_name("tux-document-edit-symbolic")
+        edit_btn.set_valign(Gtk.Align.CENTER)
+        edit_btn.add_css_class("flat")
+        edit_btn.set_tooltip_text("Change hostname")
+        edit_btn.connect("clicked", self._on_edit_hostname)
+        self.host_row.add_suffix(edit_btn)
+        group.add(self.host_row)
         
         # Samba status
         samba_row = Adw.ActionRow()
@@ -1550,16 +1883,16 @@ class NetworkingPage(Adw.NavigationPage):
         if self.samba.is_installed():
             if self.samba.is_running():
                 samba_row.set_subtitle(f"Running (Workgroup: {self.samba.get_workgroup()})")
-                status_icon = Gtk.Image.new_from_icon_name("emblem-ok-symbolic")
+                status_icon = Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic")
                 status_icon.add_css_class("success")
             else:
                 samba_row.set_subtitle("Installed but not running")
-                status_icon = Gtk.Image.new_from_icon_name("emblem-important-symbolic")
+                status_icon = Gtk.Image.new_from_icon_name("tux-emblem-important-symbolic")
                 status_icon.add_css_class("warning")
         else:
             samba_row.set_subtitle("Not installed")
-            status_icon = Gtk.Image.new_from_icon_name("emblem-important-symbolic")
-        samba_row.add_prefix(Gtk.Image.new_from_icon_name("network-server-symbolic"))
+            status_icon = Gtk.Image.new_from_icon_name("tux-emblem-important-symbolic")
+        samba_row.add_prefix(Gtk.Image.new_from_icon_name("tux-network-server-symbolic"))
         samba_row.add_suffix(status_icon)
         group.add(samba_row)
         
@@ -1569,12 +1902,12 @@ class NetworkingPage(Adw.NavigationPage):
         domain_row.set_title("Active Directory")
         if joined:
             domain_row.set_subtitle(f"Joined to {domain}")
-            status_icon = Gtk.Image.new_from_icon_name("emblem-ok-symbolic")
+            status_icon = Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic")
             status_icon.add_css_class("success")
         else:
             domain_row.set_subtitle("Not joined to a domain")
-            status_icon = Gtk.Image.new_from_icon_name("list-remove-symbolic")
-        domain_row.add_prefix(Gtk.Image.new_from_icon_name("system-users-symbolic"))
+            status_icon = Gtk.Image.new_from_icon_name("tux-list-remove-symbolic")
+        domain_row.add_prefix(Gtk.Image.new_from_icon_name("tux-system-users-symbolic"))
         domain_row.add_suffix(status_icon)
         group.add(domain_row)
         
@@ -1584,13 +1917,13 @@ class NetworkingPage(Adw.NavigationPage):
         fw_row.set_title("Firewall")
         if fw_active:
             fw_row.set_subtitle(f"Active ({fw_backend})")
-            status_icon = Gtk.Image.new_from_icon_name("security-high-symbolic")
+            status_icon = Gtk.Image.new_from_icon_name("tux-security-high-symbolic")
             status_icon.add_css_class("success")
         else:
             fw_row.set_subtitle("Not active or not installed")
-            status_icon = Gtk.Image.new_from_icon_name("security-low-symbolic")
+            status_icon = Gtk.Image.new_from_icon_name("tux-security-low-symbolic")
             status_icon.add_css_class("warning")
-        fw_row.add_prefix(Gtk.Image.new_from_icon_name("preferences-system-firewall-symbolic"))
+        fw_row.add_prefix(Gtk.Image.new_from_icon_name("tux-preferences-system-firewall-symbolic"))
         fw_row.add_suffix(status_icon)
         group.add(fw_row)
         
@@ -1607,8 +1940,8 @@ class NetworkingPage(Adw.NavigationPage):
         quick_row.set_title("Find Shared Folders")
         quick_row.set_subtitle("Quick scan for SMB/Windows shares (recommended)")
         quick_row.set_activatable(True)
-        quick_row.add_prefix(Gtk.Image.new_from_icon_name("folder-remote-symbolic"))
-        quick_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        quick_row.add_prefix(Gtk.Image.new_from_icon_name("tux-folder-remote-symbolic"))
+        quick_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         quick_row.connect("activated", self.on_quick_scan)
         group.add(quick_row)
         
@@ -1617,8 +1950,8 @@ class NetworkingPage(Adw.NavigationPage):
         full_row.set_title("Full Network Scan")
         full_row.set_subtitle("Find all devices on network (slower)")
         full_row.set_activatable(True)
-        full_row.add_prefix(Gtk.Image.new_from_icon_name("network-workgroup-symbolic"))
-        full_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        full_row.add_prefix(Gtk.Image.new_from_icon_name("tux-network-workgroup-symbolic"))
+        full_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         full_row.connect("activated", self.on_full_scan)
         group.add(full_row)
         
@@ -1627,8 +1960,8 @@ class NetworkingPage(Adw.NavigationPage):
         browse_row.set_title("Browse Network")
         browse_row.set_subtitle("Open network location in file manager")
         browse_row.set_activatable(True)
-        browse_row.add_prefix(Gtk.Image.new_from_icon_name("system-file-manager-symbolic"))
-        browse_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        browse_row.add_prefix(Gtk.Image.new_from_icon_name("tux-system-file-manager-symbolic"))
+        browse_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         browse_row.connect("activated", self.on_browse_network)
         group.add(browse_row)
         
@@ -1646,8 +1979,8 @@ class NetworkingPage(Adw.NavigationPage):
             install_row.set_title("Install Samba Server")
             install_row.set_subtitle("Set up file sharing on this computer")
             install_row.set_activatable(True)
-            install_row.add_prefix(Gtk.Image.new_from_icon_name("system-software-install-symbolic"))
-            install_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+            install_row.add_prefix(Gtk.Image.new_from_icon_name("tux-system-software-install-symbolic"))
+            install_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
             install_row.connect("activated", self.on_install_samba)
             group.add(install_row)
         else:
@@ -1656,8 +1989,8 @@ class NetworkingPage(Adw.NavigationPage):
             quick_row.set_title("Quick Share")
             quick_row.set_subtitle("Quickly share a folder on the network")
             quick_row.set_activatable(True)
-            quick_row.add_prefix(Gtk.Image.new_from_icon_name("folder-new-symbolic"))
-            quick_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+            quick_row.add_prefix(Gtk.Image.new_from_icon_name("tux-folder-new-symbolic"))
+            quick_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
             quick_row.connect("activated", self.on_quick_share)
             group.add(quick_row)
             
@@ -1667,8 +2000,8 @@ class NetworkingPage(Adw.NavigationPage):
             shares = self.samba.get_shares()
             manage_row.set_subtitle(f"{len(shares)} share(s) configured")
             manage_row.set_activatable(True)
-            manage_row.add_prefix(Gtk.Image.new_from_icon_name("folder-symbolic"))
-            manage_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+            manage_row.add_prefix(Gtk.Image.new_from_icon_name("tux-folder-symbolic"))
+            manage_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
             manage_row.connect("activated", self.on_manage_shares)
             group.add(manage_row)
             
@@ -1677,8 +2010,8 @@ class NetworkingPage(Adw.NavigationPage):
             user_row.set_title("Samba Users")
             user_row.set_subtitle("Manage Samba user accounts")
             user_row.set_activatable(True)
-            user_row.add_prefix(Gtk.Image.new_from_icon_name("system-users-symbolic"))
-            user_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+            user_row.add_prefix(Gtk.Image.new_from_icon_name("tux-system-users-symbolic"))
+            user_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
             user_row.connect("activated", self.on_samba_users)
             group.add(user_row)
         
@@ -1697,7 +2030,7 @@ class NetworkingPage(Adw.NavigationPage):
             info_row = Adw.ActionRow()
             info_row.set_title(f"Joined to {domain}")
             info_row.set_subtitle("Domain users can log in to this system")
-            info_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
+            info_row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic"))
             group.add(info_row)
             
             # Leave domain
@@ -1705,8 +2038,8 @@ class NetworkingPage(Adw.NavigationPage):
             leave_row.set_title("Leave Domain")
             leave_row.set_subtitle("Disconnect from Active Directory")
             leave_row.set_activatable(True)
-            leave_row.add_prefix(Gtk.Image.new_from_icon_name("list-remove-symbolic"))
-            leave_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+            leave_row.add_prefix(Gtk.Image.new_from_icon_name("tux-list-remove-symbolic"))
+            leave_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
             leave_row.connect("activated", self.on_leave_domain)
             group.add(leave_row)
         else:
@@ -1715,8 +2048,8 @@ class NetworkingPage(Adw.NavigationPage):
             join_row.set_title("Join Domain")
             join_row.set_subtitle("Connect to an Active Directory domain")
             join_row.set_activatable(True)
-            join_row.add_prefix(Gtk.Image.new_from_icon_name("list-add-symbolic"))
-            join_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+            join_row.add_prefix(Gtk.Image.new_from_icon_name("tux-list-add-symbolic"))
+            join_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
             join_row.connect("activated", self.on_join_domain)
             group.add(join_row)
         
@@ -1735,7 +2068,7 @@ class NetworkingPage(Adw.NavigationPage):
             info_row = Adw.ActionRow()
             info_row.set_title("No Active Firewall")
             info_row.set_subtitle("Consider enabling firewalld or ufw for security")
-            info_row.add_prefix(Gtk.Image.new_from_icon_name("dialog-warning-symbolic"))
+            info_row.add_prefix(Gtk.Image.new_from_icon_name("tux-dialog-warning-symbolic"))
             group.add(info_row)
         else:
             # Open ports
@@ -1744,8 +2077,8 @@ class NetworkingPage(Adw.NavigationPage):
             open_ports = self.firewall.get_open_ports()
             ports_row.set_subtitle(f"{len(open_ports)} port(s)/service(s) open")
             ports_row.set_activatable(True)
-            ports_row.add_prefix(Gtk.Image.new_from_icon_name("network-transmit-receive-symbolic"))
-            ports_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+            ports_row.add_prefix(Gtk.Image.new_from_icon_name("tux-network-transmit-receive-symbolic"))
+            ports_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
             ports_row.connect("activated", self.on_manage_ports)
             group.add(ports_row)
             
@@ -1754,8 +2087,8 @@ class NetworkingPage(Adw.NavigationPage):
             quick_row.set_title("Quick Open Service")
             quick_row.set_subtitle("Open ports for common services")
             quick_row.set_activatable(True)
-            quick_row.add_prefix(Gtk.Image.new_from_icon_name("list-add-symbolic"))
-            quick_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+            quick_row.add_prefix(Gtk.Image.new_from_icon_name("tux-list-add-symbolic"))
+            quick_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
             quick_row.connect("activated", self.on_quick_open_port)
             group.add(quick_row)
         
@@ -1774,7 +2107,7 @@ class NetworkingPage(Adw.NavigationPage):
             info_row = Adw.ActionRow()
             info_row.set_title("NetworkManager Not Found")
             info_row.set_subtitle("WiFi management requires NetworkManager")
-            info_row.add_prefix(Gtk.Image.new_from_icon_name("dialog-warning-symbolic"))
+            info_row.add_prefix(Gtk.Image.new_from_icon_name("tux-dialog-warning-symbolic"))
             group.add(info_row)
             return group
         
@@ -1786,33 +2119,33 @@ class NetworkingPage(Adw.NavigationPage):
         if wifi_status['enabled']:
             if wifi_status['connected']:
                 status_row.set_subtitle(f"Connected to {wifi_status['ssid']}")
-                status_row.add_prefix(Gtk.Image.new_from_icon_name("network-wireless-signal-excellent-symbolic"))
+                status_row.add_prefix(Gtk.Image.new_from_icon_name("tux-network-wireless-signal-excellent-symbolic"))
             else:
                 status_row.set_subtitle("Enabled but not connected")
-                status_row.add_prefix(Gtk.Image.new_from_icon_name("network-wireless-offline-symbolic"))
+                status_row.add_prefix(Gtk.Image.new_from_icon_name("tux-network-wireless-offline-symbolic"))
         else:
             status_row.set_subtitle("WiFi is disabled")
-            status_row.add_prefix(Gtk.Image.new_from_icon_name("network-wireless-disabled-symbolic"))
+            status_row.add_prefix(Gtk.Image.new_from_icon_name("tux-network-wireless-disabled-symbolic"))
         group.add(status_row)
         
         # WiFi settings link
         settings_row = Adw.ActionRow()
         settings_row.set_title("WiFi Settings")
         settings_row.set_subtitle("Connect to networks, manage saved connections")
-        settings_row.add_prefix(Gtk.Image.new_from_icon_name("preferences-system-network-symbolic"))
+        settings_row.add_prefix(Gtk.Image.new_from_icon_name("tux-preferences-system-network-symbolic"))
         settings_row.set_activatable(True)
         settings_row.connect("activated", self._on_open_wifi_settings)
-        settings_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        settings_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         group.add(settings_row)
         
         # Connect to hidden network
         hidden_row = Adw.ActionRow()
         hidden_row.set_title("Connect to Hidden Network")
         hidden_row.set_subtitle("Join a network that doesn't broadcast its name")
-        hidden_row.add_prefix(Gtk.Image.new_from_icon_name("network-wireless-acquiring-symbolic"))
+        hidden_row.add_prefix(Gtk.Image.new_from_icon_name("tux-network-wireless-acquiring-symbolic"))
         hidden_row.set_activatable(True)
         hidden_row.connect("activated", self._on_connect_hidden_network)
-        hidden_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        hidden_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         group.add(hidden_row)
         
         return group
@@ -1850,40 +2183,40 @@ class NetworkingPage(Adw.NavigationPage):
         status_row.set_title("VPN Status")
         if vpn_connected:
             status_row.set_subtitle(f"Connected: {vpn_name}")
-            status_row.add_prefix(Gtk.Image.new_from_icon_name("network-vpn-symbolic"))
+            status_row.add_prefix(Gtk.Image.new_from_icon_name("tux-network-vpn-symbolic"))
         else:
             status_row.set_subtitle("Not connected")
-            status_row.add_prefix(Gtk.Image.new_from_icon_name("network-vpn-disconnected-symbolic"))
+            status_row.add_prefix(Gtk.Image.new_from_icon_name("tux-network-vpn-disconnected-symbolic"))
         group.add(status_row)
         
         # Import OpenVPN config
         openvpn_row = Adw.ActionRow()
         openvpn_row.set_title("Import OpenVPN Config")
         openvpn_row.set_subtitle("Import a .ovpn configuration file")
-        openvpn_row.add_prefix(Gtk.Image.new_from_icon_name("document-open-symbolic"))
+        openvpn_row.add_prefix(Gtk.Image.new_from_icon_name("tux-document-open-symbolic"))
         openvpn_row.set_activatable(True)
         openvpn_row.connect("activated", self._on_import_openvpn)
-        openvpn_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        openvpn_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         group.add(openvpn_row)
         
         # Import WireGuard config
         wireguard_row = Adw.ActionRow()
         wireguard_row.set_title("Import WireGuard Config")
         wireguard_row.set_subtitle("Import a .conf WireGuard configuration")
-        wireguard_row.add_prefix(Gtk.Image.new_from_icon_name("document-open-symbolic"))
+        wireguard_row.add_prefix(Gtk.Image.new_from_icon_name("tux-document-open-symbolic"))
         wireguard_row.set_activatable(True)
         wireguard_row.connect("activated", self._on_import_wireguard)
-        wireguard_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        wireguard_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         group.add(wireguard_row)
         
         # VPN settings
         settings_row = Adw.ActionRow()
         settings_row.set_title("VPN Settings")
         settings_row.set_subtitle("Manage VPN connections")
-        settings_row.add_prefix(Gtk.Image.new_from_icon_name("preferences-system-network-symbolic"))
+        settings_row.add_prefix(Gtk.Image.new_from_icon_name("tux-preferences-system-network-symbolic"))
         settings_row.set_activatable(True)
         settings_row.connect("activated", self._on_open_vpn_settings)
-        settings_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        settings_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         group.add(settings_row)
         
         return group
@@ -1898,20 +2231,20 @@ class NetworkingPage(Adw.NavigationPage):
         hotspot_row = Adw.ActionRow()
         hotspot_row.set_title("Create WiFi Hotspot")
         hotspot_row.set_subtitle("Share your internet connection wirelessly")
-        hotspot_row.add_prefix(Gtk.Image.new_from_icon_name("network-wireless-hotspot-symbolic"))
+        hotspot_row.add_prefix(Gtk.Image.new_from_icon_name("tux-network-wireless-hotspot-symbolic"))
         hotspot_row.set_activatable(True)
         hotspot_row.connect("activated", self._on_create_hotspot)
-        hotspot_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        hotspot_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         group.add(hotspot_row)
         
         # Speed test
         speed_row = Adw.ActionRow()
         speed_row.set_title("Speed Test")
         speed_row.set_subtitle("Test your internet connection speed")
-        speed_row.add_prefix(Gtk.Image.new_from_icon_name("utilities-system-monitor-symbolic"))
+        speed_row.add_prefix(Gtk.Image.new_from_icon_name("tux-utilities-system-monitor-symbolic"))
         speed_row.set_activatable(True)
         speed_row.connect("activated", self._on_run_speedtest)
-        speed_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        speed_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         group.add(speed_row)
         
         # Hosts file editor
@@ -1921,17 +2254,17 @@ class NetworkingPage(Adw.NavigationPage):
         hosts_row.add_prefix(Gtk.Image.new_from_icon_name("text-x-generic-symbolic"))
         hosts_row.set_activatable(True)
         hosts_row.connect("activated", self._on_edit_hosts)
-        hosts_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        hosts_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         group.add(hosts_row)
         
         # Network settings
         settings_row = Adw.ActionRow()
         settings_row.set_title("Network Settings")
         settings_row.set_subtitle("Open system network configuration")
-        settings_row.add_prefix(Gtk.Image.new_from_icon_name("preferences-system-network-symbolic"))
+        settings_row.add_prefix(Gtk.Image.new_from_icon_name("tux-preferences-system-network-symbolic"))
         settings_row.set_activatable(True)
         settings_row.connect("activated", self._on_open_network_settings)
-        settings_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        settings_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         group.add(settings_row)
         
         return group
@@ -2457,16 +2790,8 @@ class NetworkingPage(Adw.NavigationPage):
             dialog.present()
             return
         
-        # Run speed test in terminal
-        script = '''echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  Internet Speed Test"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo ""
-speedtest-cli
-echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "Press Enter to close..."
-read'''
+        # Run speed test in terminal - single line command works better
+        script = 'echo "=== Internet Speed Test ===" && echo "" && speedtest-cli && echo "" && echo "Press Enter to close..." && read'
         
         self._run_in_terminal(script)
     
@@ -2544,8 +2869,10 @@ sudo nano /etc/hosts'''
     def _run_in_terminal(self, script: str):
         """Run a script in a terminal window."""
         terminals = [
-            ('konsole', ['konsole', '-e', 'bash', '-c', script]),
+            ('ptyxis', ['ptyxis', '-e', 'bash', '-c', script]),
             ('gnome-terminal', ['gnome-terminal', '--', 'bash', '-c', script]),
+            ('kgx', ['kgx', '-e', 'bash', '-c', script]),
+            ('konsole', ['konsole', '-e', 'bash', '-c', script]),
             ('xfce4-terminal', ['xfce4-terminal', '-e', f'bash -c \'{script}\'']),
             ('tilix', ['tilix', '-e', f'bash -c "{script}"']),
             ('alacritty', ['alacritty', '-e', 'bash', '-c', script]),
@@ -2555,7 +2882,7 @@ sudo nano /etc/hosts'''
         for term_name, term_cmd in terminals:
             try:
                 if subprocess.run(['which', term_name], capture_output=True).returncode == 0:
-                    subprocess.Popen(term_cmd)
+                    subprocess.Popen(term_cmd, start_new_session=True)
                     return
             except Exception:
                 continue
@@ -2814,9 +3141,9 @@ class NetworkScanPage(Adw.NavigationPage):
             
             # Icon based on shares
             if host.services:
-                row.add_prefix(Gtk.Image.new_from_icon_name("folder-remote-symbolic"))
+                row.add_prefix(Gtk.Image.new_from_icon_name("tux-folder-remote-symbolic"))
             else:
-                row.add_prefix(Gtk.Image.new_from_icon_name("computer-symbolic"))
+                row.add_prefix(Gtk.Image.new_from_icon_name("tux-computer-symbolic"))
             
             # Share count badge
             if host.services:
@@ -2841,7 +3168,7 @@ class NetworkScanPage(Adw.NavigationPage):
             
             # Browse button
             browse_btn = Gtk.Button()
-            browse_btn.set_icon_name("go-next-symbolic")
+            browse_btn.set_icon_name("tux-go-next-symbolic")
             browse_btn.set_valign(Gtk.Align.CENTER)
             browse_btn.set_tooltip_text("Browse shares")
             browse_btn.connect("clicked", self._on_browse_host, host.ip)
@@ -2852,6 +3179,134 @@ class NetworkScanPage(Adw.NavigationPage):
     def _on_browse_host(self, button, ip):
         """Browse a host's shares."""
         subprocess.Popen(['xdg-open', f'smb://{ip}/'])
+
+
+class ChangeHostnameDialog(Adw.Dialog):
+    """Dialog for changing the system hostname."""
+    
+    def __init__(self, window, on_success_callback):
+        super().__init__()
+        
+        self.window = window
+        self.on_success_callback = on_success_callback
+        
+        self.set_title("Change Hostname")
+        self.set_content_width(400)
+        self.set_content_height(250)
+        
+        self.build_ui()
+    
+    def build_ui(self):
+        """Build dialog UI."""
+        toolbar_view = Adw.ToolbarView()
+        self.set_child(toolbar_view)
+        
+        # Header bar
+        header = Adw.HeaderBar()
+        header.set_show_end_title_buttons(False)
+        header.set_show_start_title_buttons(False)
+        
+        cancel_btn = Gtk.Button(label="Cancel")
+        cancel_btn.connect("clicked", lambda b: self.close())
+        header.pack_start(cancel_btn)
+        
+        self.save_btn = Gtk.Button(label="Change")
+        self.save_btn.add_css_class("suggested-action")
+        self.save_btn.set_sensitive(False)
+        self.save_btn.connect("clicked", self.on_save)
+        header.pack_end(self.save_btn)
+        
+        toolbar_view.add_top_bar(header)
+        
+        # Content
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        content.set_margin_top(12)
+        content.set_margin_bottom(12)
+        content.set_margin_start(12)
+        content.set_margin_end(12)
+        
+        # Current hostname info
+        current_group = Adw.PreferencesGroup()
+        current_group.set_title("Current Hostname")
+        
+        current_row = Adw.ActionRow()
+        current_row.set_title(get_hostname())
+        current_row.set_subtitle("This is how your computer appears on the network")
+        current_group.add(current_row)
+        content.append(current_group)
+        
+        # New hostname entry
+        new_group = Adw.PreferencesGroup()
+        new_group.set_title("New Hostname")
+        
+        self.hostname_entry = Adw.EntryRow()
+        self.hostname_entry.set_title("Hostname")
+        self.hostname_entry.connect("changed", self._on_entry_changed)
+        new_group.add(self.hostname_entry)
+        
+        hint_label = Gtk.Label()
+        hint_label.set_markup("<small>Use letters, numbers, and hyphens. Must start with a letter.</small>")
+        hint_label.set_xalign(0)
+        hint_label.add_css_class("dim-label")
+        hint_label.set_margin_start(12)
+        new_group.add(hint_label)
+        
+        content.append(new_group)
+        
+        toolbar_view.set_content(content)
+    
+    def _on_entry_changed(self, entry):
+        """Validate hostname as user types."""
+        import re
+        text = entry.get_text().strip()
+        
+        # Valid if: starts with letter, only contains letters/numbers/hyphens, 1-63 chars
+        is_valid = bool(text) and len(text) <= 63 and re.match(r'^[a-zA-Z][a-zA-Z0-9-]*$', text)
+        self.save_btn.set_sensitive(is_valid)
+        
+        # Visual feedback
+        if text and not is_valid:
+            entry.add_css_class("error")
+        else:
+            entry.remove_css_class("error")
+    
+    def on_save(self, button):
+        """Change the hostname."""
+        new_hostname = self.hostname_entry.get_text().strip()
+        
+        self.save_btn.set_sensitive(False)
+        self.save_btn.set_label("Changing...")
+        
+        # Run hostnamectl via tux-helper
+        def do_change():
+            try:
+                result = subprocess.run(
+                    ['pkexec', 'tux-helper', '--set-hostname', new_hostname],
+                    capture_output=True,
+                    text=True
+                )
+                return result.returncode == 0, result.stderr
+            except Exception as e:
+                return False, str(e)
+        
+        def on_complete(success, error):
+            if success:
+                self.close()
+                if self.on_success_callback:
+                    self.on_success_callback(new_hostname)
+            else:
+                self.save_btn.set_label("Change")
+                self.save_btn.set_sensitive(True)
+                if self.window:
+                    self.window.show_toast(f"Failed to change hostname: {error}")
+        
+        # Run in thread
+        import threading
+        def run():
+            success, error = do_change()
+            GLib.idle_add(on_complete, success, error)
+        
+        threading.Thread(target=run, daemon=True).start()
 
 
 class QuickShareDialog(Adw.Dialog):
@@ -2911,8 +3366,8 @@ class QuickShareDialog(Adw.Dialog):
         folder_row.set_title("Folder")
         folder_row.set_subtitle("No folder selected")
         folder_row.set_activatable(True)
-        folder_row.add_prefix(Gtk.Image.new_from_icon_name("folder-symbolic"))
-        folder_row.add_suffix(Gtk.Image.new_from_icon_name("folder-open-symbolic"))
+        folder_row.add_prefix(Gtk.Image.new_from_icon_name("tux-folder-symbolic"))
+        folder_row.add_suffix(Gtk.Image.new_from_icon_name("tux-folder-open-symbolic"))
         folder_row.connect("activated", self.on_select_folder)
         self.folder_row = folder_row
         group.add(folder_row)
@@ -2979,7 +3434,7 @@ class QuickShareDialog(Adw.Dialog):
         """Open folder chooser."""
         dialog = Gtk.FileDialog()
         dialog.set_title("Select Folder to Share")
-        dialog.select_folder(self.window, None, self._on_folder_selected)
+        dialog.select_folder(None, None, self._on_folder_selected)
     
     def _on_folder_selected(self, dialog, result):
         """Handle folder selection."""
@@ -2995,7 +3450,7 @@ class QuickShareDialog(Adw.Dialog):
                     self.name_row.set_text(name)
                 
                 self._update_share_button()
-        except:
+        except Exception:
             pass
     
     def on_name_changed(self, row):
@@ -3084,14 +3539,14 @@ class ManageSharesPage(Adw.NavigationPage):
         
         # Add share button
         add_btn = Gtk.Button()
-        add_btn.set_icon_name("list-add-symbolic")
+        add_btn.set_icon_name("tux-list-add-symbolic")
         add_btn.set_tooltip_text("Add new share")
         add_btn.connect("clicked", self.on_add_share)
         header.pack_end(add_btn)
         
         # Refresh button
         refresh_btn = Gtk.Button()
-        refresh_btn.set_icon_name("view-refresh-symbolic")
+        refresh_btn.set_icon_name("tux-view-refresh-symbolic")
         refresh_btn.set_tooltip_text("Refresh share list")
         refresh_btn.connect("clicked", lambda b: self.refresh_shares())
         header.pack_end(refresh_btn)
@@ -3130,7 +3585,7 @@ class ManageSharesPage(Adw.NavigationPage):
             empty_box.set_valign(Gtk.Align.CENTER)
             empty_box.set_vexpand(True)
             
-            icon = Gtk.Image.new_from_icon_name("folder-remote-symbolic")
+            icon = Gtk.Image.new_from_icon_name("tux-folder-remote-symbolic")
             icon.set_pixel_size(64)
             icon.add_css_class("dim-label")
             empty_box.append(icon)
@@ -3164,7 +3619,7 @@ class ManageSharesPage(Adw.NavigationPage):
             row = Adw.ExpanderRow()
             row.set_title(share.name)
             row.set_subtitle(share.path)
-            row.set_icon_name("folder-remote-symbolic")
+            row.set_icon_name("tux-folder-remote-symbolic")
             
             # Properties display
             props_row = Adw.ActionRow()
@@ -3196,7 +3651,7 @@ class ManageSharesPage(Adw.NavigationPage):
             actions_row.set_title("Actions")
             
             edit_btn = Gtk.Button()
-            edit_btn.set_icon_name("document-edit-symbolic")
+            edit_btn.set_icon_name("tux-document-edit-symbolic")
             edit_btn.set_tooltip_text("Edit share")
             edit_btn.set_valign(Gtk.Align.CENTER)
             edit_btn.add_css_class("flat")
@@ -3204,7 +3659,7 @@ class ManageSharesPage(Adw.NavigationPage):
             actions_row.add_suffix(edit_btn)
             
             delete_btn = Gtk.Button()
-            delete_btn.set_icon_name("user-trash-symbolic")
+            delete_btn.set_icon_name("tux-user-trash-symbolic")
             delete_btn.set_tooltip_text("Delete share")
             delete_btn.set_valign(Gtk.Align.CENTER)
             delete_btn.add_css_class("flat")
@@ -3226,7 +3681,7 @@ class ManageSharesPage(Adw.NavigationPage):
         workgroup_row = Adw.ActionRow()
         workgroup_row.set_title("Workgroup")
         workgroup_row.set_subtitle(workgroup)
-        workgroup_row.add_prefix(Gtk.Image.new_from_icon_name("network-workgroup-symbolic"))
+        workgroup_row.add_prefix(Gtk.Image.new_from_icon_name("tux-network-workgroup-symbolic"))
         info_group.add(workgroup_row)
         
         # Service status
@@ -3338,7 +3793,7 @@ class EditShareDialog(Adw.Dialog):
         path_row = Adw.ActionRow()
         path_row.set_title("Path")
         path_row.set_subtitle(self.share.path)
-        path_row.add_prefix(Gtk.Image.new_from_icon_name("folder-symbolic"))
+        path_row.add_prefix(Gtk.Image.new_from_icon_name("tux-folder-symbolic"))
         group.add(path_row)
         
         # Comment
@@ -3776,7 +4231,7 @@ class FirewallPage(Adw.NavigationPage):
                     info = self.firewall.COMMON_SERVICES[port]
                     row.set_subtitle(info['desc'])
                 
-                row.add_prefix(Gtk.Image.new_from_icon_name("network-transmit-symbolic"))
+                row.add_prefix(Gtk.Image.new_from_icon_name("tux-network-transmit-symbolic"))
                 group.add(row)
 
 
@@ -3890,7 +4345,7 @@ class PlanExecutionDialog(Adw.Dialog):
                             current = int(current)
                             fraction = current / total if total > 0 else 0
                             GLib.idle_add(self._update_progress, fraction, parts)
-                        except:
+                        except Exception:
                             pass
                     elif 'COMPLETE' in line:
                         GLib.idle_add(self._on_complete, "Complete")

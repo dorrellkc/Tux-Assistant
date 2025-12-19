@@ -1,0 +1,28 @@
+post_install() {
+    # Install bundled icons to system icon directory
+    if [ -d /opt/tux-assistant/assets/icons ]; then
+        mkdir -p /usr/share/icons/hicolor/scalable/actions
+        mkdir -p /usr/share/icons/hicolor/scalable/status
+        mkdir -p /usr/share/icons/hicolor/scalable/apps
+        cp /opt/tux-assistant/assets/icons/*.svg /usr/share/icons/hicolor/scalable/actions/ 2>/dev/null || true
+        cp /opt/tux-assistant/assets/icons/*.svg /usr/share/icons/hicolor/scalable/status/ 2>/dev/null || true
+        cp /opt/tux-assistant/assets/icons/*.svg /usr/share/icons/hicolor/scalable/apps/ 2>/dev/null || true
+    fi
+    
+    gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor 2>/dev/null || true
+    update-desktop-database -q 2>/dev/null || true
+}
+
+post_upgrade() {
+    post_install
+}
+
+post_remove() {
+    # Remove bundled icons
+    rm -f /usr/share/icons/hicolor/scalable/actions/tux-*.svg 2>/dev/null || true
+    rm -f /usr/share/icons/hicolor/scalable/status/tux-*.svg 2>/dev/null || true
+    rm -f /usr/share/icons/hicolor/scalable/apps/tux-*.svg 2>/dev/null || true
+    
+    gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor 2>/dev/null || true
+    update-desktop-database -q 2>/dev/null || true
+}

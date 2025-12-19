@@ -3,7 +3,7 @@ Tux Assistant - Setup Tools Module
 
 Post-installation setup: codecs, drivers, repositories, and system configuration.
 
-Copyright (c) 2025 Christopher Dorrell. All Rights Reserved.
+Copyright (c) 2025 Christopher Dorrell. Licensed under GPL-3.0.
 """
 
 import gi
@@ -11,6 +11,9 @@ gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
 
 import sys
+import os
+import subprocess
+import threading
 from gi.repository import Gtk, Adw, GLib, Pango
 from typing import Callable, Optional
 from dataclasses import dataclass
@@ -74,6 +77,51 @@ import json as json_module
 _package_availability_cache: dict[str, bool] = {}
 _cache_initialized: bool = False
 
+# RPM Fusion packages - these require RPM Fusion repos on Fedora
+FEDORA_RPMFUSION_PACKAGES = {
+    'ffmpeg', 'ffmpeg-libs', 'libdvdcss',
+    'gstreamer1-plugins-bad-freeworld', 'gstreamer1-plugins-ugly',
+    'gstreamer1-libav', 'vlc', 'x264', 'x265',
+    'akmod-nvidia', 'xorg-x11-drv-nvidia',
+    'steam', 'lutris', 'handbrake', 'handbrake-gui',
+}
+
+
+def check_rpmfusion_enabled() -> dict:
+    """Check if RPM Fusion repositories are enabled on Fedora."""
+    result = {'free': False, 'nonfree': False}
+    try:
+        proc = subprocess.run(
+            ['dnf', 'repolist', '--enabled'],
+            capture_output=True, text=True, timeout=30
+        )
+        output = proc.stdout.lower()
+        result['free'] = 'rpmfusion-free' in output
+        result['nonfree'] = 'rpmfusion-nonfree' in output
+    except Exception:
+        pass
+    return result
+
+
+def is_rpmfusion_package(package: str) -> bool:
+    """Check if a package requires RPM Fusion."""
+    if package in FEDORA_RPMFUSION_PACKAGES:
+        return True
+    # Also check prefixes
+    rpmfusion_prefixes = ['ffmpeg', 'libdvdcss', 'gstreamer1-plugins-ugly', 
+                          'gstreamer1-plugins-bad-freeworld', 'gstreamer1-libav',
+                          'akmod-nvidia', 'xorg-x11-drv-nvidia']
+    return any(package.startswith(p) for p in rpmfusion_prefixes)
+
+
+def get_fedora_version() -> str:
+    """Get Fedora version number."""
+    try:
+        result = subprocess.run(['rpm', '-E', '%fedora'], capture_output=True, text=True)
+        return result.stdout.strip()
+    except Exception:
+        return '40'
+
 
 def check_package_available(package: str, family: str) -> bool:
     """Check if a single package is available in the system's repos."""
@@ -118,6 +166,49 @@ def check_package_available(package: str, family: str) -> bool:
     return available
 
 
+def check_package_installed(package: str, family: str) -> bool:
+    """Check if a single package is installed on the system."""
+    try:
+        if family == 'debian':
+            result = subprocess.run(
+                ['dpkg', '-s', package],
+                capture_output=True, text=True, timeout=10
+            )
+            return result.returncode == 0 and 'Status: install ok installed' in result.stdout
+        elif family == 'arch':
+            result = subprocess.run(
+                ['pacman', '-Q', package],
+                capture_output=True, text=True, timeout=10
+            )
+            return result.returncode == 0
+        elif family == 'fedora':
+            result = subprocess.run(
+                ['rpm', '-q', package],
+                capture_output=True, text=True, timeout=10
+            )
+            if result.returncode == 0:
+                return True
+            # Fallback: check if binary exists (handles package name variations)
+            if package in ['ffmpeg', 'ffmpeg-free', 'ffmpeg-libs']:
+                return os.path.exists('/usr/bin/ffmpeg')
+            return False
+        elif family == 'opensuse':
+            result = subprocess.run(
+                ['rpm', '-q', package],
+                capture_output=True, text=True, timeout=10
+            )
+            if result.returncode == 0:
+                return True
+            # Fallback for common packages
+            if package in ['ffmpeg']:
+                return os.path.exists('/usr/bin/ffmpeg')
+            return False
+        else:
+            return False
+    except Exception:
+        return False
+
+
 def filter_available_packages(packages: list[str], family: str) -> list[str]:
     """Filter a package list to only include packages that are actually available."""
     return [pkg for pkg in packages if check_package_available(pkg, family)]
@@ -160,13 +251,16 @@ MULTIMEDIA_CODECS = SetupTask(
             "libdvd-pkg", "libdvdread8", "libdvdnav4"
         ],
         DistroFamily.FEDORA: [
-            # Full codec support - requires RPM Fusion repos
-            "ffmpeg", "ffmpeg-libs",
+            # Fedora native packages (no RPM Fusion needed)
+            "ffmpeg-free",
             "gstreamer1-plugins-base", "gstreamer1-plugins-good",
             "gstreamer1-plugins-good-extras",
-            "gstreamer1-plugins-bad-free", "gstreamer1-plugins-bad-freeworld",
-            "gstreamer1-plugins-ugly",
+            "gstreamer1-plugins-bad-free",
             "gstreamer1-plugin-openh264", "mozilla-openh264",
+            # RPM Fusion packages (available after repos enabled)
+            "ffmpeg", "ffmpeg-libs",
+            "gstreamer1-plugins-bad-freeworld",
+            "gstreamer1-plugins-ugly",
             "gstreamer1-libav",
             "libdvdcss"
         ],
@@ -581,7 +675,7 @@ ESSENTIAL_TOOLS = SetupTask(
     category=SetupCategory.DISTRO,
     packages={
         DistroFamily.ARCH: [
-            "git", "curl", "wget", "htop", "btop", "neofetch", "fastfetch",
+            "git", "curl", "wget", "htop", "btop", "fastfetch",
             "vim", "nano", "rsync", "tree", "bat", "fd", "ripgrep"
         ],
         DistroFamily.DEBIAN: [
@@ -590,7 +684,7 @@ ESSENTIAL_TOOLS = SetupTask(
             "vim", "nano", "rsync", "tree", "bat", "fd-find", "ripgrep"
         ],
         DistroFamily.FEDORA: [
-            "git", "curl", "wget", "htop", "btop", "neofetch", "fastfetch",
+            "git", "curl", "wget", "htop", "btop", "fastfetch",
             "vim-enhanced", "nano", "rsync", "tree", "bat", "fd-find", "ripgrep"
         ],
         DistroFamily.OPENSUSE: [
@@ -884,9 +978,13 @@ class TaskDetailPage(Adw.NavigationPage):
         self.window = window  # Reference to main window for toasts
         self.available_packages = []  # Will be populated after checking
         self.unavailable_packages = []
+        self.installed_packages = []  # Track installed packages
         self.pkg_group = None  # Reference for updating
+        self.spinner_row = None  # Reference to spinner row for removal
         self.alt_sources_group = None  # Group for alternative sources
         self.content_box = None  # Reference to content box for adding alt sources
+        self.rpmfusion_group = None  # RPM Fusion packages group (Fedora)
+        self.rpmfusion_enable_btn = None  # Enable RPM Fusion button
         
         self._build_ui()
         
@@ -904,75 +1002,137 @@ class TaskDetailPage(Adw.NavigationPage):
             
             available = []
             unavailable = []
+            installed = []
             for i, pkg in enumerate(wishlist, 1):
                 # Update progress on UI thread
                 GLib.idle_add(self._update_check_progress, i, total, pkg)
                 
-                if check_package_available(pkg, family_str):
+                if check_package_installed(pkg, family_str):
+                    # Package is already installed - always show as available AND installed
+                    available.append(pkg)
+                    installed.append(pkg)
+                elif check_package_available(pkg, family_str):
+                    # Package not installed but available in repos
                     available.append(pkg)
                 else:
+                    # Package neither installed nor available
                     unavailable.append(pkg)
             
             # Update UI on main thread
-            GLib.idle_add(self._update_packages_ui, available, unavailable)
+            GLib.idle_add(self._update_packages_ui, available, unavailable, installed)
         
         thread = threading.Thread(target=check_packages, daemon=True)
         thread.start()
     
     def _update_check_progress(self, current: int, total: int, pkg_name: str):
         """Update the spinner row with progress info."""
-        if self.pkg_group:
-            # Find the spinner row and update its title
-            child = self.pkg_group.get_first_child()
-            while child:
-                if isinstance(child, Adw.ActionRow) and child.get_title().startswith("Checking"):
-                    child.set_title(f"Checking package {current}/{total}: {pkg_name}")
-                    break
-                child = child.get_next_sibling()
+        if self.spinner_row:
+            self.spinner_row.set_title(f"Checking package {current}/{total}: {pkg_name}")
         return False
     
-    def _update_packages_ui(self, available: list, unavailable: list):
+    def _update_packages_ui(self, available: list, unavailable: list, installed: list = None):
         """Update the packages UI after availability check."""
         self.available_packages = available
         self.unavailable_packages = unavailable
+        if installed is None:
+            installed = []
+        self.installed_packages = installed
         family_str = self.distro_family.value if hasattr(self.distro_family, 'value') else str(self.distro_family)
         
+        # Clean up existing RPM Fusion group if present (for refresh)
+        if self.rpmfusion_group and self.content_box:
+            self.content_box.remove(self.rpmfusion_group)
+            self.rpmfusion_group = None
+        
         if self.pkg_group:
-            # Clear all existing ActionRows (including spinner row)
-            rows_to_remove = []
+            # Remove spinner row explicitly
+            if self.spinner_row:
+                self.pkg_group.remove(self.spinner_row)
+                self.spinner_row = None
+            
+            # Remove existing package rows (for refresh after enabling repos)
             child = self.pkg_group.get_first_child()
             while child:
+                next_child = child.get_next_sibling()
                 if isinstance(child, Adw.ActionRow):
-                    rows_to_remove.append(child)
-                child = child.get_next_sibling()
+                    self.pkg_group.remove(child)
+                child = next_child
             
-            for row in rows_to_remove:
-                self.pkg_group.remove(row)
+            # Calculate totals for summary (based on AVAILABLE packages, not wishlist)
+            available_count = len(available)
+            installed_count = len(installed)
             
-            # Update title
+            # Update title with installed count
             if available:
-                self.pkg_group.set_title(f"Packages to Install ({len(available)})")
+                self.pkg_group.set_title(f"Packages ({installed_count}/{available_count} installed)")
                 self.pkg_group.set_description("These packages are available in your enabled repositories")
             else:
                 self.pkg_group.set_title("No Packages Available")
                 self.pkg_group.set_description("None of the desired packages are available in your repositories")
             
-            # Add available packages
+            # Add status summary row at the top
+            status_row = Adw.ActionRow()
+            if installed_count == available_count and available_count > 0:
+                status_row.set_title(f"✓ All {available_count} packages installed")
+                status_row.add_css_class("success")
+                check_icon = Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic")
+                check_icon.add_css_class("success")
+                status_row.add_prefix(check_icon)
+            elif installed_count > 0:
+                remaining = available_count - installed_count
+                status_row.set_title(f"{installed_count} of {available_count} packages installed")
+                status_row.set_subtitle(f"{remaining} remaining to install")
+                partial_icon = Gtk.Image.new_from_icon_name("tux-emblem-default-symbolic")
+                partial_icon.add_css_class("warning")
+                status_row.add_prefix(partial_icon)
+            else:
+                status_row.set_title(f"0 of {available_count} packages installed")
+                status_row.set_subtitle("Click below to add to install queue")
+                empty_icon = Gtk.Image.new_from_icon_name("tux-package-x-generic-symbolic")
+                status_row.add_prefix(empty_icon)
+            self.pkg_group.add(status_row)
+            
+            # Add available packages with install status
             for pkg in available:
                 pkg_row = Adw.ActionRow()
                 pkg_row.set_title(pkg)
-                pkg_row.add_prefix(Gtk.Image.new_from_icon_name("package-x-generic-symbolic"))
-                check_icon = Gtk.Image.new_from_icon_name("emblem-ok-symbolic")
-                check_icon.add_css_class("success")
-                pkg_row.add_suffix(check_icon)
+                pkg_row.add_prefix(Gtk.Image.new_from_icon_name("tux-package-x-generic-symbolic"))
+                
+                if pkg in installed:
+                    # Installed - green checkmark
+                    check_icon = Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic")
+                    check_icon.add_css_class("success")
+                    pkg_row.add_suffix(check_icon)
+                else:
+                    # Available but not installed - show install button
+                    install_btn = Gtk.Button()
+                    install_btn.set_icon_name("tux-list-add-symbolic")
+                    install_btn.set_valign(Gtk.Align.CENTER)
+                    install_btn.add_css_class("flat")
+                    install_btn.set_tooltip_text(f"Install {pkg}")
+                    install_btn.connect("clicked", self._on_install_single_package, pkg)
+                    pkg_row.add_suffix(install_btn)
+                    pkg_row.set_subtitle("Not installed")
+                    
                 self.pkg_group.add(pkg_row)
             
             # Show unavailable packages (greyed out) - but only ones without alternatives
             # We'll show ones with alternatives in a separate section
             pkgs_with_alternatives = []
             pkgs_without_alternatives = []
+            rpmfusion_packages = []  # Fedora packages that need RPM Fusion
+            
+            # Check if we're on Fedora and if RPM Fusion is enabled
+            is_fedora = family_str == 'fedora'
+            rpmfusion_status = check_rpmfusion_enabled() if is_fedora else {'free': True, 'nonfree': True}
+            rpmfusion_enabled = rpmfusion_status['free'] and rpmfusion_status['nonfree']
             
             for pkg in unavailable:
+                # On Fedora, check if this is an RPM Fusion package
+                if is_fedora and is_rpmfusion_package(pkg) and not rpmfusion_enabled:
+                    rpmfusion_packages.append(pkg)
+                    continue
+                    
                 # Use get_preferred_source to respect user preferences
                 alt_source = get_preferred_source(pkg, family_str)
                 if alt_source:
@@ -982,14 +1142,48 @@ class TaskDetailPage(Adw.NavigationPage):
                 else:
                     pkgs_without_alternatives.append(pkg)
             
+            # Show RPM Fusion packages section if on Fedora and repos not enabled
+            if rpmfusion_packages and is_fedora and not rpmfusion_enabled:
+                rpmfusion_group = Adw.PreferencesGroup()
+                rpmfusion_group.set_title("🔓 RPM Fusion Packages")
+                rpmfusion_group.set_description("These packages require RPM Fusion repositories")
+                self.content_box.append(rpmfusion_group)
+                
+                # Add enable button row
+                enable_row = Adw.ActionRow()
+                enable_row.set_title("Enable RPM Fusion")
+                enable_row.set_subtitle("Adds Free and Nonfree repos for additional packages")
+                enable_row.add_prefix(Gtk.Image.new_from_icon_name("tux-list-add-symbolic"))
+                
+                enable_btn = Gtk.Button(label="Enable Repos")
+                enable_btn.add_css_class("suggested-action")
+                enable_btn.set_valign(Gtk.Align.CENTER)
+                enable_btn.connect("clicked", self._on_enable_rpmfusion)
+                enable_row.add_suffix(enable_btn)
+                self.rpmfusion_enable_btn = enable_btn  # Store reference
+                rpmfusion_group.add(enable_row)
+                
+                # Show the packages that will become available
+                for pkg in rpmfusion_packages:
+                    pkg_row = Adw.ActionRow()
+                    pkg_row.set_title(pkg)
+                    pkg_row.set_subtitle("Available after enabling RPM Fusion")
+                    pkg_row.add_css_class("dim-label")
+                    pkg_row.add_prefix(Gtk.Image.new_from_icon_name("tux-package-x-generic-symbolic"))
+                    lock_icon = Gtk.Image.new_from_icon_name("tux-changes-prevent-symbolic")
+                    pkg_row.add_suffix(lock_icon)
+                    rpmfusion_group.add(pkg_row)
+                
+                self.rpmfusion_group = rpmfusion_group  # Store reference for refresh
+            
             # Show packages without any alternative
             for pkg in pkgs_without_alternatives:
                 pkg_row = Adw.ActionRow()
                 pkg_row.set_title(pkg)
                 pkg_row.set_subtitle("Not available - no known alternative source")
                 pkg_row.add_css_class("dim-label")
-                pkg_row.add_prefix(Gtk.Image.new_from_icon_name("package-x-generic-symbolic"))
-                x_icon = Gtk.Image.new_from_icon_name("window-close-symbolic")
+                pkg_row.add_prefix(Gtk.Image.new_from_icon_name("tux-package-x-generic-symbolic"))
+                x_icon = Gtk.Image.new_from_icon_name("tux-window-close-symbolic")
                 x_icon.add_css_class("error")
                 pkg_row.add_suffix(x_icon)
                 self.pkg_group.add(pkg_row)
@@ -999,6 +1193,111 @@ class TaskDetailPage(Adw.NavigationPage):
                 self._create_alternative_sources_section(pkgs_with_alternatives)
         
         return False  # Don't repeat
+    
+    def _on_install_single_package(self, button, package: str):
+        """Handle click on single package install button."""
+        # Disable button and show installing state
+        button.set_sensitive(False)
+        button.set_icon_name("tux-content-loading-symbolic")
+        
+        family_str = self.distro_family.value if hasattr(self.distro_family, 'value') else str(self.distro_family)
+        
+        def do_install():
+            success = False
+            try:
+                # Use tux-helper for installation (--install flag)
+                result = subprocess.run(
+                    ['pkexec', '/usr/bin/tux-helper', '--install', package],
+                    capture_output=True, text=True, timeout=120
+                )
+                success = result.returncode == 0
+            except Exception as e:
+                success = False
+            
+            GLib.idle_add(self._on_single_package_installed, button, package, success)
+        
+        threading.Thread(target=do_install, daemon=True).start()
+    
+    def _on_single_package_installed(self, button, package: str, success: bool):
+        """Handle completion of single package install."""
+        if success:
+            # Change button to checkmark
+            button.set_icon_name("tux-emblem-ok-symbolic")
+            button.add_css_class("success")
+            button.set_tooltip_text(f"{package} installed")
+            
+            # Find the row and update subtitle
+            child = self.pkg_group.get_first_child()
+            while child:
+                if isinstance(child, Adw.ActionRow) and child.get_title() == package:
+                    child.set_subtitle("")
+                    break
+                child = child.get_next_sibling()
+            
+            # Clear package cache and refresh counts
+            clear_package_cache()
+            self._check_packages_async()
+            
+            if self.window:
+                self.window.show_toast(f"Installed {package}")
+        else:
+            # Re-enable button for retry
+            button.set_sensitive(True)
+            button.set_icon_name("tux-list-add-symbolic")
+            button.set_tooltip_text(f"Retry install {package}")
+            
+            if self.window:
+                self.window.show_toast(f"Failed to install {package}")
+        
+        return False
+    
+    def _on_enable_rpmfusion(self, button):
+        """Handle click on Enable RPM Fusion button."""
+        button.set_sensitive(False)
+        button.set_label("Enabling...")
+        
+        def do_enable():
+            success = False
+            try:
+                version = get_fedora_version()
+                # Enable both Free and Nonfree repos
+                repos = [
+                    f"https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-{version}.noarch.rpm",
+                    f"https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-{version}.noarch.rpm"
+                ]
+                result = subprocess.run(
+                    ['pkexec', 'dnf', 'install', '-y'] + repos,
+                    capture_output=True, text=True, timeout=120
+                )
+                success = result.returncode == 0 or 'already installed' in result.stdout.lower()
+            except Exception as e:
+                success = False
+            
+            GLib.idle_add(self._on_rpmfusion_enabled, button, success)
+        
+        threading.Thread(target=do_enable, daemon=True).start()
+    
+    def _on_rpmfusion_enabled(self, button, success: bool):
+        """Handle completion of RPM Fusion enable."""
+        if success:
+            button.set_label("✓ Enabled")
+            button.add_css_class("success")
+            
+            if self.window:
+                self.window.show_toast("RPM Fusion enabled! Refreshing packages...")
+            
+            # Clear cache and refresh the entire page
+            clear_package_cache()
+            self._check_packages_async()
+        else:
+            button.set_sensitive(True)
+            button.set_label("Retry")
+            button.add_css_class("error")
+            
+            if self.window:
+                self.window.show_toast("Failed to enable RPM Fusion")
+        
+        return False
     
     def _create_alternative_sources_section(self, pkgs_with_alternatives: list):
         """Create UI section for packages available from alternative sources.
@@ -1033,7 +1332,7 @@ class TaskDetailPage(Adw.NavigationPage):
         pref_row = Adw.ActionRow()
         pref_row.set_title("Source Preference")
         pref_row.set_subtitle("Choose between sandboxed Flatpak or native packages")
-        pref_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-system-symbolic"))
+        pref_row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-system-symbolic"))
         
         # Flatpak preference button
         flatpak_btn = Gtk.ToggleButton(label="Flatpak")
@@ -1063,7 +1362,7 @@ class TaskDetailPage(Adw.NavigationPage):
             install_all_row = Adw.ActionRow()
             install_all_row.set_title("Install All from Alternative Sources")
             install_all_row.set_subtitle(f"Enable required repos and install all {len(pkgs_with_alternatives)} packages")
-            install_all_row.add_prefix(Gtk.Image.new_from_icon_name("emblem-synchronizing-symbolic"))
+            install_all_row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-synchronizing-symbolic"))
             
             self.install_all_btn = Gtk.Button(label="Install All")
             self.install_all_btn.set_valign(Gtk.Align.CENTER)
@@ -1098,7 +1397,7 @@ class TaskDetailPage(Adw.NavigationPage):
             # Verify source in background (non-blocking - just show indicator if cached)
             verified, _ = verify_source_exists(source, family_str)
             if not verified:
-                warn_icon = Gtk.Image.new_from_icon_name("dialog-warning-symbolic")
+                warn_icon = Gtk.Image.new_from_icon_name("tux-dialog-warning-symbolic")
                 warn_icon.set_tooltip_text("Source could not be verified - may not exist")
                 warn_icon.add_css_class("warning")
                 prefix_box.append(warn_icon)
@@ -1213,15 +1512,15 @@ class TaskDetailPage(Adw.NavigationPage):
     def _get_source_icon(self, source_type: SourceType) -> str:
         """Get icon name for a source type."""
         icons = {
-            SourceType.COPR: "application-x-addon-symbolic",
-            SourceType.PPA: "application-x-addon-symbolic", 
-            SourceType.AUR: "system-software-install-symbolic",
-            SourceType.OBS: "application-x-addon-symbolic",
-            SourceType.FLATPAK: "system-software-install-symbolic",
-            SourceType.RPMFUSION: "application-x-addon-symbolic",
-            SourceType.PACKMAN: "application-x-addon-symbolic",
+            SourceType.COPR: "tux-application-x-addon-symbolic",
+            SourceType.PPA: "tux-application-x-addon-symbolic", 
+            SourceType.AUR: "tux-system-software-install-symbolic",
+            SourceType.OBS: "tux-application-x-addon-symbolic",
+            SourceType.FLATPAK: "tux-system-software-install-symbolic",
+            SourceType.RPMFUSION: "tux-application-x-addon-symbolic",
+            SourceType.PACKMAN: "tux-application-x-addon-symbolic",
         }
-        return icons.get(source_type, "package-x-generic-symbolic")
+        return icons.get(source_type, "tux-package-x-generic-symbolic")
     
     def _on_enable_source_clicked(self, button, package: str, source: PackageSource):
         """Handle Enable & Install button click."""
@@ -1302,7 +1601,7 @@ class TaskDetailPage(Adw.NavigationPage):
         desc_row = Adw.ActionRow()
         desc_row.set_title("Category")
         desc_row.set_subtitle(self.task.category.value.title())
-        desc_row.add_prefix(Gtk.Image.new_from_icon_name("folder-symbolic"))
+        desc_row.add_prefix(Gtk.Image.new_from_icon_name("tux-folder-symbolic"))
         info_group.add(desc_row)
         
         # Reboot indicator
@@ -1310,7 +1609,7 @@ class TaskDetailPage(Adw.NavigationPage):
             reboot_row = Adw.ActionRow()
             reboot_row.set_title("Requires Reboot")
             reboot_row.set_subtitle("System restart needed after installation")
-            reboot_row.add_prefix(Gtk.Image.new_from_icon_name("system-reboot-symbolic"))
+            reboot_row.add_prefix(Gtk.Image.new_from_icon_name("tux-system-reboot-symbolic"))
             info_group.add(reboot_row)
         
         # Packages section - show loading initially
@@ -1321,13 +1620,13 @@ class TaskDetailPage(Adw.NavigationPage):
             self.pkg_group.set_description("Scanning your enabled repositories")
             self.content_box.append(self.pkg_group)
             
-            # Show spinner while checking
-            spinner_row = Adw.ActionRow()
-            spinner_row.set_title("Checking packages...")
+            # Show spinner while checking (stored for later removal)
+            self.spinner_row = Adw.ActionRow()
+            self.spinner_row.set_title("Checking packages...")
             spinner = Gtk.Spinner()
             spinner.start()
-            spinner_row.add_prefix(spinner)
-            self.pkg_group.add(spinner_row)
+            self.spinner_row.add_prefix(spinner)
+            self.pkg_group.add(self.spinner_row)
         
         # Commands section (if any)
         commands = self.task.get_commands_for_distro(self.distro_family)
@@ -1345,7 +1644,7 @@ class TaskDetailPage(Adw.NavigationPage):
                 
                 cmd_row = Adw.ActionRow()
                 cmd_row.set_title(cmd_str)
-                cmd_row.add_prefix(Gtk.Image.new_from_icon_name("utilities-terminal-symbolic"))
+                cmd_row.add_prefix(Gtk.Image.new_from_icon_name("tux-utilities-terminal-symbolic"))
                 cmd_group.add(cmd_row)
         
         # Action buttons
@@ -1523,6 +1822,8 @@ class AlternativeSourceInstallDialog(Adw.Dialog):
                 self._install_rpmfusion(pkg_name)
             elif self.source.source_type == SourceType.PACKMAN:
                 self._install_packman(pkg_name)
+            elif self.source.source_type == SourceType.OBS:
+                self._install_obs(pkg_name)
             else:
                 GLib.idle_add(self._append_output, f"Unknown source type: {self.source.source_type}")
                 GLib.idle_add(self._installation_complete, False)
@@ -1632,13 +1933,13 @@ class AlternativeSourceInstallDialog(Adw.Dialog):
         
         try:
             if family_str == 'arch':
-                cmd = ['sudo', 'pacman', '-S', '--noconfirm', 'flatpak']
+                cmd = ['pkexec', 'pacman', '-S', '--noconfirm', 'flatpak']
             elif family_str == 'debian':
-                cmd = ['sudo', 'apt', 'install', '-y', 'flatpak']
+                cmd = ['pkexec', 'apt', 'install', '-y', 'flatpak']
             elif family_str == 'fedora':
-                cmd = ['sudo', 'dnf', 'install', '-y', 'flatpak']
+                cmd = ['pkexec', 'dnf', 'install', '-y', 'flatpak']
             elif family_str == 'opensuse':
-                cmd = ['sudo', 'zypper', 'install', '-y', 'flatpak']
+                cmd = ['pkexec', 'zypper', 'install', '-y', 'flatpak']
             else:
                 return False
             
@@ -1709,7 +2010,7 @@ class AlternativeSourceInstallDialog(Adw.Dialog):
             GLib.idle_add(self._append_output, "Installing prerequisites (git, base-devel)...")
             
             prereq_proc = subprocess.run(
-                ['sudo', 'pacman', '-S', '--needed', '--noconfirm', 'git', 'base-devel'],
+                ['pkexec', 'pacman', '-S', '--needed', '--noconfirm', 'git', 'base-devel'],
                 capture_output=True, text=True, timeout=120
             )
             
@@ -1792,6 +2093,14 @@ class AlternativeSourceInstallDialog(Adw.Dialog):
         # Use tux-helper for privileged operations
         self._run_with_helper('packman', '', pkg_name)
     
+    def _install_obs(self, pkg_name: str):
+        """Enable OBS repository and install package."""
+        GLib.idle_add(self._append_output, f"Enabling OBS repository: {self.source.repo_id}")
+        GLib.idle_add(self.progress_bar.set_text, "Enabling OBS repository...")
+        
+        # Use tux-helper for privileged operations
+        self._run_with_helper('obs', self.source.repo_id, pkg_name)
+    
     def _run_with_helper(self, source_type: str, repo_id: str, pkg_name: str):
         """Run installation using tux-helper with pkexec."""
         import shutil
@@ -1814,6 +2123,12 @@ class AlternativeSourceInstallDialog(Adw.Dialog):
             GLib.idle_add(self._installation_complete, False)
             return
         
+        # Ensure helper is executable
+        try:
+            os.chmod(helper_path, 0o755)
+        except Exception:
+            pass
+        
         # Build command
         cmd_args = ['--enable-source', source_type]
         if repo_id:
@@ -1826,7 +2141,7 @@ class AlternativeSourceInstallDialog(Adw.Dialog):
         if use_pkexec:
             cmd = ['pkexec', helper_path] + cmd_args
         else:
-            cmd = ['sudo', helper_path] + cmd_args
+            cmd = ['pkexec', helper_path] + cmd_args
         
         GLib.idle_add(self._append_output, f"Running: {' '.join(cmd)}")
         GLib.idle_add(self.progress_bar.set_text, "Installing (authentication required)...")
@@ -1983,7 +2298,7 @@ class BatchAlternativeInstallDialog(Adw.Dialog):
             row.set_subtitle(get_source_type_description(source.source_type))
             
             # Status icon (starts as pending)
-            status_icon = Gtk.Image.new_from_icon_name("content-loading-symbolic")
+            status_icon = Gtk.Image.new_from_icon_name("tux-content-loading-symbolic")
             status_icon.add_css_class("dim-label")
             row.add_suffix(status_icon)
             
@@ -2020,15 +2335,15 @@ class BatchAlternativeInstallDialog(Adw.Dialog):
             icon.remove_css_class("dim-label")
             
             if status == 'installing':
-                icon.set_from_icon_name("emblem-synchronizing-symbolic")
+                icon.set_from_icon_name("tux-emblem-synchronizing-symbolic")
                 icon.add_css_class("accent")
             elif status == 'success':
                 icon.remove_css_class("accent")
-                icon.set_from_icon_name("emblem-ok-symbolic")
+                icon.set_from_icon_name("tux-emblem-ok-symbolic")
                 icon.add_css_class("success")
             elif status == 'failed':
                 icon.remove_css_class("accent")
-                icon.set_from_icon_name("dialog-error-symbolic")
+                icon.set_from_icon_name("tux-dialog-error-symbolic")
                 icon.add_css_class("error")
     
     def _start_installation(self):
@@ -2108,6 +2423,8 @@ class BatchAlternativeInstallDialog(Adw.Dialog):
                 return self._do_rpmfusion_install(pkg_name)
             elif source.source_type == SourceType.PACKMAN:
                 return self._do_packman_install(pkg_name)
+            elif source.source_type == SourceType.OBS:
+                return self._do_obs_install(source.repo_id, pkg_name)
             else:
                 GLib.idle_add(self._append_output, f"Unknown source type: {source.source_type}")
                 return False
@@ -2173,12 +2490,12 @@ class BatchAlternativeInstallDialog(Adw.Dialog):
     def _do_copr_install(self, repo_id: str, pkg_name: str) -> bool:
         """Enable COPR and install package."""
         # Enable COPR
-        subprocess.run(['sudo', 'dnf', 'copr', 'enable', '-y', repo_id],
+        subprocess.run(['pkexec', 'dnf', 'copr', 'enable', '-y', repo_id],
                       capture_output=True, timeout=60)
         
         # Install package
         result = subprocess.run(
-            ['sudo', 'dnf', 'install', '-y', pkg_name],
+            ['pkexec', 'dnf', 'install', '-y', pkg_name],
             capture_output=True, text=True, timeout=300
         )
         
@@ -2189,13 +2506,13 @@ class BatchAlternativeInstallDialog(Adw.Dialog):
         ppa = repo_id if repo_id.startswith('ppa:') else f'ppa:{repo_id}'
         
         # Add PPA
-        subprocess.run(['sudo', 'add-apt-repository', '-y', ppa],
+        subprocess.run(['pkexec', 'add-apt-repository', '-y', ppa],
                       capture_output=True, timeout=60)
-        subprocess.run(['sudo', 'apt', 'update'], capture_output=True, timeout=120)
+        subprocess.run(['pkexec', 'apt', 'update'], capture_output=True, timeout=120)
         
         # Install package
         result = subprocess.run(
-            ['sudo', 'apt', 'install', '-y', pkg_name],
+            ['pkexec', 'apt', 'install', '-y', pkg_name],
             capture_output=True, text=True, timeout=300
         )
         
@@ -2203,20 +2520,86 @@ class BatchAlternativeInstallDialog(Adw.Dialog):
     
     def _do_rpmfusion_install(self, pkg_name: str) -> bool:
         """Enable RPM Fusion and install package."""
-        # RPM Fusion should already be enabled by tux-helper, just install
+        # First, ensure RPM Fusion Free is enabled
+        check_free = subprocess.run(
+            ['dnf', 'repolist', '--enabled'],
+            capture_output=True, text=True
+        )
+        
+        if 'rpmfusion-free' not in check_free.stdout.lower():
+            GLib.idle_add(self._append_output, "=== Enabling RPM Fusion Free ===")
+            enable_free = subprocess.run(
+                ['pkexec', 'dnf', 'install', '-y',
+                 f'https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-{self._get_fedora_version()}.noarch.rpm'],
+                capture_output=True, text=True, timeout=120
+            )
+            if enable_free.returncode != 0:
+                GLib.idle_add(self._append_output, f"Failed to enable RPM Fusion Free: {enable_free.stderr}")
+                return False
+        
+        # Also enable RPM Fusion Nonfree (needed for some codecs like libdvdcss)
+        if 'rpmfusion-nonfree' not in check_free.stdout.lower():
+            GLib.idle_add(self._append_output, "=== Enabling RPM Fusion Nonfree ===")
+            enable_nonfree = subprocess.run(
+                ['pkexec', 'dnf', 'install', '-y',
+                 f'https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-{self._get_fedora_version()}.noarch.rpm'],
+                capture_output=True, text=True, timeout=120
+            )
+            if enable_nonfree.returncode != 0:
+                GLib.idle_add(self._append_output, f"Warning: Could not enable RPM Fusion Nonfree: {enable_nonfree.stderr}")
+                # Continue anyway - some packages may still work
+        
+        # Now install the package
+        GLib.idle_add(self._append_output, f"--- Installing {pkg_name} ---")
         result = subprocess.run(
-            ['sudo', 'dnf', 'install', '-y', pkg_name],
+            ['pkexec', 'dnf', 'install', '-y', pkg_name],
+            capture_output=True, text=True, timeout=300
+        )
+        
+        if result.returncode != 0:
+            GLib.idle_add(self._append_output, f"Install failed: {result.stderr}")
+        
+        return result.returncode == 0
+    
+    def _get_fedora_version(self) -> str:
+        """Get Fedora version number."""
+        try:
+            result = subprocess.run(['rpm', '-E', '%fedora'], capture_output=True, text=True)
+            return result.stdout.strip()
+        except Exception:
+            return "41"  # Fallback to current stable
+    
+    def _do_packman_install(self, pkg_name: str) -> bool:
+        """Install from Packman."""
+        result = subprocess.run(
+            ['pkexec', 'zypper', 'install', '-y', pkg_name],
             capture_output=True, text=True, timeout=300
         )
         
         return result.returncode == 0
     
-    def _do_packman_install(self, pkg_name: str) -> bool:
-        """Install from Packman."""
-        result = subprocess.run(
-            ['sudo', 'zypper', 'install', '-y', pkg_name],
-            capture_output=True, text=True, timeout=300
-        )
+    def _do_obs_install(self, repo_id: str, pkg_name: str) -> bool:
+        """Install from OBS repository."""
+        # Use tux-helper to enable repo and install
+        helper_paths = [
+            '/usr/bin/tux-helper',
+            '/usr/local/bin/tux-helper',
+            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'tux-helper'),
+        ]
+        
+        helper_path = None
+        for path in helper_paths:
+            if os.path.exists(path):
+                helper_path = path
+                break
+        
+        if not helper_path:
+            GLib.idle_add(self._append_output, "Error: tux-helper not found!")
+            return False
+        
+        cmd = ['pkexec', helper_path, '--enable-source', 'obs', '--repo-id', repo_id, '--install-package', pkg_name]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
         
         return result.returncode == 0
     
@@ -2258,7 +2641,7 @@ class BatchAlternativeInstallDialog(Adw.Dialog):
     id="setup_tools",
     name="Setup Tools",
     description="Complete system setup, codecs, drivers, and apps",
-    icon="system-run-symbolic",
+    icon="tux-system-run-symbolic",
     category=ModuleCategory.SETUP,
     order=2  # First in Setup category
 )
@@ -2353,19 +2736,19 @@ class SetupToolsPage(Adw.NavigationPage):
                 
                 # Vendor icon
                 if gpu.vendor == 'nvidia':
-                    gpu_row.add_prefix(Gtk.Image.new_from_icon_name("video-display-symbolic"))
+                    gpu_row.add_prefix(Gtk.Image.new_from_icon_name("tux-video-display-symbolic"))
                     vendor_badge = Gtk.Label(label="NVIDIA")
                     vendor_badge.add_css_class("success")
                 elif gpu.vendor == 'amd':
-                    gpu_row.add_prefix(Gtk.Image.new_from_icon_name("video-display-symbolic"))
+                    gpu_row.add_prefix(Gtk.Image.new_from_icon_name("tux-video-display-symbolic"))
                     vendor_badge = Gtk.Label(label="AMD")
                     vendor_badge.add_css_class("accent")
                 elif gpu.vendor == 'intel':
-                    gpu_row.add_prefix(Gtk.Image.new_from_icon_name("video-display-symbolic"))
+                    gpu_row.add_prefix(Gtk.Image.new_from_icon_name("tux-video-display-symbolic"))
                     vendor_badge = Gtk.Label(label="Intel")
                     vendor_badge.add_css_class("dim-label")
                 else:
-                    gpu_row.add_prefix(Gtk.Image.new_from_icon_name("video-display-symbolic"))
+                    gpu_row.add_prefix(Gtk.Image.new_from_icon_name("tux-video-display-symbolic"))
                     vendor_badge = Gtk.Label(label="Unknown")
                 
                 vendor_badge.set_valign(Gtk.Align.CENTER)
@@ -2391,6 +2774,11 @@ class SetupToolsPage(Adw.NavigationPage):
                 cat_tasks
             )
             content_box.append(group)
+        
+        # Repository Manager section
+        repo_group = self._build_repo_manager_section()
+        if repo_group:
+            content_box.append(repo_group)
         
         # Bottom action bar
         action_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
@@ -2444,12 +2832,12 @@ class SetupToolsPage(Adw.NavigationPage):
             row.connect("activated", self.on_task_row_clicked, task)
             
             # Arrow to indicate clickable for details
-            arrow = Gtk.Image.new_from_icon_name("go-next-symbolic")
+            arrow = Gtk.Image.new_from_icon_name("tux-go-next-symbolic")
             row.add_suffix(arrow)
             
             # Reboot indicator if needed
             if task.requires_reboot:
-                reboot_icon = Gtk.Image.new_from_icon_name("system-reboot-symbolic")
+                reboot_icon = Gtk.Image.new_from_icon_name("tux-system-reboot-symbolic")
                 reboot_icon.set_tooltip_text("Requires reboot")
                 row.add_suffix(reboot_icon)
             
@@ -2513,6 +2901,596 @@ class SetupToolsPage(Adw.NavigationPage):
         """Clear all selections."""
         for task_id, checkbox in self.task_checkboxes.items():
             checkbox.set_active(False)
+    
+    def _build_repo_manager_section(self) -> Gtk.Box:
+        """Build the Repository Manager section based on distro."""
+        container = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        
+        # === Currently Enabled Repositories ===
+        enabled_group = Adw.PreferencesGroup()
+        enabled_group.set_title("📋 Currently Enabled Repositories")
+        enabled_group.set_description("Repositories configured on your system")
+        container.append(enabled_group)
+        
+        # Get enabled repos based on distro
+        enabled_repos = self._get_enabled_repos()
+        
+        if enabled_repos:
+            for repo in enabled_repos:
+                row = Adw.ActionRow()
+                row.set_title(repo['name'])
+                row.set_subtitle(repo.get('url', repo.get('description', '')))
+                row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic"))
+                
+                # Add badge for repo type
+                if repo.get('type'):
+                    badge = Gtk.Label(label=repo['type'])
+                    badge.add_css_class("dim-label")
+                    badge.set_valign(Gtk.Align.CENTER)
+                    row.add_suffix(badge)
+                
+                enabled_group.add(row)
+        else:
+            row = Adw.ActionRow()
+            row.set_title("Could not detect repositories")
+            row.set_subtitle("Run the command manually to check")
+            enabled_group.add(row)
+        
+        # === Available to Enable ===
+        available_group = Adw.PreferencesGroup()
+        available_group.set_title("➕ Available to Enable")
+        available_group.set_description("Additional package sources you can add")
+        container.append(available_group)
+        
+        # Flatpak/Flathub - universal
+        flathub_enabled = self._check_flathub_enabled()
+        flathub_row = Adw.ActionRow()
+        flathub_row.set_title("Flathub")
+        flathub_row.set_subtitle("Universal app store for Linux (Flatpak)")
+        
+        if flathub_enabled:
+            flathub_row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic"))
+            status_label = Gtk.Label(label="Enabled")
+            status_label.add_css_class("success")
+            status_label.set_valign(Gtk.Align.CENTER)
+            flathub_row.add_suffix(status_label)
+        else:
+            flathub_row.add_prefix(Gtk.Image.new_from_icon_name("tux-list-add-symbolic"))
+            flathub_btn = Gtk.Button(label="Enable")
+            flathub_btn.set_valign(Gtk.Align.CENTER)
+            flathub_btn.add_css_class("suggested-action")
+            flathub_btn.connect("clicked", self._on_enable_flathub)
+            flathub_row.add_suffix(flathub_btn)
+        
+        available_group.add(flathub_row)
+        
+        # Distro-specific repos
+        if self.distro.family == DistroFamily.ARCH:
+            # AUR Helper
+            aur_installed = self._check_aur_helper_installed()
+            aur_helper_name = self._get_aur_helper_name()
+            
+            aur_row = Adw.ActionRow()
+            aur_row.set_title("AUR Helper")
+            aur_row.set_subtitle("Access the Arch User Repository (AUR)")
+            
+            if aur_installed:
+                aur_row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic"))
+                status_label = Gtk.Label(label=f"{aur_helper_name} installed")
+                status_label.add_css_class("success")
+                status_label.set_valign(Gtk.Align.CENTER)
+                aur_row.add_suffix(status_label)
+            else:
+                aur_row.add_prefix(Gtk.Image.new_from_icon_name("tux-list-add-symbolic"))
+                aur_btn = Gtk.Button(label="Install yay")
+                aur_btn.set_valign(Gtk.Align.CENTER)
+                aur_btn.add_css_class("suggested-action")
+                aur_btn.connect("clicked", self._on_install_aur_helper)
+                aur_row.add_suffix(aur_btn)
+            
+            available_group.add(aur_row)
+            
+            # Multilib
+            multilib_enabled = self._check_multilib_enabled()
+            multilib_row = Adw.ActionRow()
+            multilib_row.set_title("Multilib Repository")
+            multilib_row.set_subtitle("32-bit libraries for gaming (Steam, Wine)")
+            
+            if multilib_enabled:
+                multilib_row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic"))
+                status_label = Gtk.Label(label="Enabled")
+                status_label.add_css_class("success")
+                status_label.set_valign(Gtk.Align.CENTER)
+                multilib_row.add_suffix(status_label)
+            else:
+                multilib_row.add_prefix(Gtk.Image.new_from_icon_name("tux-list-add-symbolic"))
+                multilib_btn = Gtk.Button(label="Enable")
+                multilib_btn.set_valign(Gtk.Align.CENTER)
+                multilib_btn.add_css_class("suggested-action")
+                multilib_btn.connect("clicked", self._on_enable_multilib)
+                multilib_row.add_suffix(multilib_btn)
+            
+            available_group.add(multilib_row)
+            
+        elif self.distro.family == DistroFamily.FEDORA:
+            # RPM Fusion Free
+            fusion_free_enabled = self._check_rpmfusion_free_enabled()
+            fusion_free_row = Adw.ActionRow()
+            fusion_free_row.set_title("RPM Fusion Free")
+            fusion_free_row.set_subtitle("Open source packages not in Fedora repos")
+            
+            if fusion_free_enabled:
+                fusion_free_row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic"))
+                status_label = Gtk.Label(label="Enabled")
+                status_label.add_css_class("success")
+                status_label.set_valign(Gtk.Align.CENTER)
+                fusion_free_row.add_suffix(status_label)
+            else:
+                fusion_free_row.add_prefix(Gtk.Image.new_from_icon_name("tux-list-add-symbolic"))
+                fusion_free_btn = Gtk.Button(label="Enable")
+                fusion_free_btn.set_valign(Gtk.Align.CENTER)
+                fusion_free_btn.add_css_class("suggested-action")
+                fusion_free_btn.connect("clicked", self._on_enable_rpmfusion_free)
+                fusion_free_row.add_suffix(fusion_free_btn)
+            
+            available_group.add(fusion_free_row)
+            
+            # RPM Fusion Nonfree
+            fusion_nonfree_enabled = self._check_rpmfusion_nonfree_enabled()
+            fusion_nonfree_row = Adw.ActionRow()
+            fusion_nonfree_row.set_title("RPM Fusion Nonfree")
+            fusion_nonfree_row.set_subtitle("Proprietary packages (NVIDIA drivers, codecs)")
+            
+            if fusion_nonfree_enabled:
+                fusion_nonfree_row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic"))
+                status_label = Gtk.Label(label="Enabled")
+                status_label.add_css_class("success")
+                status_label.set_valign(Gtk.Align.CENTER)
+                fusion_nonfree_row.add_suffix(status_label)
+            else:
+                fusion_nonfree_row.add_prefix(Gtk.Image.new_from_icon_name("tux-list-add-symbolic"))
+                fusion_nonfree_btn = Gtk.Button(label="Enable")
+                fusion_nonfree_btn.set_valign(Gtk.Align.CENTER)
+                fusion_nonfree_btn.add_css_class("suggested-action")
+                fusion_nonfree_btn.connect("clicked", self._on_enable_rpmfusion_nonfree)
+                fusion_nonfree_row.add_suffix(fusion_nonfree_btn)
+            
+            available_group.add(fusion_nonfree_row)
+            
+        elif self.distro.family == DistroFamily.OPENSUSE:
+            # Packman
+            packman_enabled = self._check_packman_enabled()
+            packman_row = Adw.ActionRow()
+            packman_row.set_title("Packman Repository")
+            packman_row.set_subtitle("Multimedia codecs and additional software")
+            
+            if packman_enabled:
+                packman_row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic"))
+                status_label = Gtk.Label(label="Enabled")
+                status_label.add_css_class("success")
+                status_label.set_valign(Gtk.Align.CENTER)
+                packman_row.add_suffix(status_label)
+            else:
+                packman_row.add_prefix(Gtk.Image.new_from_icon_name("tux-list-add-symbolic"))
+                packman_btn = Gtk.Button(label="Enable")
+                packman_btn.set_valign(Gtk.Align.CENTER)
+                packman_btn.add_css_class("suggested-action")
+                packman_btn.connect("clicked", self._on_enable_packman)
+                packman_row.add_suffix(packman_btn)
+            
+            available_group.add(packman_row)
+        
+        elif self.distro.family == DistroFamily.DEBIAN:
+            # For Debian/Ubuntu - show info about PPAs
+            info_row = Adw.ActionRow()
+            info_row.set_title("Personal Package Archives (PPAs)")
+            info_row.set_subtitle("PPAs can be added via Software Center or terminal")
+            info_row.add_prefix(Gtk.Image.new_from_icon_name("tux-dialog-information-symbolic"))
+            available_group.add(info_row)
+        
+        return container
+    
+    def _get_enabled_repos(self) -> list:
+        """Get list of currently enabled repositories."""
+        repos = []
+        
+        try:
+            if self.distro.family == DistroFamily.ARCH:
+                # Parse pacman.conf for enabled repos
+                repos.extend(self._get_pacman_repos())
+                
+                # Check for AUR helper
+                aur_helper = self._get_aur_helper_name()
+                if aur_helper:
+                    repos.append({
+                        'name': 'AUR (via ' + aur_helper + ')',
+                        'description': 'Arch User Repository',
+                        'type': 'AUR'
+                    })
+                
+            elif self.distro.family == DistroFamily.FEDORA:
+                # Get repos from dnf
+                repos.extend(self._get_dnf_repos())
+                
+            elif self.distro.family == DistroFamily.DEBIAN:
+                # Get repos from apt
+                repos.extend(self._get_apt_repos())
+                
+            elif self.distro.family == DistroFamily.OPENSUSE:
+                # Get repos from zypper
+                repos.extend(self._get_zypper_repos())
+            
+            # Check Flatpak remotes (universal)
+            flatpak_repos = self._get_flatpak_remotes()
+            repos.extend(flatpak_repos)
+            
+        except Exception as e:
+            repos.append({'name': f'Error: {str(e)[:50]}', 'description': ''})
+        
+        return repos
+    
+    def _get_pacman_repos(self) -> list:
+        """Get enabled repos from pacman.conf."""
+        repos = []
+        try:
+            with open('/etc/pacman.conf', 'r') as f:
+                content = f.read()
+            
+            # Find all [reponame] sections that aren't commented
+            import re
+            # Match repo sections that are not commented out
+            for match in re.finditer(r'^(?!\s*#)\[([^\]]+)\]', content, re.MULTILINE):
+                repo_name = match.group(1)
+                if repo_name != 'options':
+                    repos.append({
+                        'name': repo_name,
+                        'description': 'Pacman repository',
+                        'type': 'pacman'
+                    })
+        except Exception:
+            pass
+        return repos
+    
+    def _get_dnf_repos(self) -> list:
+        """Get enabled repos from dnf."""
+        repos = []
+        try:
+            result = subprocess.run(
+                ['dnf', 'repolist', '--enabled'],
+                capture_output=True, text=True, timeout=15
+            )
+            if result.returncode == 0:
+                lines = result.stdout.strip().split('\n')
+                for line in lines[1:]:  # Skip header
+                    parts = line.split(None, 1)
+                    if len(parts) >= 1:
+                        repos.append({
+                            'name': parts[0],
+                            'description': parts[1] if len(parts) > 1 else '',
+                            'type': 'dnf'
+                        })
+        except Exception:
+            pass
+        return repos
+    
+    def _get_apt_repos(self) -> list:
+        """Get enabled repos from apt sources."""
+        repos = []
+        try:
+            # Read main sources.list
+            sources_files = ['/etc/apt/sources.list']
+            
+            # Add files from sources.list.d
+            import glob
+            sources_files.extend(glob.glob('/etc/apt/sources.list.d/*.list'))
+            
+            seen = set()
+            for source_file in sources_files:
+                try:
+                    with open(source_file, 'r') as f:
+                        for line in f:
+                            line = line.strip()
+                            if line and not line.startswith('#'):
+                                # Parse deb/deb-src lines
+                                if line.startswith('deb '):
+                                    parts = line.split()
+                                    if len(parts) >= 3:
+                                        url = parts[1]
+                                        if url not in seen:
+                                            seen.add(url)
+                                            # Get repo name from URL
+                                            name = url.split('/')[-1] or url.split('/')[-2]
+                                            repos.append({
+                                                'name': name,
+                                                'url': url[:60] + '...' if len(url) > 60 else url,
+                                                'type': 'apt'
+                                            })
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        return repos[:10]  # Limit to avoid UI clutter
+    
+    def _get_zypper_repos(self) -> list:
+        """Get enabled repos from zypper."""
+        repos = []
+        try:
+            result = subprocess.run(
+                ['zypper', 'repos', '-E'],  # -E for enabled only
+                capture_output=True, text=True, timeout=15
+            )
+            if result.returncode == 0:
+                lines = result.stdout.strip().split('\n')
+                for line in lines[2:]:  # Skip header lines
+                    parts = line.split('|')
+                    if len(parts) >= 3:
+                        repos.append({
+                            'name': parts[1].strip(),
+                            'description': parts[2].strip() if len(parts) > 2 else '',
+                            'type': 'zypper'
+                        })
+        except Exception:
+            pass
+        return repos
+    
+    def _get_flatpak_remotes(self) -> list:
+        """Get Flatpak remotes."""
+        repos = []
+        try:
+            result = subprocess.run(
+                ['flatpak', 'remotes', '--columns=name,url'],
+                capture_output=True, text=True, timeout=10
+            )
+            if result.returncode == 0:
+                lines = result.stdout.strip().split('\n')
+                for line in lines:
+                    parts = line.split('\t')
+                    if parts and parts[0]:
+                        repos.append({
+                            'name': parts[0],
+                            'url': parts[1] if len(parts) > 1 else '',
+                            'type': 'Flatpak'
+                        })
+        except Exception:
+            pass
+        return repos
+    
+    def _get_aur_helper_name(self) -> str:
+        """Get the name of installed AUR helper."""
+        for helper in ['yay', 'paru', 'pikaur', 'trizen']:
+            result = subprocess.run(['which', helper], capture_output=True)
+            if result.returncode == 0:
+                return helper
+        return ""
+    
+    def _check_flathub_enabled(self) -> bool:
+        """Check if Flathub is already added."""
+        try:
+            result = subprocess.run(['flatpak', 'remotes'], capture_output=True, text=True, timeout=5)
+            return 'flathub' in result.stdout.lower()
+        except Exception:
+            return False
+    
+    def _check_multilib_enabled(self) -> bool:
+        """Check if multilib repo is enabled on Arch."""
+        try:
+            with open('/etc/pacman.conf', 'r') as f:
+                content = f.read()
+                # Check for uncommented [multilib] section
+                lines = content.split('\n')
+                for i, line in enumerate(lines):
+                    if line.strip() == '[multilib]':
+                        return True
+            return False
+        except Exception:
+            return False
+    
+    def _check_aur_helper_installed(self) -> bool:
+        """Check if yay or paru is installed."""
+        for helper in ['yay', 'paru']:
+            result = subprocess.run(['which', helper], capture_output=True)
+            if result.returncode == 0:
+                return True
+        return False
+    
+    def _check_rpmfusion_free_enabled(self) -> bool:
+        """Check if RPM Fusion Free is enabled."""
+        try:
+            result = subprocess.run(['dnf', 'repolist'], capture_output=True, text=True, timeout=10)
+            return 'rpmfusion-free' in result.stdout.lower()
+        except Exception:
+            return False
+    
+    def _check_rpmfusion_nonfree_enabled(self) -> bool:
+        """Check if RPM Fusion Nonfree is enabled."""
+        try:
+            result = subprocess.run(['dnf', 'repolist'], capture_output=True, text=True, timeout=10)
+            return 'rpmfusion-nonfree' in result.stdout.lower()
+        except Exception:
+            return False
+    
+    def _check_packman_enabled(self) -> bool:
+        """Check if Packman repo is enabled on openSUSE."""
+        try:
+            result = subprocess.run(['zypper', 'repos'], capture_output=True, text=True, timeout=10)
+            return 'packman' in result.stdout.lower()
+        except Exception:
+            return False
+    
+    def _on_enable_flathub(self, button):
+        """Enable Flathub repository."""
+        cmd = "flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo"
+        self._run_repo_command(button, cmd, "Flathub")
+    
+    def _on_enable_multilib(self, button):
+        """Enable multilib repository on Arch."""
+        # Need to uncomment [multilib] section in pacman.conf
+        script = '''
+sudo sed -i '/\\[multilib\\]/,/Include/s/^#//' /etc/pacman.conf
+sudo pacman -Sy
+'''
+        self._run_repo_script(button, script, "Multilib")
+    
+    def _on_install_aur_helper(self, button):
+        """Install yay AUR helper."""
+        script = '''
+cd /tmp
+sudo pacman -S --needed --noconfirm git base-devel
+git clone https://aur.archlinux.org/yay-bin.git
+cd yay-bin
+makepkg -si --noconfirm
+cd ..
+rm -rf yay-bin
+'''
+        self._run_repo_script(button, script, "yay AUR helper")
+    
+    def _on_enable_rpmfusion_free(self, button):
+        """Enable RPM Fusion Free repository."""
+        cmd = f"pkexec dnf install -y https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm"
+        self._run_repo_command(button, cmd, "RPM Fusion Free")
+    
+    def _on_enable_rpmfusion_nonfree(self, button):
+        """Enable RPM Fusion Nonfree repository."""
+        cmd = f"pkexec dnf install -y https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm"
+        self._run_repo_command(button, cmd, "RPM Fusion Nonfree")
+    
+    def _on_enable_packman(self, button):
+        """Enable Packman repository on openSUSE."""
+        # Detect if Tumbleweed or Leap
+        is_tumbleweed = 'tumbleweed' in self.distro.name.lower()
+        if is_tumbleweed:
+            url = "https://ftp.gwdg.de/pub/linux/misc/packman/suse/openSUSE_Tumbleweed/"
+        else:
+            url = f"https://ftp.gwdg.de/pub/linux/misc/packman/suse/openSUSE_Leap_{self.distro.version}/"
+        
+        script = f"""sudo zypper ar -cfp 90 '{url}' packman
+sudo zypper --gpg-auto-import-keys refresh
+sudo zypper dup --from packman --allow-vendor-change -y"""
+        self._run_repo_script(button, script, "Packman")
+    
+    def _run_repo_command(self, button, cmd: str, name: str):
+        """Run a repository enable command."""
+        button.set_sensitive(False)
+        button.set_label("Working...")
+        
+        def run():
+            try:
+                # shell=True required for complex repo commands with pipes/redirects
+                # Commands are internal to the app, not user input - safe
+                result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=120)
+                if result.returncode == 0:
+                    GLib.idle_add(self._repo_success, button, name)
+                else:
+                    GLib.idle_add(self._repo_error, button, name, result.stderr)
+            except Exception as e:
+                GLib.idle_add(self._repo_error, button, name, str(e))
+        
+        threading.Thread(target=run, daemon=True).start()
+    
+    def _run_repo_script(self, button, script: str, name: str):
+        """Run a repository enable script in terminal."""
+        button.set_sensitive(False)
+        button.set_label("Working...")
+        
+        # Write script to temp file
+        script_path = f'/tmp/tux-repo-{name.lower().replace(" ", "-")}.sh'
+        full_script = f'''#!/bin/bash
+echo "════════════════════════════════════════════════════"
+echo "  Enabling {name}..."
+echo "════════════════════════════════════════════════════"
+echo ""
+{script}
+if [ $? -eq 0 ]; then
+    echo ""
+    echo "✓ {name} enabled successfully!"
+else
+    echo ""
+    echo "✗ Failed to enable {name}"
+fi
+echo ""
+read -p "Press Enter to close..."
+'''
+        with open(script_path, 'w') as f:
+            f.write(full_script)
+        os.chmod(script_path, 0o755)
+        
+        # Find terminal and run - comprehensive list for all distros/desktops
+        terminals = [
+            # Fedora 43+ default
+            ('ptyxis', ['ptyxis', '-e', 'bash', script_path]),
+            # KDE
+            ('konsole', ['konsole', '-e', 'bash', script_path]),
+            # GNOME (new)
+            ('kgx', ['kgx', '-e', 'bash', script_path]),
+            ('gnome-console', ['gnome-console', '-e', 'bash', script_path]),
+            # GNOME (classic)
+            ('gnome-terminal', ['gnome-terminal', '--', 'bash', script_path]),
+            # XFCE
+            ('xfce4-terminal', ['xfce4-terminal', '-e', f'bash {script_path}']),
+            # MATE
+            ('mate-terminal', ['mate-terminal', '-e', f'bash {script_path}']),
+            # LXQt/LXDE
+            ('qterminal', ['qterminal', '-e', 'bash', script_path]),
+            ('lxterminal', ['lxterminal', '-e', f'bash {script_path}']),
+            # Popular third-party
+            ('tilix', ['tilix', '-e', f'bash {script_path}']),
+            ('terminator', ['terminator', '-e', f'bash {script_path}']),
+            ('alacritty', ['alacritty', '-e', 'bash', script_path]),
+            ('kitty', ['kitty', 'bash', script_path]),
+            ('foot', ['foot', 'bash', script_path]),
+            ('wezterm', ['wezterm', 'start', '--', 'bash', script_path]),
+            # Lightweight
+            ('sakura', ['sakura', '-e', f'bash {script_path}']),
+            ('terminology', ['terminology', '-e', f'bash {script_path}']),
+            ('urxvt', ['urxvt', '-e', 'bash', script_path]),
+            ('rxvt', ['rxvt', '-e', 'bash', script_path]),
+            ('st', ['st', '-e', 'bash', script_path]),
+            # Fallback
+            ('xterm', ['xterm', '-e', f'bash {script_path}']),
+        ]
+        
+        for term_name, term_cmd in terminals:
+            try:
+                if subprocess.run(['which', term_name], capture_output=True).returncode == 0:
+                    subprocess.Popen(term_cmd)
+                    self.window.show_toast(f"Terminal opened for {name} setup")
+                    # Re-enable button after delay for user to retry if needed
+                    GLib.timeout_add_seconds(5, lambda: button.set_sensitive(True) or button.set_label("Enable"))
+                    return
+            except Exception:
+                continue
+        
+        button.set_sensitive(True)
+        button.set_label("Enable")
+        self.window.show_toast("Could not find terminal emulator - please install one (gnome-console, konsole, xterm, etc.)")
+    
+    def _repo_success(self, button, name: str):
+        """Handle successful repo enable."""
+        # Get parent row and replace button with success indicator
+        row = button.get_parent()
+        if row and isinstance(row, Adw.ActionRow):
+            row.remove(button)
+            # Add checkmark icon
+            check_icon = Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic")
+            check_icon.add_css_class("success")
+            row.add_suffix(check_icon)
+            # Update row prefix to show enabled state
+            # Remove old prefix and add checkmark
+            child = row.get_first_child()
+            while child:
+                if isinstance(child, Gtk.Image):
+                    row.remove(child)
+                    break
+                child = child.get_next_sibling()
+            row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic"))
+        
+        self.window.show_toast(f"✓ {name} enabled!")
+    
+    def _repo_error(self, button, name: str, error: str):
+        """Handle repo enable error."""
+        button.set_label("Retry")
+        button.set_sensitive(True)
+        self.window.show_toast(f"Failed to enable {name}")
     
     def _on_select_recommended_driver(self, button, driver_id: str):
         """Select the recommended driver from GPU detection."""
@@ -2715,7 +3693,7 @@ class SSHKeyRestoreDialog(Adw.Dialog):
         content.append(drop_frame)
         
         # Drop zone content
-        drop_icon = Gtk.Image.new_from_icon_name("document-send-symbolic")
+        drop_icon = Gtk.Image.new_from_icon_name("tux-document-send-symbolic")
         drop_icon.set_pixel_size(48)
         drop_icon.add_css_class("dim-label")
         self.drop_zone.append(drop_icon)
@@ -3007,7 +3985,7 @@ class GitCloneDialog(Adw.Dialog):
             if result.returncode == 0:
                 self.git_installed = True
                 self.git_status.set_subtitle("Installed ✓")
-                self.git_status.add_suffix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
+                self.git_status.add_suffix(Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic"))
             else:
                 self._show_git_not_installed()
         except Exception:
@@ -3066,7 +4044,7 @@ class GitCloneDialog(Adw.Dialog):
         if success:
             self.git_installed = True
             self.git_status.set_subtitle("Installed ✓")
-            self.git_status.add_suffix(Gtk.Image.new_from_icon_name("emblem-ok-symbolic"))
+            self.git_status.add_suffix(Gtk.Image.new_from_icon_name("tux-emblem-ok-symbolic"))
             self._on_url_changed(self.url_entry)  # Re-check if clone button should enable
         else:
             self.git_status.set_subtitle("Installation failed")
@@ -3323,8 +4301,8 @@ class InstallationDialog(Adw.Dialog):
             # Then run any setup commands (like adding Flathub after flatpak is installed)
             if commands:
                 for cmd in commands:
-                    # Convert command list to string, skip 'sudo' prefix
-                    if cmd and cmd[0] == 'sudo':
+                    # Convert command list to string, skip 'sudo' or 'pkexec' prefix
+                    if cmd and cmd[0] in ('sudo', 'pkexec'):
                         cmd = cmd[1:]
                     cmd_str = ' '.join(cmd)
                     plan['tasks'].append({
@@ -3375,6 +4353,12 @@ class InstallationDialog(Adw.Dialog):
                 GLib.idle_add(self.append_output, f"  {p}", "error")
             GLib.idle_add(self._installation_complete)
             return
+        
+        # Ensure helper is executable (fixes permission denied on .run installs)
+        try:
+            os.chmod(helper_path, 0o755)
+        except Exception:
+            pass
         
         GLib.idle_add(self.append_output, f"Using helper: {helper_path}", "info")
         GLib.idle_add(self.append_output, "Requesting authentication...", "info")
@@ -3469,7 +4453,7 @@ class InstallationDialog(Adw.Dialog):
             # Clean up plan file
             try:
                 os.unlink(plan_file.name)
-            except:
+            except Exception:
                 pass
         
         # Done

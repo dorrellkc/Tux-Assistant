@@ -3,7 +3,7 @@ Tux Assistant - System Maintenance Module
 
 System cleanup, updates, startup apps, and storage management.
 
-Copyright (c) 2025 Christopher Dorrell. All Rights Reserved.
+Copyright (c) 2025 Christopher Dorrell. Licensed under GPL-3.0.
 """
 
 import gi
@@ -161,7 +161,7 @@ def check_updates_available(family: DistroFamily) -> Tuple[bool, int, str]:
                 return False, 0, ""
             else:
                 # Fallback: sync and check with pacman -Qu
-                subprocess.run(['sudo', 'pacman', '-Sy'], capture_output=True)
+                subprocess.run(['pkexec', 'pacman', '-Sy'], capture_output=True)
                 result = subprocess.run(
                     ['pacman', '-Qu'],
                     capture_output=True, text=True
@@ -364,7 +364,7 @@ def toggle_autostart_app(app: StartupApp, enable: bool) -> bool:
     id="system_maintenance",
     name="System Maintenance",
     description="Cleanup, updates, startup apps, storage",
-    icon="applications-system-symbolic",
+    icon="tux-applications-system-symbolic",
     category=ModuleCategory.SYSTEM,
     order=20  # System care tier
 )
@@ -395,7 +395,7 @@ class SystemMaintenancePage(Adw.NavigationPage):
         
         # Refresh button
         refresh_btn = Gtk.Button()
-        refresh_btn.set_icon_name("view-refresh-symbolic")
+        refresh_btn.set_icon_name("tux-view-refresh-symbolic")
         refresh_btn.set_tooltip_text("Refresh")
         refresh_btn.connect("clicked", lambda b: self._refresh_all())
         header.pack_end(refresh_btn)
@@ -437,7 +437,7 @@ class SystemMaintenancePage(Adw.NavigationPage):
         self.pkg_cache_row = Adw.ActionRow()
         self.pkg_cache_row.set_title("Package Cache")
         self.pkg_cache_row.set_subtitle("Cached package downloads")
-        self.pkg_cache_row.add_prefix(Gtk.Image.new_from_icon_name("package-x-generic-symbolic"))
+        self.pkg_cache_row.add_prefix(Gtk.Image.new_from_icon_name("tux-package-x-generic-symbolic"))
         
         self.pkg_cache_size = Gtk.Label(label="Calculating...")
         self.pkg_cache_size.add_css_class("dim-label")
@@ -453,7 +453,7 @@ class SystemMaintenancePage(Adw.NavigationPage):
         self.user_cache_row = Adw.ActionRow()
         self.user_cache_row.set_title("Application Cache")
         self.user_cache_row.set_subtitle("Cached data from applications")
-        self.user_cache_row.add_prefix(Gtk.Image.new_from_icon_name("folder-symbolic"))
+        self.user_cache_row.add_prefix(Gtk.Image.new_from_icon_name("tux-folder-symbolic"))
         
         self.user_cache_size = Gtk.Label(label="Calculating...")
         self.user_cache_size.add_css_class("dim-label")
@@ -469,7 +469,7 @@ class SystemMaintenancePage(Adw.NavigationPage):
         self.thumb_row = Adw.ActionRow()
         self.thumb_row.set_title("Thumbnail Cache")
         self.thumb_row.set_subtitle("Cached image previews")
-        self.thumb_row.add_prefix(Gtk.Image.new_from_icon_name("image-x-generic-symbolic"))
+        self.thumb_row.add_prefix(Gtk.Image.new_from_icon_name("tux-image-x-generic-symbolic"))
         
         self.thumb_size = Gtk.Label(label="Calculating...")
         self.thumb_size.add_css_class("dim-label")
@@ -501,7 +501,7 @@ class SystemMaintenancePage(Adw.NavigationPage):
         self.trash_row = Adw.ActionRow()
         self.trash_row.set_title("Trash")
         self.trash_row.set_subtitle("Deleted files waiting to be removed")
-        self.trash_row.add_prefix(Gtk.Image.new_from_icon_name("user-trash-full-symbolic"))
+        self.trash_row.add_prefix(Gtk.Image.new_from_icon_name("tux-user-trash-full-symbolic"))
         
         self.trash_size = Gtk.Label(label="Calculating...")
         self.trash_size.add_css_class("dim-label")
@@ -540,7 +540,7 @@ class SystemMaintenancePage(Adw.NavigationPage):
         self.update_row = Adw.ActionRow()
         self.update_row.set_title("Available Updates")
         self.update_row.set_subtitle("Checking...")
-        self.update_row.add_prefix(Gtk.Image.new_from_icon_name("software-update-available-symbolic"))
+        self.update_row.add_prefix(Gtk.Image.new_from_icon_name("tux-software-update-available-symbolic"))
         
         self.update_count = Gtk.Label(label="...")
         self.update_count.add_css_class("dim-label")
@@ -582,7 +582,7 @@ class SystemMaintenancePage(Adw.NavigationPage):
         self.disk_row = Adw.ActionRow()
         self.disk_row.set_title("Disk Usage")
         self.disk_row.set_subtitle("Analyzing...")
-        self.disk_row.add_prefix(Gtk.Image.new_from_icon_name("drive-harddisk-symbolic"))
+        self.disk_row.add_prefix(Gtk.Image.new_from_icon_name("tux-drive-harddisk-symbolic"))
         
         disk_btn = Gtk.Button(label="Analyze")
         disk_btn.set_valign(Gtk.Align.CENTER)
@@ -642,7 +642,7 @@ class SystemMaintenancePage(Adw.NavigationPage):
             self.update_row.set_subtitle(f"{count} update{'s' if count != 1 else ''} available")
             self.update_count.set_label(str(count))
             self.update_btn.set_sensitive(True)
-            self.update_row.set_icon_name("software-update-available-symbolic")
+            self.update_row.set_icon_name("tux-software-update-available-symbolic")
         else:
             self.update_row.set_subtitle("Your system is up to date")
             self.update_count.set_label("✓")
@@ -682,7 +682,7 @@ class SystemMaintenancePage(Adw.NavigationPage):
             if app.icon:
                 row.add_prefix(Gtk.Image.new_from_icon_name(app.icon))
             else:
-                row.add_prefix(Gtk.Image.new_from_icon_name("application-x-executable-symbolic"))
+                row.add_prefix(Gtk.Image.new_from_icon_name("tux-application-x-executable-symbolic"))
             
             # Toggle switch
             switch = Gtk.Switch()
@@ -1045,6 +1045,8 @@ read'''
     def _run_in_terminal(self, script: str):
         """Run a script in a terminal window."""
         terminals = [
+            ('ptyxis', ['ptyxis', '-e', 'bash', '-c', script]),  # Fedora 43+
+            ('kgx', ['kgx', '-e', 'bash', '-c', script]),  # GNOME Console
             ('konsole', ['konsole', '-e', 'bash', '-c', script]),
             ('gnome-terminal', ['gnome-terminal', '--', 'bash', '-c', script]),
             ('xfce4-terminal', ['xfce4-terminal', '-e', f'bash -c \'{script}\'']),

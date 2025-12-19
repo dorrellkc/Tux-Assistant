@@ -5,7 +5,7 @@ Tux Assistant - Privileged Helper (tux-helper)
 This script runs with elevated privileges via pkexec.
 It executes package management operations and outputs status for the GUI.
 
-Copyright (c) 2025 Christopher Dorrell. All Rights Reserved.
+Copyright (c) 2025 Christopher Dorrell. Licensed under GPL-3.0.
 
 Usage:
     pkexec tux-helper --install pkg1 pkg2 pkg3
@@ -19,6 +19,7 @@ import os
 import subprocess
 import json
 import argparse
+import shutil
 from typing import Optional
 
 
@@ -476,7 +477,7 @@ FEDORA_RPMFUSION_PACKAGES = {
 
 def check_fedora_rpmfusion_enabled() -> dict:
     """Check if RPM Fusion repositories are enabled on Fedora."""
-    result = {'free': False, 'nonfree': False}
+    result = {'free': False, 'nonfree': False, 'free_tainted': False, 'nonfree_tainted': False}
     try:
         proc = subprocess.run(
             ['dnf', 'repolist', '--enabled'],
@@ -485,6 +486,8 @@ def check_fedora_rpmfusion_enabled() -> dict:
         output = proc.stdout.lower()
         result['free'] = 'rpmfusion-free' in output
         result['nonfree'] = 'rpmfusion-nonfree' in output
+        result['free_tainted'] = 'rpmfusion-free-tainted' in output
+        result['nonfree_tainted'] = 'rpmfusion-nonfree-tainted' in output
     except:
         pass
     return result
@@ -497,8 +500,14 @@ def get_fedora_version() -> str:
     except:
         return '40'  # Default
 
-def enable_fedora_rpmfusion(enable_free=True, enable_nonfree=True) -> bool:
-    """Enable RPM Fusion repositories on Fedora."""
+def enable_fedora_rpmfusion(enable_free=True, enable_nonfree=True, enable_tainted=False) -> bool:
+    """Enable RPM Fusion repositories on Fedora.
+    
+    Args:
+        enable_free: Enable RPM Fusion Free repository
+        enable_nonfree: Enable RPM Fusion Non-Free repository  
+        enable_tainted: Enable tainted repos (needed for libdvdcss)
+    """
     version = get_fedora_version()
     
     emit_status("info", f"Adding RPM Fusion repositories for Fedora {version}...")
@@ -508,12 +517,12 @@ def enable_fedora_rpmfusion(enable_free=True, enable_nonfree=True) -> bool:
         
         if enable_free:
             repos_to_install.append(
-                f"https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-{version}.noarch.rpm"
+                f"https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-{version}.noarch.rpm"
             )
         
         if enable_nonfree:
             repos_to_install.append(
-                f"https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-{version}.noarch.rpm"
+                f"https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-{version}.noarch.rpm"
             )
         
         if repos_to_install:
@@ -525,6 +534,30 @@ def enable_fedora_rpmfusion(enable_free=True, enable_nonfree=True) -> bool:
             if result.returncode != 0 and 'already installed' not in result.stdout.lower():
                 emit_output(f"Warning: {result.stderr}")
                 return False
+        
+        # Enable tainted repos if requested (for libdvdcss)
+        # These are installed as packages AFTER the base repos are enabled
+        # Check what base repos are AVAILABLE (not what we're enabling this call)
+        if enable_tainted:
+            repos = check_fedora_rpmfusion_enabled()
+            tainted_packages = []
+            
+            # Add tainted for whichever base repos exist
+            if repos['free'] or enable_free:
+                tainted_packages.append('rpmfusion-free-release-tainted')
+            if repos['nonfree'] or enable_nonfree:
+                tainted_packages.append('rpmfusion-nonfree-release-tainted')
+            
+            if tainted_packages:
+                emit_status("info", "Enabling tainted repositories for DVD support...")
+                result = subprocess.run(
+                    ['dnf', 'install', '-y'] + tainted_packages,
+                    capture_output=True, text=True, timeout=120
+                )
+                
+                if result.returncode != 0 and 'already installed' not in result.stdout.lower():
+                    emit_output(f"Warning: Could not enable tainted repos: {result.stderr}")
+                    # Don't fail completely, main repos are still enabled
         
         return True
         
@@ -540,16 +573,25 @@ def ensure_fedora_rpmfusion_for_packages(packages: list[str]) -> None:
                                                          'akmod-nvidia', 'xorg-x11-drv-nvidia'])
                         for pkg in packages)
     
+    # libdvdcss specifically needs the tainted repo
+    needs_tainted = any(pkg == 'libdvdcss' or pkg.startswith('libdvdcss') for pkg in packages)
+    
     if not needs_rpmfusion:
         return
     
     repos = check_fedora_rpmfusion_enabled()
     
-    if not repos['free'] or not repos['nonfree']:
+    # Check if we actually need to enable anything
+    need_free = not repos['free']
+    need_nonfree = not repos['nonfree']
+    need_tainted_enable = needs_tainted and not repos['free_tainted']
+    
+    if need_free or need_nonfree or need_tainted_enable:
         emit_status("info", "Multimedia packages require RPM Fusion repositories...")
         enable_fedora_rpmfusion(
-            enable_free=not repos['free'],
-            enable_nonfree=not repos['nonfree']
+            enable_free=need_free,
+            enable_nonfree=need_nonfree,
+            enable_tainted=need_tainted_enable
         )
 
 
@@ -871,6 +913,8 @@ def install_special_app(app_id: str, family: str) -> int:
     handlers = {
         'surfshark': install_surfshark,
         'duckietv': install_duckietv,
+        'rustdesk': install_rustdesk,
+        'plex-desktop': install_plex_desktop,
         'emoji_keyboard': setup_emoji_keyboard,
         'xfce_enhancements': setup_xfce_enhancements,
         'kde_enhancements': setup_kde_enhancements,
@@ -886,6 +930,38 @@ def install_special_app(app_id: str, family: str) -> int:
     else:
         emit_status("error", f"Unknown special app: {app_id}")
         return 1
+
+
+def get_surfshark_versions() -> list:
+    """
+    Try to get latest Surfshark version from Debian repo, fall back to known versions.
+    Implements invisible fallback - user never sees if dynamic lookup fails.
+    """
+    try:
+        # Try fetching from Debian Packages file
+        result = subprocess.run(
+            ['curl', '-fsSL', 'https://downloads.surfshark.com/linux/debian/dists/stable/main/binary-amd64/Packages'],
+            capture_output=True, text=True, timeout=15
+        )
+        if result.returncode == 0 and result.stdout:
+            for line in result.stdout.split('\n'):
+                if line.startswith('Version: '):
+                    version = line.split(': ')[1].strip()
+                    versions = [version]
+                    # If version has build number (e.g., 3.7.0-7023), also try without it
+                    if '-' in version:
+                        base_version = version.split('-')[0]
+                        versions.append(base_version)
+                    # Add known fallbacks
+                    versions.extend(['3.7.0', '3.6.0', '3.5.4', '3.5.3'])
+                    # Remove duplicates while preserving order
+                    seen = set()
+                    return [v for v in versions if not (v in seen or seen.add(v))]
+    except Exception:
+        pass
+    
+    # Fallback to known working versions (newest first)
+    return ['3.7.0', '3.6.0', '3.5.4', '3.5.3', '3.5.0']
 
 
 def install_surfshark(family: str) -> int:
@@ -947,6 +1023,32 @@ def install_surfshark(family: str) -> int:
             emit_output("Checking for alien (package converter)...")
             if not shutil.which('alien'):
                 emit_output("Installing alien and dependencies...")
+                
+                # openSUSE: alien is in OBS system:packagemanager repo, need to add it first
+                if family == 'opensuse':
+                    emit_output("Adding OBS system:packagemanager repository for alien...")
+                    # Detect Tumbleweed vs Leap
+                    try:
+                        with open('/etc/os-release', 'r') as f:
+                            os_release = f.read()
+                        if 'Tumbleweed' in os_release:
+                            repo_url = 'https://download.opensuse.org/repositories/system:packagemanager/openSUSE_Tumbleweed/system:packagemanager.repo'
+                        else:
+                            # Try to get Leap version
+                            import re
+                            match = re.search(r'VERSION_ID="?(\d+\.\d+)"?', os_release)
+                            if match:
+                                leap_ver = match.group(1)
+                                repo_url = f'https://download.opensuse.org/repositories/system:packagemanager/{leap_ver}/system:packagemanager.repo'
+                            else:
+                                repo_url = 'https://download.opensuse.org/repositories/system:packagemanager/openSUSE_Tumbleweed/system:packagemanager.repo'
+                    except Exception:
+                        repo_url = 'https://download.opensuse.org/repositories/system:packagemanager/openSUSE_Tumbleweed/system:packagemanager.repo'
+                    
+                    # Add the system:packagemanager repo
+                    subprocess.run(['zypper', '--gpg-auto-import-keys', 'addrepo', '-f', repo_url], capture_output=True)
+                    subprocess.run(['zypper', '--gpg-auto-import-keys', 'refresh'], capture_output=True)
+                
                 result = subprocess.run(
                     pkg_install + ['alien', 'dpkg', 'rpm-build'],
                     capture_output=False
@@ -955,8 +1057,16 @@ def install_surfshark(family: str) -> int:
                     emit_status("error", "Failed to install alien")
                     return 1
             
-            # Step 2: Download Surfshark .deb
-            versions = ['3.6.0', '3.5.4', '3.5.3', '3.5.0', '3.4.0']
+            # Ensure gjs is installed (JavaScript runtime for Surfshark daemons)
+            # Required on openSUSE KDE and some Fedora spins that don't have GNOME
+            if not shutil.which('gjs'):
+                emit_output("Installing gjs (JavaScript runtime for Surfshark daemons)...")
+                result = subprocess.run(pkg_install + ['gjs'], capture_output=False)
+                if result.returncode != 0:
+                    emit_output("Warning: Could not install gjs - Surfshark daemons may not work")
+            
+            # Step 2: Download Surfshark .deb (dynamic version lookup with fallback)
+            versions = get_surfshark_versions()
             base_url = 'https://ocean.surfshark.com/debian/pool/main/s'
             deb_file = None
             
@@ -1068,14 +1178,14 @@ def install_surfshark(family: str) -> int:
 
 def install_duckietv(family: str) -> int:
     """
-    Install DuckieTV.
+    Install DuckieTV using the universal tar.gz package.
     
-    Arch: AUR
-    Debian: Download .deb from GitHub
-    Fedora: Download .deb -> alien convert -> rpm install
+    Downloads the linux-x64.tar.gz from GitHub releases and installs to /opt/DuckieTV.
+    Works on ALL distributions without needing alien or package conversion.
     """
     emit_status("start", "Installing DuckieTV")
     
+    # Arch can use AUR if available
     if family == 'arch':
         for helper in ['paru', 'yay', 'pikaur']:
             if shutil.which(helper):
@@ -1087,113 +1197,566 @@ def install_duckietv(family: str) -> int:
                 if result.returncode == 0:
                     emit_status("success", "DuckieTV installed from AUR")
                     return 0
-        emit_status("error", "No AUR helper found")
-        return 1
+        # Fall through to tar.gz method if no AUR helper
+        emit_output("No AUR helper found, using tar.gz method...")
     
-    # For Debian and Fedora, we need to download the .deb from GitHub
     import tempfile
-    import glob
     
     work_dir = tempfile.mkdtemp(prefix='duckietv-')
     emit_output(f"Working directory: {work_dir}")
     
     try:
-        # Get latest release URL from GitHub
+        # Step 1: Get the latest release version from GitHub
         emit_output("Finding latest DuckieTV release...")
+        releases_url = "https://github.com/DuckieTV/Nightlies/releases/latest"
         
-        # Try known working URL pattern
-        # DuckieTV releases are at: https://github.com/AnotherHermit/AnotherDuckieTV/releases
-        # or https://github.com/AnotherHermit/AnotherDuckieTV/releases/latest
+        # Use curl to follow redirects and get the final URL which contains the tag
+        result = subprocess.run(
+            ['curl', '-fsSL', '-w', '%{url_effective}', '-o', '/dev/null', releases_url],
+            capture_output=True,
+            text=True
+        )
         
-        deb_urls = [
-            "https://github.com/AnotherHermit/AnotherDuckieTV/releases/download/1.2.0/DuckieTV-nightly-1.2.0-linux-amd64.deb",
-            "https://github.com/AnotherHermit/AnotherDuckieTV/releases/download/1.1.9/DuckieTV-nightly-1.1.9-linux-amd64.deb",
-        ]
+        version = None
+        if result.returncode == 0 and 'nightly-' in result.stdout:
+            import re
+            match = re.search(r'nightly-(\d+)', result.stdout)
+            if match:
+                version = match.group(1)
+                emit_output(f"  Latest version: {version}")
         
-        deb_file = None
-        for url in deb_urls:
-            dest = f"{work_dir}/duckietv.deb"
-            emit_output(f"  Trying: {url.split('/')[-1]}")
+        # Fallback versions if redirect didn't work
+        versions_to_try = []
+        if version:
+            versions_to_try.append(version)
+        # Add fallback versions
+        versions_to_try.extend(['202512081128', '202512041851', '202512021436'])
+        
+        # Step 2: Download the tar.gz
+        tarball = None
+        for ver in versions_to_try:
+            url = f"https://github.com/DuckieTV/Nightlies/releases/download/nightly-{ver}/DuckieTV-{ver}-linux-x64.tar.gz"
+            dest = f"{work_dir}/duckietv.tar.gz"
+            emit_output(f"  Trying: DuckieTV-{ver}-linux-x64.tar.gz")
             
             result = subprocess.run(
                 ['curl', '-fsSL', url, '-o', dest],
                 capture_output=True
             )
             
-            if result.returncode == 0 and os.path.exists(dest) and os.path.getsize(dest) > 10000:
-                deb_file = dest
-                emit_output(f"  Downloaded successfully")
-                break
+            if result.returncode != 0:
+                emit_output(f"    Download failed")
+                continue
+            
+            if not os.path.exists(dest):
+                continue
+            
+            file_size = os.path.getsize(dest)
+            if file_size < 1000000:  # tar.gz should be > 1MB (actually ~174MB)
+                emit_output(f"    File too small ({file_size} bytes)")
+                continue
+            
+            tarball = dest
+            emit_output(f"  Downloaded successfully ({file_size // 1024 // 1024} MB)")
+            break
         
-        if not deb_file:
-            emit_status("error", "Could not download DuckieTV .deb")
-            emit_output("Visit: https://github.com/AnotherHermit/AnotherDuckieTV/releases")
+        if not tarball:
+            emit_status("error", "Could not download DuckieTV")
+            emit_output("Visit: https://github.com/DuckieTV/Nightlies/releases")
             return 1
         
-        if family == 'debian':
-            # Direct install on Debian
-            emit_output("Installing .deb package...")
-            result = subprocess.run(['dpkg', '-i', deb_file], capture_output=False)
+        # Step 3: Extract to /opt/DuckieTV
+        emit_output("Extracting to /opt/DuckieTV...")
+        
+        # Remove old installation if exists
+        if os.path.exists('/opt/DuckieTV'):
+            subprocess.run(['rm', '-rf', '/opt/DuckieTV'], capture_output=True)
+        
+        # Create directory
+        os.makedirs('/opt/DuckieTV', exist_ok=True)
+        
+        # Extract
+        result = subprocess.run(
+            ['tar', '-xzf', tarball, '-C', '/opt/DuckieTV', '--strip-components=1'],
+            capture_output=True
+        )
+        
+        if result.returncode != 0:
+            emit_output(f"  Extraction failed: {result.stderr.decode()[:200]}")
+            emit_status("error", "Failed to extract DuckieTV")
+            return 1
+        
+        # Step 4: Find and make the executable runnable
+        # Look for the main executable (usually 'DuckieTV' or 'duckietv')
+        executable = None
+        for name in ['DuckieTV', 'duckietv', 'nw', 'DuckieTV-linux-x64']:
+            path = f'/opt/DuckieTV/{name}'
+            if os.path.exists(path):
+                executable = path
+                break
+        
+        if not executable:
+            # List what we got
+            emit_output("  Looking for executable...")
+            result = subprocess.run(['ls', '-la', '/opt/DuckieTV'], capture_output=True, text=True)
+            emit_output(result.stdout[:500])
+            emit_status("error", "Could not find DuckieTV executable")
+            return 1
+        
+        # Make it executable
+        subprocess.run(['chmod', '+x', executable], capture_output=True)
+        
+        # Step 5: Create symlink in /usr/bin
+        emit_output("Creating /usr/bin/duckietv symlink...")
+        if os.path.exists('/usr/bin/duckietv'):
+            os.remove('/usr/bin/duckietv')
+        os.symlink(executable, '/usr/bin/duckietv')
+        
+        # Step 6: Find and install icon
+        emit_output("Setting up application icon...")
+        icon_found = False
+        icon_dest = '/opt/DuckieTV/duckietv-icon.png'
+        
+        # First, try to download the official DuckieTV icon from GitHub
+        # This is the most reliable way to get the correct icon
+        emit_output("  Downloading official DuckieTV icon...")
+        icon_urls = [
+            "https://raw.githubusercontent.com/SchizoDuckie/DuckieTV/angular/img/logo/icon128.png",
+            "https://raw.githubusercontent.com/SchizoDuckie/DuckieTV/master/img/logo/icon128.png",
+            "https://raw.githubusercontent.com/SchizoDuckie/DuckieTV/angular/img/logo/icon64.png",
+        ]
+        for url in icon_urls:
+            result = subprocess.run(
+                ['curl', '-fsSL', url, '-o', icon_dest],
+                capture_output=True
+            )
+            if result.returncode == 0 and os.path.exists(icon_dest) and os.path.getsize(icon_dest) > 1000:
+                icon_found = True
+                emit_output(f"  Downloaded official icon")
+                break
+        
+        # If download failed, search locally (but be picky - avoid jackett, etc.)
+        if not icon_found:
+            emit_output("  Searching for icon locally...")
+            # Look for files with 'icon' in name but NOT 'jackett' or other integrations
+            result = subprocess.run(
+                ['find', '/opt/DuckieTV', '-name', '*.png', '-size', '+1k', '-size', '-500k'],
+                capture_output=True, text=True
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                candidates = []
+                for line in result.stdout.strip().split('\n'):
+                    lower = line.lower()
+                    # Skip icons for other apps/integrations
+                    if any(skip in lower for skip in ['jackett', 'utorrent', 'qbittorrent', 
+                                                       'deluge', 'transmission', 'sonarr', 'radarr']):
+                        continue
+                    # Prefer files with 'logo' or 'icon' and a size indicator
+                    if 'logo' in lower or ('icon' in lower and any(c.isdigit() for c in lower)):
+                        candidates.insert(0, line)  # Priority
+                    elif 'icon' in lower:
+                        candidates.append(line)
+                
+                if candidates:
+                    subprocess.run(['cp', candidates[0], icon_dest], capture_output=True)
+                    icon_found = True
+                    emit_output(f"  Found icon at: {candidates[0]}")
+        
+        # Install icon to system icon theme for better integration
+        if icon_found and os.path.exists(icon_dest):
+            # Install to hicolor theme (multiple sizes use same icon, it will be scaled)
+            for size in ['48x48', '64x64', '128x128', '256x256']:
+                icon_dir = f'/usr/share/icons/hicolor/{size}/apps'
+                os.makedirs(icon_dir, exist_ok=True)
+                subprocess.run(['cp', icon_dest, f'{icon_dir}/duckietv.png'], capture_output=True)
             
+            # Also install to pixmaps as fallback
+            subprocess.run(['cp', icon_dest, '/usr/share/pixmaps/duckietv.png'], capture_output=True)
+            
+            # Update icon cache
+            subprocess.run(['gtk-update-icon-cache', '-f', '-t', '/usr/share/icons/hicolor'], 
+                          capture_output=True)
+            emit_output("  Icon installed to system theme")
+        else:
+            emit_output("  Warning: Could not find or download icon")
+        
+        # Step 7: Create .desktop file
+        emit_output("Creating desktop entry...")
+        # Use icon name (from hicolor theme) if we installed it, otherwise absolute path
+        icon_ref = 'duckietv' if icon_found else '/opt/DuckieTV/duckietv-icon.png'
+        
+        desktop_content = f"""[Desktop Entry]
+Name=DuckieTV
+Comment=TV Show Tracker with torrent integration
+Exec=/usr/bin/duckietv
+Icon={icon_ref}
+Terminal=false
+Type=Application
+Categories=AudioVideo;Video;TV;
+StartupWMClass=DuckieTV
+"""
+        
+        desktop_path = '/usr/share/applications/duckietv.desktop'
+        with open(desktop_path, 'w') as f:
+            f.write(desktop_content)
+        
+        emit_status("success", "DuckieTV installed")
+        emit_output("Run with: duckietv")
+        return 0
+        
+    except Exception as e:
+        emit_status("error", f"Installation failed: {e}")
+        return 1
+    finally:
+        os.chdir('/')
+        subprocess.run(['rm', '-rf', work_dir], capture_output=True)
+
+
+def install_rustdesk(family: str) -> int:
+    """
+    Install RustDesk remote desktop using native packages.
+    
+    Dynamically discovers the correct package from GitHub releases.
+    - Debian/Ubuntu: .deb
+    - Fedora/RHEL: .rpm (not -suse)
+    - openSUSE: -suse.rpm
+    - Arch: AUR
+    """
+    emit_status("start", "Installing RustDesk")
+    
+    # Arch can use AUR
+    if family == 'arch':
+        for helper in ['paru', 'yay', 'pikaur']:
+            if shutil.which(helper):
+                emit_output(f"Using {helper} to install from AUR...")
+                result = subprocess.run(
+                    [helper, '-S', '--needed', '--noconfirm', 'rustdesk-bin'],
+                    capture_output=False
+                )
+                if result.returncode == 0:
+                    emit_status("success", "RustDesk installed from AUR")
+                    return 0
+        emit_status("error", "No AUR helper found")
+        return 1
+    
+    import tempfile
+    import re
+    
+    work_dir = tempfile.mkdtemp(prefix='rustdesk-')
+    emit_output(f"Working directory: {work_dir}")
+    
+    try:
+        # Step 1: Get the latest release tag from GitHub
+        emit_output("Finding latest RustDesk release...")
+        releases_url = "https://github.com/rustdesk/rustdesk/releases/latest"
+        
+        result = subprocess.run(
+            ['curl', '-fsSL', '-w', '%{url_effective}', '-o', '/dev/null', releases_url],
+            capture_output=True,
+            text=True
+        )
+        
+        version = None
+        if result.returncode == 0:
+            # Extract version from URL like: .../releases/tag/1.4.4
+            match = re.search(r'/tag/(\d+\.\d+\.\d+)', result.stdout)
+            if match:
+                version = match.group(1)
+                emit_output(f"  Latest version: {version}")
+        
+        if not version:
+            version = '1.4.4'
+            emit_output(f"  Using fallback version: {version}")
+        
+        # Step 2: Fetch the release page to discover actual asset filenames
+        emit_output("  Discovering available packages...")
+        release_page_url = f"https://github.com/rustdesk/rustdesk/releases/expanded_assets/{version}"
+        
+        result = subprocess.run(
+            ['curl', '-fsSL', release_page_url],
+            capture_output=True,
+            text=True
+        )
+        
+        pkg_file = None
+        download_url = None
+        
+        if result.returncode == 0 and result.stdout:
+            # Parse the HTML for download links
+            # Links look like: href="/rustdesk/rustdesk/releases/download/1.4.4/rustdesk-1.4.4-x86_64.deb"
+            
+            if family == 'debian':
+                # Look for x86_64.deb specifically (not aarch64, not armv7)
+                match = re.search(r'href="([^"]+/rustdesk-[^"]*x86_64\.deb)"', result.stdout)
+                if match:
+                    pkg_file = match.group(1).split('/')[-1]
+                    download_url = f"https://github.com{match.group(1)}"
+                    
+            elif family == 'opensuse':
+                # Look for x86_64-suse.rpm specifically (not aarch64)
+                match = re.search(r'href="([^"]+/rustdesk-[^"]*x86_64-suse\.rpm)"', result.stdout)
+                if match:
+                    pkg_file = match.group(1).split('/')[-1]
+                    download_url = f"https://github.com{match.group(1)}"
+                    
+            elif family in ('fedora', 'rhel'):
+                # Look for x86_64.rpm but NOT -suse.rpm and NOT .pkg.tar (arch)
+                for match in re.finditer(r'href="([^"]+/rustdesk-[^"]*x86_64\.rpm)"', result.stdout):
+                    url = match.group(1)
+                    if '-suse.rpm' not in url:
+                        pkg_file = url.split('/')[-1]
+                        download_url = f"https://github.com{url}"
+                        break
+        
+        # Fallback to guessed filenames if discovery failed
+        if not download_url:
+            emit_output("  Discovery failed, trying known patterns...")
+            if family == 'debian':
+                pkg_file = f"rustdesk-{version}-x86_64.deb"
+            elif family == 'opensuse':
+                # Try multiple patterns
+                for pattern in [f"rustdesk-{version}-0.x86_64-suse.rpm",
+                               f"rustdesk-{version}-x86_64-suse.rpm"]:
+                    pkg_file = pattern
+                    download_url = f"https://github.com/rustdesk/rustdesk/releases/download/{version}/{pkg_file}"
+                    # Quick check if URL exists
+                    check = subprocess.run(['curl', '-fsSL', '-I', download_url], 
+                                          capture_output=True)
+                    if check.returncode == 0:
+                        break
+                    download_url = None
+            elif family in ('fedora', 'rhel'):
+                for pattern in [f"rustdesk-{version}-0.x86_64.rpm",
+                               f"rustdesk-{version}-x86_64.rpm"]:
+                    pkg_file = pattern
+                    download_url = f"https://github.com/rustdesk/rustdesk/releases/download/{version}/{pkg_file}"
+                    check = subprocess.run(['curl', '-fsSL', '-I', download_url], 
+                                          capture_output=True)
+                    if check.returncode == 0:
+                        break
+                    download_url = None
+            
+            if not download_url and pkg_file:
+                download_url = f"https://github.com/rustdesk/rustdesk/releases/download/{version}/{pkg_file}"
+        
+        if not download_url:
+            emit_status("error", f"Could not find RustDesk package for {family}")
+            emit_output("Visit: https://github.com/rustdesk/rustdesk/releases")
+            return 1
+        
+        # Step 3: Download the package
+        dest = f"{work_dir}/{pkg_file}"
+        emit_output(f"  Downloading: {pkg_file}")
+        
+        result = subprocess.run(
+            ['curl', '-fsSL', download_url, '-o', dest],
+            capture_output=True
+        )
+        
+        if result.returncode != 0:
+            emit_output(f"    Download failed: {result.stderr.decode()[:200]}")
+            emit_status("error", "Could not download RustDesk")
+            emit_output("Visit: https://github.com/rustdesk/rustdesk/releases")
+            return 1
+        
+        if not os.path.exists(dest) or os.path.getsize(dest) < 1000000:
+            emit_status("error", "Downloaded file too small or missing")
+            return 1
+        
+        file_size = os.path.getsize(dest)
+        emit_output(f"  Downloaded: {file_size // 1024 // 1024} MB")
+        
+        # Step 4: Install the package
+        emit_output("Installing package...")
+        
+        if family == 'debian':
+            result = subprocess.run(['dpkg', '-i', dest], capture_output=False)
             if result.returncode != 0:
                 emit_output("Fixing dependencies...")
                 subprocess.run(['apt', 'install', '-f', '-y'], capture_output=False)
-            
-            emit_status("success", "DuckieTV installed")
+        elif family == 'opensuse':
+            subprocess.run(['zypper', 'install', '-y', '--allow-unsigned-rpm', dest], 
+                          capture_output=False)
+        elif family in ('fedora', 'rhel'):
+            subprocess.run(['dnf', 'install', '-y', dest], capture_output=False)
+        
+        # Verify installation
+        if shutil.which('rustdesk') or os.path.exists('/usr/bin/rustdesk'):
+            emit_status("success", "RustDesk installed")
+            emit_output("Run with: rustdesk")
             return 0
-        
-        elif family in ('fedora', 'rhel', 'opensuse'):
-            # Convert with alien
-            # Determine package manager
-            pkg_install = ['zypper', 'install', '-y'] if family == 'opensuse' else ['dnf', 'install', '-y']
-            
-            emit_output("Checking for alien...")
-            if not shutil.which('alien'):
-                emit_output("Installing alien and dependencies...")
-                result = subprocess.run(
-                    pkg_install + ['alien', 'dpkg', 'rpm-build'],
-                    capture_output=False
-                )
-                if result.returncode != 0:
-                    emit_status("error", "Failed to install alien")
-                    return 1
-            
-            emit_output("Converting .deb to .rpm (this takes a minute)...")
-            os.chdir(work_dir)
-            result = subprocess.run(
-                ['alien', '-r', '-k', deb_file],
-                capture_output=False
-            )
-            
-            if result.returncode != 0:
-                emit_status("error", "alien conversion failed")
-                return 1
-            
-            rpm_files = glob.glob(f"{work_dir}/*.rpm")
-            if not rpm_files:
-                emit_status("error", "No RPM file generated")
-                return 1
-            
-            rpm_file = rpm_files[0]
-            emit_output(f"Generated: {os.path.basename(rpm_file)}")
-            
-            emit_output("Installing RPM...")
-            result = subprocess.run(
-                ['rpm', '-ivh', '--replacefiles', '--nodeps', rpm_file],
-                capture_output=False
-            )
-            
-            if result.returncode == 0:
-                emit_status("success", "DuckieTV installed")
-                return 0
-            else:
-                emit_status("error", "RPM installation failed")
-                return 1
-        
         else:
-            emit_status("error", f"DuckieTV installation not supported for {family}")
+            emit_status("error", "Installation may have failed - rustdesk not found in PATH")
             return 1
+        
+    except Exception as e:
+        emit_status("error", f"Installation failed: {e}")
+        return 1
+    finally:
+        os.chdir('/')
+        subprocess.run(['rm', '-rf', work_dir], capture_output=True)
+
+
+def install_plex_desktop(family: str) -> int:
+    """
+    Install Plex Desktop media player using universal tar.bz2.
+    
+    Downloads from artifacts.plex.tv and installs to /opt/Plex.
+    Works on all distros (Arch, Debian, Fedora, openSUSE).
+    """
+    emit_status("start", "Installing Plex Desktop")
+    
+    import tempfile
+    import re
+    
+    work_dir = tempfile.mkdtemp(prefix='plex-desktop-')
+    emit_output(f"Working directory: {work_dir}")
+    
+    try:
+        # Step 1: Discover latest version from Flathub manifest
+        emit_output("Finding latest Plex Desktop version...")
+        
+        manifest_url = "https://raw.githubusercontent.com/flathub/tv.plex.PlexDesktop/master/tv.plex.PlexDesktop.yml"
+        result = subprocess.run(
+            ['curl', '-fsSL', manifest_url],
+            capture_output=True,
+            text=True
+        )
+        
+        full_version = None
+        if result.returncode == 0 and result.stdout:
+            # Look for: url: https://artifacts.plex.tv/plex-desktop-stable/1.110.0.351-4e48eb83/linux/Plex-...
+            match = re.search(r'artifacts\.plex\.tv/plex-desktop-stable/([^/]+)/linux/', result.stdout)
+            if match:
+                full_version = match.group(1)
+                emit_output(f"  Latest version: {full_version}")
+        
+        if not full_version:
+            # Fallback to known working version
+            full_version = '1.110.0.351-4e48eb83'
+            emit_output(f"  Using fallback version: {full_version}")
+        
+        # Step 2: Download the tar.bz2
+        tarball = f"Plex-{full_version}-linux-x86_64.tar.bz2"
+        download_url = f"https://artifacts.plex.tv/plex-desktop-stable/{full_version}/linux/{tarball}"
+        dest = f"{work_dir}/{tarball}"
+        
+        emit_output(f"  Downloading: {tarball}")
+        result = subprocess.run(
+            ['curl', '-fsSL', download_url, '-o', dest],
+            capture_output=True
+        )
+        
+        if result.returncode != 0:
+            emit_output(f"    Download failed: {result.stderr.decode()[:200]}")
+            emit_status("error", "Could not download Plex Desktop")
+            emit_output("Try Flatpak: flatpak install flathub tv.plex.PlexDesktop")
+            return 1
+        
+        if not os.path.exists(dest) or os.path.getsize(dest) < 10000000:  # ~10MB minimum
+            emit_status("error", "Downloaded file too small or missing")
+            return 1
+        
+        file_size = os.path.getsize(dest)
+        emit_output(f"  Downloaded: {file_size // 1024 // 1024} MB")
+        
+        # Step 3: Extract to /opt/Plex
+        emit_output("Extracting to /opt/Plex...")
+        
+        # Remove old installation if exists
+        if os.path.exists('/opt/Plex'):
+            subprocess.run(['rm', '-rf', '/opt/Plex'], capture_output=True)
+        
+        os.makedirs('/opt/Plex', exist_ok=True)
+        
+        result = subprocess.run(
+            ['tar', '-xjf', dest, '-C', '/opt/Plex', '--strip-components=1'],
+            capture_output=True
+        )
+        
+        if result.returncode != 0:
+            emit_output(f"    Extraction failed: {result.stderr.decode()[:200]}")
+            emit_status("error", "Failed to extract Plex Desktop")
+            return 1
+        
+        # Step 4: Create symlink
+        emit_output("Creating symlink...")
+        
+        # Find the actual executable
+        plex_exec = None
+        for candidate in ['/opt/Plex/Plex', '/opt/Plex/bin/Plex', '/opt/Plex/Plex.sh']:
+            if os.path.exists(candidate):
+                plex_exec = candidate
+                break
+        
+        if not plex_exec:
+            # Check what's in the directory
+            result = subprocess.run(['ls', '-la', '/opt/Plex'], capture_output=True, text=True)
+            emit_output(f"  Contents: {result.stdout[:500]}")
+            emit_status("error", "Could not find Plex executable")
+            return 1
+        
+        # Remove old symlink if exists
+        if os.path.exists('/usr/bin/plex-desktop'):
+            os.remove('/usr/bin/plex-desktop')
+        
+        os.symlink(plex_exec, '/usr/bin/plex-desktop')
+        os.chmod(plex_exec, 0o755)
+        
+        # Step 5: Download icon from Flathub
+        emit_output("Downloading icon...")
+        icon_url = "https://raw.githubusercontent.com/flathub/tv.plex.PlexDesktop/master/tv.plex.PlexDesktop.png"
+        icon_dest = f"{work_dir}/plex-desktop.png"
+        
+        subprocess.run(['curl', '-fsSL', icon_url, '-o', icon_dest], capture_output=True)
+        
+        # Install icon to hicolor theme
+        if os.path.exists(icon_dest) and os.path.getsize(icon_dest) > 1000:
+            for size in ['48x48', '64x64', '128x128', '256x256']:
+                icon_dir = f'/usr/share/icons/hicolor/{size}/apps'
+                os.makedirs(icon_dir, exist_ok=True)
+                subprocess.run(['cp', icon_dest, f'{icon_dir}/plex-desktop.png'], capture_output=True)
             
+            # Also to pixmaps
+            os.makedirs('/usr/share/pixmaps', exist_ok=True)
+            subprocess.run(['cp', icon_dest, '/usr/share/pixmaps/plex-desktop.png'], capture_output=True)
+            
+            # Update icon cache
+            subprocess.run(['gtk-update-icon-cache', '-f', '-t', '/usr/share/icons/hicolor'], 
+                          capture_output=True)
+        
+        # Step 6: Create .desktop file
+        emit_output("Creating desktop entry...")
+        desktop_content = f'''[Desktop Entry]
+Name=Plex Desktop
+Comment=Plex media player for Linux
+Exec=/usr/bin/plex-desktop %U
+Icon=plex-desktop
+Terminal=false
+Type=Application
+Categories=AudioVideo;Video;Player;TV;
+MimeType=x-scheme-handler/plex;
+StartupWMClass=Plex
+'''
+        
+        desktop_path = '/usr/share/applications/plex-desktop.desktop'
+        with open(desktop_path, 'w') as f:
+            f.write(desktop_content)
+        os.chmod(desktop_path, 0o644)
+        
+        # Update desktop database
+        subprocess.run(['update-desktop-database', '/usr/share/applications'], capture_output=True)
+        
+        # Verify installation
+        if os.path.exists('/usr/bin/plex-desktop'):
+            emit_status("success", "Plex Desktop installed")
+            emit_output("Run with: plex-desktop")
+            emit_output("Or find 'Plex Desktop' in your application menu")
+            return 0
+        else:
+            emit_status("error", "Installation may have failed")
+            return 1
+        
     except Exception as e:
         emit_status("error", f"Installation failed: {e}")
         return 1
@@ -2550,6 +3113,56 @@ import shutil
 # Main
 # =============================================================================
 
+# =============================================================================
+# Hostname Management
+# =============================================================================
+
+def set_system_hostname(new_hostname: str) -> int:
+    """Set the system hostname using hostnamectl.
+    
+    Args:
+        new_hostname: The new hostname to set
+        
+    Returns:
+        0 on success, 1 on failure
+    """
+    import re
+    
+    # Validate hostname format
+    # Must start with letter, contain only letters, numbers, hyphens
+    # Max 63 characters
+    if not new_hostname or len(new_hostname) > 63:
+        emit_status("error", "Hostname must be 1-63 characters")
+        return 1
+    
+    if not re.match(r'^[a-zA-Z][a-zA-Z0-9-]*$', new_hostname):
+        emit_status("error", "Hostname must start with a letter and contain only letters, numbers, and hyphens")
+        return 1
+    
+    emit_status("start", f"Setting hostname to '{new_hostname}'...")
+    
+    try:
+        # Use hostnamectl to set all hostname types
+        result = subprocess.run(
+            ['hostnamectl', 'set-hostname', new_hostname],
+            capture_output=True,
+            text=True
+        )
+        
+        if result.returncode != 0:
+            emit_status("error", f"hostnamectl failed: {result.stderr}")
+            return 1
+        
+        emit_status("complete", f"Hostname changed to '{new_hostname}'")
+        emit_output("")
+        emit_output("Note: You may need to log out and back in for all applications to see the new hostname.")
+        return 0
+        
+    except Exception as e:
+        emit_status("error", f"Failed to set hostname: {e}")
+        return 1
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Tux Assistant Privileged Helper',
@@ -2582,6 +3195,10 @@ def main():
     parser.add_argument('--nextcloud-install', metavar='PLAN_FILE',
                         help='Install Nextcloud server using plan from JSON file')
     
+    # System configuration
+    parser.add_argument('--set-hostname', metavar='NAME',
+                        help='Set the system hostname')
+    
     args = parser.parse_args()
     
     # Package checking doesn't require root
@@ -2611,6 +3228,10 @@ def main():
     # Handle Nextcloud installation
     if args.nextcloud_install:
         return install_nextcloud(args.nextcloud_install)
+    
+    # Handle hostname change
+    if args.set_hostname:
+        return set_system_hostname(args.set_hostname)
     
     # Handle alternative source enablement
     if args.enable_source:
@@ -2839,68 +3460,84 @@ def enable_obs(repo_id: str) -> bool:
     """Enable an OpenSUSE Build Service repository.
     
     Args:
-        repo_id: OBS repository ID (e.g., 'games', 'home:user/project')
+        repo_id: OBS repository ID (e.g., 'games', 'home:lemmy04', 'Archiving:Backup')
         
     Returns:
         True on success, False on failure
     """
     emit_output(f"Adding OBS repository: {repo_id}")
     
-    # Get OpenSUSE version
-    version = "tumbleweed"
+    # Get OpenSUSE version info
+    version_id = ""
+    pretty_name = ""
     try:
         with open('/etc/os-release', 'r') as f:
             for line in f:
                 if line.startswith('VERSION_ID='):
-                    ver = line.split('=')[1].strip().strip('"')
-                    if ver:
-                        version = ver
-                    break
+                    version_id = line.split('=')[1].strip().strip('"')
+                elif line.startswith('PRETTY_NAME='):
+                    pretty_name = line.split('=')[1].strip().strip('"').lower()
     except:
         pass
     
-    # Build OBS repo URL
-    # Format: https://download.opensuse.org/repositories/{repo}/openSUSE_{version}/
-    if '/' in repo_id:
-        # home:user/project format
-        repo_url = f"https://download.opensuse.org/repositories/{repo_id.replace(':', ':/')}/openSUSE_{version}/"
-        repo_name = repo_id.replace(':', '_').replace('/', '_')
+    # Determine distro version string for OBS URL
+    if 'tumbleweed' in pretty_name or not version_id:
+        distro_version = "openSUSE_Tumbleweed"
+    elif 'slowroll' in pretty_name:
+        distro_version = "openSUSE_Slowroll"
     else:
-        # Simple repo name like 'games'
-        repo_url = f"https://download.opensuse.org/repositories/{repo_id}/openSUSE_{version}/"
-        repo_name = repo_id
+        distro_version = version_id
+    
+    emit_output(f"Detected distro version: {distro_version}")
+    
+    # Build OBS repo file URL
+    repo_file_url = f"https://download.opensuse.org/repositories/{repo_id}/{distro_version}/{repo_id}.repo"
+    
+    # Local filename (replace : with _ for filesystem)
+    repo_filename = repo_id.replace(':', '_') + '.repo'
+    local_repo_path = f"/etc/zypp/repos.d/{repo_filename}"
+    
+    emit_output(f"Repository URL: {repo_file_url}")
     
     try:
-        # Check if repo already exists
-        result = subprocess.run(
-            ['zypper', 'repos', repo_name],
-            capture_output=True, text=True, timeout=30
-        )
-        
-        if result.returncode == 0:
-            emit_output(f"Repository {repo_name} already configured")
+        # Check if repo file already exists
+        if os.path.exists(local_repo_path):
+            emit_output(f"Repository file already exists: {local_repo_path}")
             return True
         
-        # Add the repository
-        emit_output(f"Adding repository from {repo_url}")
+        # Download the .repo file directly to /etc/zypp/repos.d/
+        emit_output(f"Downloading repository file...")
         result = subprocess.run(
-            ['zypper', 'ar', '-f', repo_url, repo_name],
+            ['curl', '-fsSL', '-o', local_repo_path, repo_file_url],
             capture_output=True, text=True, timeout=60
         )
         
-        if result.returncode != 0 and 'already exists' not in result.stderr.lower():
-            emit_output(f"Error adding repo: {result.stderr}")
+        if result.returncode != 0:
+            emit_output(f"Error downloading repo file: {result.stderr}")
             return False
         
-        # Import GPG key
-        emit_output("Importing GPG key...")
-        subprocess.run(
-            ['zypper', '--gpg-auto-import-keys', 'refresh', repo_name],
-            capture_output=True, timeout=120
+        emit_output(f"Repository file saved to {local_repo_path}")
+        
+        # Refresh with auto GPG key import
+        emit_output("Refreshing repository and importing GPG key...")
+        result = subprocess.run(
+            ['zypper', '--gpg-auto-import-keys', 'refresh'],
+            capture_output=True, text=True, timeout=120
         )
         
-        emit_output(f"✓ OBS repository {repo_name} added")
+        if result.returncode != 0:
+            emit_output(f"Warning: refresh returned {result.returncode}")
+            # Don't fail - might still work
+        
+        emit_output(f"✓ OBS repository added successfully")
         return True
+        
+    except subprocess.TimeoutExpired:
+        emit_output("Timeout while adding OBS repository")
+        return False
+    except Exception as e:
+        emit_output(f"Error: {str(e)}")
+        return False
         
     except subprocess.TimeoutExpired:
         emit_output("Timeout while adding OBS repository")

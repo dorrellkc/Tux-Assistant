@@ -3,11 +3,18 @@ Tux Assistant - Desktop Enhancements Module
 
 Themes, extensions, widgets, and tweaks for GNOME, KDE, XFCE, Cinnamon, and MATE.
 
-Copyright (c) 2025 Christopher Dorrell. All Rights Reserved.
+Copyright (c) 2025 Christopher Dorrell. Licensed under GPL-3.0.
 """
 
 import subprocess
 import threading
+import json
+import urllib.request
+import urllib.parse
+import tempfile
+import os
+import shutil
+from pathlib import Path
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional, Callable
@@ -16,6 +23,19 @@ import gi
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
 from gi.repository import Gtk, Adw, GLib, Gio
+
+# Try to import WebKit for theme preview browser
+try:
+    gi.require_version('WebKit', '6.0')
+    from gi.repository import WebKit
+    HAS_WEBKIT = True
+except Exception:
+    try:
+        gi.require_version('WebKit2', '5.0')
+        from gi.repository import WebKit2 as WebKit
+        HAS_WEBKIT = True
+    except Exception:
+        HAS_WEBKIT = False
 
 from ..core import get_distro, get_desktop, DesktopEnv, DistroFamily
 from .registry import register_module, ModuleCategory
@@ -2361,6 +2381,7 @@ FONT_PACKAGES = [
 # =============================================================================
 
 GNOME_TWEAKS = [
+    # === Window Behavior ===
     Tweak(
         id="titlebar-buttons",
         name="Show Minimize/Maximize Buttons",
@@ -2385,27 +2406,61 @@ GNOME_TWEAKS = [
         disabled_value="false"
     ),
     Tweak(
-        id="tap-to-click",
-        name="Tap to Click",
-        description="Enable touchpad tap to click",
+        id="edge-tiling",
+        name="Edge Tiling",
+        description="Tile windows when dragged to screen edges",
         desktop=DesktopEnv.GNOME,
-        gsettings_schema="org.gnome.desktop.peripherals.touchpad",
-        gsettings_key="tap-to-click",
+        gsettings_schema="org.gnome.mutter",
+        gsettings_key="edge-tiling",
         is_toggle=True,
         enabled_value="true",
         disabled_value="false"
     ),
     Tweak(
-        id="natural-scrolling",
-        name="Natural Scrolling",
-        description="Reverse scroll direction",
+        id="attach-modal-dialogs",
+        name="Attach Modal Dialogs",
+        description="Attach dialog windows to their parent",
         desktop=DesktopEnv.GNOME,
-        gsettings_schema="org.gnome.desktop.peripherals.touchpad",
-        gsettings_key="natural-scroll",
+        gsettings_schema="org.gnome.mutter",
+        gsettings_key="attach-modal-dialogs",
         is_toggle=True,
         enabled_value="true",
         disabled_value="false"
     ),
+    Tweak(
+        id="focus-mode-click",
+        name="Click to Focus",
+        description="Windows require click to focus (vs hover)",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.desktop.wm.preferences",
+        gsettings_key="focus-mode",
+        is_toggle=True,
+        enabled_value="click",
+        disabled_value="sloppy"
+    ),
+    Tweak(
+        id="raise-on-click",
+        name="Raise Windows on Click",
+        description="Clicking a window raises it to front",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.desktop.wm.preferences",
+        gsettings_key="raise-on-click",
+        is_toggle=True,
+        enabled_value="true",
+        disabled_value="false"
+    ),
+    Tweak(
+        id="resize-with-right-button",
+        name="Resize with Right Button",
+        description="Use right-click to resize windows",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.desktop.wm.preferences",
+        gsettings_key="resize-with-right-button",
+        is_toggle=True,
+        enabled_value="true",
+        disabled_value="false"
+    ),
+    # === Top Bar / Clock ===
     Tweak(
         id="show-weekday",
         name="Show Weekday in Clock",
@@ -2418,6 +2473,39 @@ GNOME_TWEAKS = [
         disabled_value="false"
     ),
     Tweak(
+        id="show-date",
+        name="Show Date in Clock",
+        description="Display date in top panel clock",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.desktop.interface",
+        gsettings_key="clock-show-date",
+        is_toggle=True,
+        enabled_value="true",
+        disabled_value="false"
+    ),
+    Tweak(
+        id="clock-seconds",
+        name="Show Seconds in Clock",
+        description="Display seconds in top panel clock",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.desktop.interface",
+        gsettings_key="clock-show-seconds",
+        is_toggle=True,
+        enabled_value="true",
+        disabled_value="false"
+    ),
+    Tweak(
+        id="clock-24h",
+        name="24-Hour Clock",
+        description="Use 24-hour time format",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.desktop.interface",
+        gsettings_key="clock-format",
+        is_toggle=True,
+        enabled_value="24h",
+        disabled_value="12h"
+    ),
+    Tweak(
         id="show-battery-percentage",
         name="Show Battery Percentage",
         description="Display battery percentage in panel",
@@ -2428,17 +2516,7 @@ GNOME_TWEAKS = [
         enabled_value="true",
         disabled_value="false"
     ),
-    Tweak(
-        id="hot-corner",
-        name="Hot Corner (Activities)",
-        description="Enable hot corner for Activities view",
-        desktop=DesktopEnv.GNOME,
-        gsettings_schema="org.gnome.desktop.interface",
-        gsettings_key="enable-hot-corners",
-        is_toggle=True,
-        enabled_value="true",
-        disabled_value="false"
-    ),
+    # === Appearance / Interface ===
     Tweak(
         id="dark-mode",
         name="Dark Mode",
@@ -2462,12 +2540,194 @@ GNOME_TWEAKS = [
         disabled_value="false"
     ),
     Tweak(
-        id="clock-seconds",
-        name="Show Seconds in Clock",
-        description="Display seconds in top panel clock",
+        id="hot-corner",
+        name="Hot Corner (Activities)",
+        description="Enable hot corner for Activities view",
         desktop=DesktopEnv.GNOME,
         gsettings_schema="org.gnome.desktop.interface",
-        gsettings_key="clock-show-seconds",
+        gsettings_key="enable-hot-corners",
+        is_toggle=True,
+        enabled_value="true",
+        disabled_value="false"
+    ),
+    # === Input Devices ===
+    Tweak(
+        id="tap-to-click",
+        name="Tap to Click",
+        description="Enable touchpad tap to click",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.desktop.peripherals.touchpad",
+        gsettings_key="tap-to-click",
+        is_toggle=True,
+        enabled_value="true",
+        disabled_value="false"
+    ),
+    Tweak(
+        id="natural-scrolling",
+        name="Natural Scrolling (Touchpad)",
+        description="Reverse touchpad scroll direction",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.desktop.peripherals.touchpad",
+        gsettings_key="natural-scroll",
+        is_toggle=True,
+        enabled_value="true",
+        disabled_value="false"
+    ),
+    Tweak(
+        id="two-finger-scroll",
+        name="Two-Finger Scrolling",
+        description="Use two fingers to scroll on touchpad",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.desktop.peripherals.touchpad",
+        gsettings_key="two-finger-scrolling-enabled",
+        is_toggle=True,
+        enabled_value="true",
+        disabled_value="false"
+    ),
+    Tweak(
+        id="disable-touchpad-typing",
+        name="Disable Touchpad While Typing",
+        description="Prevent accidental touches while typing",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.desktop.peripherals.touchpad",
+        gsettings_key="disable-while-typing",
+        is_toggle=True,
+        enabled_value="true",
+        disabled_value="false"
+    ),
+    Tweak(
+        id="mouse-natural-scroll",
+        name="Natural Scrolling (Mouse)",
+        description="Reverse mouse scroll direction",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.desktop.peripherals.mouse",
+        gsettings_key="natural-scroll",
+        is_toggle=True,
+        enabled_value="true",
+        disabled_value="false"
+    ),
+    Tweak(
+        id="middle-click-paste",
+        name="Middle-Click Paste",
+        description="Paste with middle mouse button",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.desktop.interface",
+        gsettings_key="gtk-enable-primary-paste",
+        is_toggle=True,
+        enabled_value="true",
+        disabled_value="false"
+    ),
+    # === Workspaces ===
+    Tweak(
+        id="dynamic-workspaces",
+        name="Dynamic Workspaces",
+        description="Automatically add/remove workspaces",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.mutter",
+        gsettings_key="dynamic-workspaces",
+        is_toggle=True,
+        enabled_value="true",
+        disabled_value="false"
+    ),
+    Tweak(
+        id="workspaces-only-primary",
+        name="Workspaces on Primary Display Only",
+        description="Only primary monitor switches workspaces",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.mutter",
+        gsettings_key="workspaces-only-on-primary",
+        is_toggle=True,
+        enabled_value="true",
+        disabled_value="false"
+    ),
+    # === Sound ===
+    Tweak(
+        id="over-amplification",
+        name="Over-Amplification",
+        description="Allow volume above 100%",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.desktop.sound",
+        gsettings_key="allow-volume-above-100-percent",
+        is_toggle=True,
+        enabled_value="true",
+        disabled_value="false"
+    ),
+    Tweak(
+        id="event-sounds",
+        name="System Sounds",
+        description="Play sounds for system events",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.desktop.sound",
+        gsettings_key="event-sounds",
+        is_toggle=True,
+        enabled_value="true",
+        disabled_value="false"
+    ),
+    # === Power ===
+    Tweak(
+        id="suspend-on-lid-close",
+        name="Suspend on Lid Close",
+        description="Suspend laptop when lid is closed",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.settings-daemon.plugins.power",
+        gsettings_key="lid-close-suspend-with-external-monitor",
+        is_toggle=True,
+        enabled_value="true",
+        disabled_value="false"
+    ),
+    Tweak(
+        id="show-suspend-button",
+        name="Show Suspend Button",
+        description="Show suspend in power menu",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.desktop.lockdown",
+        gsettings_key="disable-log-out",
+        is_toggle=True,
+        enabled_value="false",
+        disabled_value="true"
+    ),
+    # === Privacy / Security ===
+    Tweak(
+        id="automatic-screen-lock",
+        name="Automatic Screen Lock",
+        description="Lock screen when idle",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.desktop.screensaver",
+        gsettings_key="lock-enabled",
+        is_toggle=True,
+        enabled_value="true",
+        disabled_value="false"
+    ),
+    Tweak(
+        id="show-full-name-login",
+        name="Show Full Name at Login",
+        description="Display full name instead of username",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.login-screen",
+        gsettings_key="enable-fingerprint-authentication",
+        is_toggle=True,
+        enabled_value="true",
+        disabled_value="false"
+    ),
+    # === Files / Nautilus ===
+    Tweak(
+        id="show-hidden-files",
+        name="Show Hidden Files",
+        description="Show hidden files in file manager",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gnome.nautilus.preferences",
+        gsettings_key="show-hidden-files",
+        is_toggle=True,
+        enabled_value="true",
+        disabled_value="false"
+    ),
+    Tweak(
+        id="sort-folders-first",
+        name="Sort Folders Before Files",
+        description="Show folders before files in file manager",
+        desktop=DesktopEnv.GNOME,
+        gsettings_schema="org.gtk.gtk4.settings.file-chooser",
+        gsettings_key="sort-directories-first",
         is_toggle=True,
         enabled_value="true",
         disabled_value="false"
@@ -2494,7 +2754,7 @@ class ThemeManager:
                 capture_output=True, text=True, timeout=5
             )
             return result.stdout.strip().strip("'")
-        except:
+        except Exception:
             return ""
     
     def get_current_icon_theme(self) -> str:
@@ -2505,7 +2765,7 @@ class ThemeManager:
                 capture_output=True, text=True, timeout=5
             )
             return result.stdout.strip().strip("'")
-        except:
+        except Exception:
             return ""
     
     def get_current_cursor_theme(self) -> str:
@@ -2516,7 +2776,7 @@ class ThemeManager:
                 capture_output=True, text=True, timeout=5
             )
             return result.stdout.strip().strip("'")
-        except:
+        except Exception:
             return ""
     
     def apply_gtk_theme(self, theme_name: str) -> bool:
@@ -2538,9 +2798,15 @@ class ThemeManager:
                     check=True, timeout=5
                 )
             elif self.desktop.desktop_env == DesktopEnv.XFCE:
+                # XFCE needs both GTK theme and window manager theme
                 subprocess.run(
                     ['xfconf-query', '-c', 'xsettings', '-p', '/Net/ThemeName', '-s', theme_name],
                     check=True, timeout=5
+                )
+                # Also set the window manager (xfwm4) theme for window decorations
+                subprocess.run(
+                    ['xfconf-query', '-c', 'xfwm4', '-p', '/general/theme', '-s', theme_name],
+                    timeout=5
                 )
             elif self.desktop.desktop_env == DesktopEnv.KDE:
                 # KDE: Set GTK theme via kde-gtk-config or plasma settings
@@ -2567,7 +2833,7 @@ class ThemeManager:
                     except FileNotFoundError:
                         continue
             return True
-        except:
+        except Exception:
             return False
     
     def apply_icon_theme(self, theme_name: str) -> bool:
@@ -2615,7 +2881,7 @@ class ThemeManager:
                         except FileNotFoundError:
                             continue
             return True
-        except:
+        except Exception:
             return False
     
     def apply_cursor_theme(self, theme_name: str) -> bool:
@@ -2648,7 +2914,7 @@ class ThemeManager:
                     check=True, timeout=5
                 )
             return True
-        except:
+        except Exception:
             return False
     
     def apply_plasma_theme(self, theme_name: str) -> bool:
@@ -2668,7 +2934,7 @@ class ThemeManager:
                 capture_output=True, timeout=10
             )
             return result.returncode == 0
-        except:
+        except Exception:
             return False
     
     def apply_kvantum_theme(self, theme_name: str) -> bool:
@@ -2684,7 +2950,7 @@ class ThemeManager:
                 check=True, timeout=5
             )
             return True
-        except:
+        except Exception:
             return False
     
     def get_current_plasma_theme(self) -> str:
@@ -2704,7 +2970,7 @@ class ThemeManager:
                 capture_output=True, text=True, timeout=5
             )
             return result.stdout.strip()
-        except:
+        except Exception:
             return ""
     
     def get_current_kvantum_theme(self) -> str:
@@ -2717,7 +2983,7 @@ class ThemeManager:
                     for line in f:
                         if line.startswith('theme='):
                             return line.split('=', 1)[1].strip()
-        except:
+        except Exception:
             pass
         return ""
 
@@ -2753,7 +3019,7 @@ class TweakManager:
                     capture_output=True, text=True, timeout=5
                 )
                 return result.stdout.strip().strip("'")
-            except:
+            except Exception:
                 return None
         
         # KDE kconfig
@@ -2773,7 +3039,7 @@ class TweakManager:
                             return result.stdout.strip()
                     except FileNotFoundError:
                         continue
-            except:
+            except Exception:
                 return None
         
         # XFCE xfconf
@@ -2785,7 +3051,7 @@ class TweakManager:
                 )
                 if result.returncode == 0:
                     return result.stdout.strip()
-            except:
+            except Exception:
                 return None
         
         return None
@@ -2802,7 +3068,7 @@ class TweakManager:
                     check=True, timeout=5
                 )
                 return True
-            except:
+            except Exception:
                 return False
         
         # KDE kconfig
@@ -2826,7 +3092,7 @@ class TweakManager:
                             return True
                     except FileNotFoundError:
                         continue
-            except:
+            except Exception:
                 return False
         
         # XFCE xfconf
@@ -2841,7 +3107,7 @@ class TweakManager:
                 
                 subprocess.run(cmd, check=True, timeout=5)
                 return True
-            except:
+            except Exception:
                 return False
         
         return False
@@ -2865,7 +3131,7 @@ class ExtensionManager:
                 capture_output=True, timeout=5
             )
             return result.returncode == 0
-        except:
+        except Exception:
             return False
     
     def is_extension_enabled(self, uuid: str) -> bool:
@@ -2876,7 +3142,7 @@ class ExtensionManager:
                 capture_output=True, text=True, timeout=5
             )
             return 'State: ENABLED' in result.stdout
-        except:
+        except Exception:
             return False
     
     def enable_extension(self, uuid: str) -> bool:
@@ -2887,7 +3153,7 @@ class ExtensionManager:
                 check=True, timeout=5
             )
             return True
-        except:
+        except Exception:
             return False
     
     def disable_extension(self, uuid: str) -> bool:
@@ -2898,8 +3164,675 @@ class ExtensionManager:
                 check=True, timeout=5
             )
             return True
-        except:
+        except Exception:
             return False
+
+
+# =============================================================================
+# GNOME Extensions Browser API (filesystem-based for speed)
+# =============================================================================
+
+EXTENSIONS_API_URL = "https://extensions.gnome.org/extension-query/"
+EXTENSION_INFO_URL = "https://extensions.gnome.org/extension-info/"
+
+
+def get_gnome_shell_version() -> Optional[str]:
+    """Get the current GNOME Shell major version."""
+    try:
+        result = subprocess.run(
+            ['gnome-shell', '--version'],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode == 0:
+            version = result.stdout.strip().split()[-1]
+            major = version.split('.')[0]
+            return major
+    except Exception:
+        pass
+    return None
+
+
+def get_installed_extensions_from_filesystem() -> tuple[dict, dict]:
+    """Get installed extensions by reading filesystem directly (fast!).
+    
+    Returns:
+        (user_extensions, system_extensions)
+    """
+    import os
+    import json
+    from pathlib import Path
+    
+    user_extensions = {}
+    system_extensions = {}
+    
+    # Get enabled extensions list (one gsettings call)
+    enabled_uuids = set()
+    try:
+        result = subprocess.run(
+            ['gsettings', 'get', 'org.gnome.shell', 'enabled-extensions'],
+            capture_output=True,
+            text=True,
+            timeout=3
+        )
+        if result.returncode == 0:
+            # Parse the array format: ['ext1@foo', 'ext2@bar']
+            raw = result.stdout.strip()
+            if raw.startswith('[') and raw.endswith(']'):
+                # Remove brackets and split
+                inner = raw[1:-1]
+                for item in inner.split(','):
+                    item = item.strip().strip("'\"")
+                    if item:
+                        enabled_uuids.add(item)
+    except Exception:
+        pass
+    
+    def read_extensions_from_dir(base_path: str, is_user: bool) -> dict:
+        """Read all extensions from a directory."""
+        extensions = {}
+        base = Path(base_path).expanduser()
+        
+        if not base.exists():
+            return extensions
+        
+        for ext_dir in base.iterdir():
+            if not ext_dir.is_dir():
+                continue
+            
+            metadata_file = ext_dir / 'metadata.json'
+            if not metadata_file.exists():
+                continue
+            
+            try:
+                with open(metadata_file, 'r') as f:
+                    metadata = json.load(f)
+                
+                uuid = metadata.get('uuid', ext_dir.name)
+                name = metadata.get('name', uuid.split('@')[0].replace('-', ' ').title())
+                description = metadata.get('description', '')
+                
+                extensions[uuid] = {
+                    'installed': True,
+                    'enabled': uuid in enabled_uuids,
+                    'is_user': is_user,
+                    'name': name,
+                    'description': description[:100] if description else ''
+                }
+            except Exception:
+                # If we can't read metadata, use folder name
+                uuid = ext_dir.name
+                extensions[uuid] = {
+                    'installed': True,
+                    'enabled': uuid in enabled_uuids,
+                    'is_user': is_user,
+                    'name': uuid.split('@')[0].replace('-', ' ').title(),
+                    'description': ''
+                }
+        
+        return extensions
+    
+    # Read user extensions
+    user_extensions = read_extensions_from_dir('~/.local/share/gnome-shell/extensions', is_user=True)
+    
+    # Read system extensions
+    system_extensions = read_extensions_from_dir('/usr/share/gnome-shell/extensions', is_user=False)
+    
+    return user_extensions, system_extensions
+
+
+def search_extensions_api(query: str, shell_version: str = None) -> list:
+    """Search for extensions on extensions.gnome.org."""
+    try:
+        params = {
+            'search': query,
+            'n_per_page': 20,
+        }
+        if shell_version:
+            params['shell_version'] = shell_version
+        
+        url = EXTENSIONS_API_URL + "?" + urllib.parse.urlencode(params)
+        
+        req = urllib.request.Request(url)
+        req.add_header('User-Agent', 'TuxAssistant/1.0')
+        
+        with urllib.request.urlopen(req, timeout=15) as response:
+            data = json.loads(response.read().decode())
+            return data.get('extensions', [])
+    except Exception as e:
+        print(f"Search error: {e}")
+        return []
+
+
+def get_extension_info(pk: int, shell_version: str) -> Optional[dict]:
+    """Get extension info including download URL."""
+    try:
+        params = {'pk': pk, 'shell_version': shell_version}
+        url = EXTENSION_INFO_URL + "?" + urllib.parse.urlencode(params)
+        
+        req = urllib.request.Request(url)
+        req.add_header('User-Agent', 'TuxAssistant/1.0')
+        
+        with urllib.request.urlopen(req, timeout=10) as response:
+            return json.loads(response.read().decode())
+    except Exception:
+        return None
+
+
+def install_extension_from_ego(pk: int, uuid: str, shell_version: str) -> tuple[bool, str]:
+    """Install extension from extensions.gnome.org using DBus.
+    
+    Uses GNOME Shell's DBus interface to download and install the extension,
+    which makes it available immediately without requiring a logout.
+    """
+    try:
+        # Use DBus InstallRemoteExtension - this is what Extension Manager uses
+        # It downloads AND loads the extension immediately
+        result = subprocess.run(
+            [
+                'gdbus', 'call', '--session',
+                '--dest', 'org.gnome.Shell.Extensions',
+                '--object-path', '/org/gnome/Shell/Extensions',
+                '--method', 'org.gnome.Shell.Extensions.InstallRemoteExtension',
+                uuid
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+        
+        # Check result - DBus returns "()" on success or "('successful',)" etc
+        output = result.stdout.strip()
+        stderr = result.stderr.strip()
+        
+        if result.returncode == 0:
+            # Try to enable it
+            subprocess.run(
+                ['gnome-extensions', 'enable', uuid],
+                capture_output=True,
+                timeout=10
+            )
+            return True, "Installed and enabled!"
+        else:
+            # DBus call failed - try the old method as fallback
+            return _install_extension_fallback(pk, uuid, shell_version)
+    
+    except Exception as e:
+        # Fallback to manual download method
+        return _install_extension_fallback(pk, uuid, shell_version)
+
+
+def _install_extension_fallback(pk: int, uuid: str, shell_version: str) -> tuple[bool, str]:
+    """Fallback installation method using manual download."""
+    try:
+        info = get_extension_info(pk, shell_version)
+        if not info:
+            return False, "Could not get extension info"
+        
+        download_url = info.get('download_url')
+        if not download_url:
+            version_map = info.get('shell_version_map', {})
+            if version_map:
+                available = ', '.join(version_map.keys())
+                return False, f"Not compatible with GNOME {shell_version}. Available: {available}"
+            return False, "No download available for this GNOME version"
+        
+        full_url = f"https://extensions.gnome.org{download_url}"
+        
+        with tempfile.NamedTemporaryFile(suffix='.zip', delete=False) as tmp:
+            tmp_path = tmp.name
+        
+        urllib.request.urlretrieve(full_url, tmp_path)
+        
+        result = subprocess.run(
+            ['gnome-extensions', 'install', '--force', tmp_path],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        
+        os.unlink(tmp_path)
+        
+        if result.returncode == 0:
+            return True, "Installed! Log out and back in to enable."
+        else:
+            return False, result.stderr or "Installation failed"
+    
+    except Exception as e:
+        return False, str(e)
+
+
+def enable_extension_by_uuid(uuid: str) -> bool:
+    """Enable an extension."""
+    try:
+        result = subprocess.run(
+            ['gnome-extensions', 'enable', uuid],
+            capture_output=True,
+            timeout=5
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def disable_extension_by_uuid(uuid: str) -> bool:
+    """Disable an extension."""
+    try:
+        result = subprocess.run(
+            ['gnome-extensions', 'disable', uuid],
+            capture_output=True,
+            timeout=5
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def uninstall_extension_by_uuid(uuid: str) -> bool:
+    """Uninstall an extension."""
+    try:
+        result = subprocess.run(
+            ['gnome-extensions', 'uninstall', uuid],
+            capture_output=True,
+            timeout=10
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+# =============================================================================
+# GNOME Extensions Browser Page (With Tabs & Popular Extensions)
+# =============================================================================
+
+class GnomeExtensionsBrowserPage(Adw.NavigationPage):
+    """GNOME Extensions browser with Installed/Browse tabs."""
+    
+    def __init__(self, window, distro):
+        super().__init__(title="GNOME Extensions")
+        
+        self.window = window
+        self.distro = distro
+        self.shell_version = get_gnome_shell_version()
+        self.user_extensions = {}
+        self.system_extensions = {}
+        
+        # Load installed from filesystem (instant!)
+        self.user_extensions, self.system_extensions = get_installed_extensions_from_filesystem()
+        
+        # Build UI immediately
+        self.build_ui()
+        
+        # Load popular extensions in background AFTER UI is shown
+        GLib.timeout_add(100, self._start_loading_popular)
+    
+    def _start_loading_popular(self):
+        """Start loading popular extensions after UI is ready."""
+        def do_load():
+            results = search_extensions_api("", self.shell_version)
+            GLib.idle_add(self._populate_popular, results[:15])
+        
+        thread = threading.Thread(target=do_load, daemon=True)
+        thread.start()
+        return False  # Don't repeat
+    
+    def build_ui(self):
+        """Build the UI with tabs."""
+        toolbar_view = Adw.ToolbarView()
+        self.set_child(toolbar_view)
+        
+        # Header bar
+        header = Adw.HeaderBar()
+        header.set_show_end_title_buttons(False)
+        header.set_show_start_title_buttons(False)
+        toolbar_view.add_top_bar(header)
+        
+        # Main content
+        main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        toolbar_view.set_content(main_box)
+        
+        # Tab bar (Installed / Browse)
+        self.stack = Adw.ViewStack()
+        
+        switcher = Adw.ViewSwitcher()
+        switcher.set_stack(self.stack)
+        switcher.set_policy(Adw.ViewSwitcherPolicy.WIDE)
+        switcher.set_margin_top(8)
+        switcher.set_margin_bottom(8)
+        main_box.append(switcher)
+        
+        main_box.append(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
+        
+        # Installed tab
+        installed_page = self._create_installed_tab()
+        self.stack.add_titled_with_icon(installed_page, "installed", "Installed", "emblem-default-symbolic")
+        
+        # Browse tab
+        browse_page = self._create_browse_tab()
+        self.stack.add_titled_with_icon(browse_page, "browse", "Browse", "web-browser-symbolic")
+        
+        main_box.append(self.stack)
+        
+        # Status bar
+        total = len(self.user_extensions) + len(self.system_extensions)
+        version_text = f"GNOME {self.shell_version}" if self.shell_version else "GNOME"
+        
+        status_label = Gtk.Label()
+        status_label.set_markup(f"<small>{version_text} • {total} extension(s) installed</small>")
+        status_label.add_css_class("dim-label")
+        status_label.set_margin_top(8)
+        status_label.set_margin_bottom(8)
+        main_box.append(status_label)
+    
+    def _create_installed_tab(self) -> Gtk.Widget:
+        """Create the Installed tab."""
+        scrolled = Gtk.ScrolledWindow()
+        scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scrolled.set_vexpand(True)
+        
+        clamp = Adw.Clamp()
+        clamp.set_maximum_size(800)
+        clamp.set_margin_top(16)
+        clamp.set_margin_bottom(16)
+        clamp.set_margin_start(16)
+        clamp.set_margin_end(16)
+        scrolled.set_child(clamp)
+        
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
+        clamp.set_child(content)
+        
+        # User extensions
+        if self.user_extensions:
+            user_group = Adw.PreferencesGroup()
+            user_group.set_title("User-Installed Extensions")
+            
+            for uuid, info in sorted(self.user_extensions.items(), key=lambda x: x[1].get('name', '').lower()):
+                row = self._create_installed_row(uuid, info, is_user=True)
+                user_group.add(row)
+            
+            content.append(user_group)
+        
+        # System extensions
+        if self.system_extensions:
+            system_group = Adw.PreferencesGroup()
+            system_group.set_title("System Extensions")
+            
+            for uuid, info in sorted(self.system_extensions.items(), key=lambda x: x[1].get('name', '').lower()):
+                row = self._create_installed_row(uuid, info, is_user=False)
+                system_group.add(row)
+            
+            content.append(system_group)
+        
+        # Empty state
+        if not self.user_extensions and not self.system_extensions:
+            empty_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+            empty_box.set_valign(Gtk.Align.CENTER)
+            empty_box.set_vexpand(True)
+            
+            empty_label = Gtk.Label(label="No Extensions Installed")
+            empty_label.add_css_class("title-2")
+            empty_box.append(empty_label)
+            
+            hint_label = Gtk.Label(label="Browse extensions to find new ones")
+            hint_label.add_css_class("dim-label")
+            empty_box.append(hint_label)
+            
+            content.append(empty_box)
+        
+        return scrolled
+    
+    def _create_browse_tab(self) -> Gtk.Widget:
+        """Create the Browse tab."""
+        scrolled = Gtk.ScrolledWindow()
+        scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scrolled.set_vexpand(True)
+        
+        clamp = Adw.Clamp()
+        clamp.set_maximum_size(800)
+        clamp.set_margin_top(16)
+        clamp.set_margin_bottom(16)
+        clamp.set_margin_start(16)
+        clamp.set_margin_end(16)
+        scrolled.set_child(clamp)
+        
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
+        clamp.set_child(content)
+        
+        # Header
+        header_label = Gtk.Label()
+        header_label.set_markup("<big><b>Search for Extensions</b></big>")
+        header_label.set_halign(Gtk.Align.CENTER)
+        content.append(header_label)
+        
+        desc_label = Gtk.Label(label="Enter a keyword to search 'extensions.gnome.org' for GNOME Shell Extensions")
+        desc_label.add_css_class("dim-label")
+        desc_label.set_halign(Gtk.Align.CENTER)
+        content.append(desc_label)
+        
+        # Search box
+        search_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        search_box.set_halign(Gtk.Align.CENTER)
+        search_box.set_margin_top(8)
+        search_box.set_margin_bottom(8)
+        
+        self.search_entry = Gtk.SearchEntry()
+        self.search_entry.set_placeholder_text("Search extensions...")
+        self.search_entry.set_size_request(400, -1)
+        self.search_entry.connect("activate", self._on_search)
+        search_box.append(self.search_entry)
+        
+        content.append(search_box)
+        
+        # Results/Popular list
+        self.browse_list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        content.append(self.browse_list)
+        
+        # Show loading spinner initially
+        self.browse_spinner = Gtk.Spinner()
+        self.browse_spinner.set_size_request(32, 32)
+        self.browse_spinner.start()
+        self.browse_spinner.set_halign(Gtk.Align.CENTER)
+        self.browse_spinner.set_margin_top(20)
+        self.browse_list.append(self.browse_spinner)
+        
+        loading_label = Gtk.Label(label="Loading popular extensions...")
+        loading_label.add_css_class("dim-label")
+        loading_label.set_halign(Gtk.Align.CENTER)
+        self.browse_list.append(loading_label)
+        
+        return scrolled
+    
+    def _populate_popular(self, extensions: list):
+        """Populate with popular extensions."""
+        # Clear loading state
+        while child := self.browse_list.get_first_child():
+            self.browse_list.remove(child)
+        
+        if not extensions:
+            error_label = Gtk.Label(label="Could not load extensions. Check your internet connection.")
+            error_label.add_css_class("dim-label")
+            error_label.set_halign(Gtk.Align.CENTER)
+            self.browse_list.append(error_label)
+            return
+        
+        # Create list
+        self._populate_extension_list(extensions)
+    
+    def _populate_extension_list(self, extensions: list):
+        """Populate the browse list with extensions."""
+        all_installed = {**self.user_extensions, **self.system_extensions}
+        
+        list_box = Gtk.ListBox()
+        list_box.set_selection_mode(Gtk.SelectionMode.NONE)
+        list_box.add_css_class("boxed-list")
+        
+        for ext in extensions:
+            uuid = ext.get('uuid', '')
+            name = ext.get('name', uuid.split('@')[0])
+            creator = ext.get('creator', '')
+            desc = ext.get('description', '')[:60]
+            if len(ext.get('description', '')) > 60:
+                desc += '...'
+            
+            row = Adw.ActionRow()
+            row.set_title(name)
+            row.set_subtitle(f"{creator}\n{desc}" if creator else desc)
+            
+            # Chevron
+            chevron = Gtk.Image.new_from_icon_name("tux-go-next-symbolic")
+            chevron.add_css_class("dim-label")
+            row.add_suffix(chevron)
+            
+            if uuid in all_installed:
+                # Installed badge
+                badge = Gtk.Label(label="Installed")
+                badge.add_css_class("dim-label")
+                badge.set_valign(Gtk.Align.CENTER)
+                badge.set_margin_end(8)
+                row.add_suffix(badge)
+            else:
+                # Install button
+                install_btn = Gtk.Button(label="Install")
+                install_btn.add_css_class("suggested-action")
+                install_btn.set_valign(Gtk.Align.CENTER)
+                install_btn.set_margin_end(8)
+                install_btn.connect("clicked", self._on_install, ext)
+                row.add_suffix(install_btn)
+            
+            list_box.append(row)
+        
+        self.browse_list.append(list_box)
+    
+    def _create_installed_row(self, uuid: str, info: dict, is_user: bool) -> Adw.ActionRow:
+        """Create a row for an installed extension."""
+        name = info.get('name', uuid.split('@')[0])
+        
+        row = Adw.ActionRow()
+        row.set_title(name)
+        row.set_subtitle(uuid)
+        
+        # Enable/disable switch
+        switch = Gtk.Switch()
+        switch.set_valign(Gtk.Align.CENTER)
+        switch.set_active(info.get('enabled', False))
+        switch.connect("state-set", self._on_toggle_extension, uuid)
+        row.add_suffix(switch)
+        
+        # Settings button
+        settings_btn = Gtk.Button()
+        settings_btn.set_icon_name("tux-emblem-system-symbolic")
+        settings_btn.set_valign(Gtk.Align.CENTER)
+        settings_btn.add_css_class("flat")
+        settings_btn.set_tooltip_text("Settings")
+        settings_btn.connect("clicked", self._on_settings, uuid)
+        row.add_suffix(settings_btn)
+        
+        # Chevron
+        chevron = Gtk.Image.new_from_icon_name("tux-go-down-symbolic")
+        chevron.add_css_class("dim-label")
+        row.add_suffix(chevron)
+        
+        return row
+    
+    def _on_search(self, widget):
+        """Handle search."""
+        query = self.search_entry.get_text().strip()
+        if not query:
+            return
+        
+        # Show loading
+        while child := self.browse_list.get_first_child():
+            self.browse_list.remove(child)
+        
+        spinner = Gtk.Spinner()
+        spinner.set_size_request(32, 32)
+        spinner.start()
+        spinner.set_halign(Gtk.Align.CENTER)
+        spinner.set_margin_top(20)
+        self.browse_list.append(spinner)
+        
+        def do_search():
+            results = search_extensions_api(query, self.shell_version)
+            GLib.idle_add(self._show_search_results, results)
+        
+        thread = threading.Thread(target=do_search, daemon=True)
+        thread.start()
+    
+    def _show_search_results(self, results: list):
+        """Show search results."""
+        while child := self.browse_list.get_first_child():
+            self.browse_list.remove(child)
+        
+        if not results:
+            empty_label = Gtk.Label(label="No extensions found")
+            empty_label.add_css_class("dim-label")
+            empty_label.set_halign(Gtk.Align.CENTER)
+            self.browse_list.append(empty_label)
+            return
+        
+        self._populate_extension_list(results)
+    
+    def _on_toggle_extension(self, switch, state, uuid: str):
+        """Toggle extension on/off."""
+        def do_toggle():
+            if state:
+                success = enable_extension_by_uuid(uuid)
+            else:
+                success = disable_extension_by_uuid(uuid)
+            
+            if success:
+                name = uuid.split('@')[0].replace('-', ' ').title()
+                msg = f"{'Enabled' if state else 'Disabled'} {name}"
+            else:
+                msg = "Failed to toggle extension"
+            GLib.idle_add(self.window.show_toast, msg)
+        
+        thread = threading.Thread(target=do_toggle, daemon=True)
+        thread.start()
+        return False
+    
+    def _on_settings(self, button, uuid: str):
+        """Open extension settings."""
+        try:
+            subprocess.Popen(
+                ['gnome-extensions', 'prefs', uuid],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+        except Exception:
+            self.window.show_toast("Could not open settings")
+    
+    def _on_install(self, button, ext: dict):
+        """Install extension."""
+        uuid = ext.get('uuid', '')
+        name = ext.get('name', uuid)
+        pk = ext.get('pk', 0)
+        
+        if not pk or not self.shell_version:
+            self.window.show_toast("Cannot install")
+            return
+        
+        button.set_sensitive(False)
+        button.set_label("Installing...")
+        
+        def do_install():
+            success, message = install_extension_from_ego(pk, uuid, self.shell_version)
+            GLib.idle_add(self._on_install_complete, button, name, success, message)
+        
+        thread = threading.Thread(target=do_install, daemon=True)
+        thread.start()
+    
+    def _on_install_complete(self, button, name: str, success: bool, message: str):
+        """Handle install completion."""
+        if success:
+            button.set_label("Installed")
+            button.remove_css_class("suggested-action")
+            self.window.show_toast(f"{name}: {message}")
+        else:
+            button.set_sensitive(True)
+            button.set_label("Install")
+            self.window.show_toast(f"Failed: {message}")
 
 
 # =============================================================================
@@ -2909,13 +3842,14 @@ class ExtensionManager:
 class PlanExecutionDialog(Adw.Dialog):
     """Dialog for executing installation plans."""
     
-    def __init__(self, window, plan: dict, title: str, distro):
+    def __init__(self, window, plan: dict, title: str, distro, on_complete_callback=None):
         super().__init__()
         
         self.window = window
         self.plan = plan
         self.distro = distro
         self.process = None
+        self.on_complete_callback = on_complete_callback
         
         self.set_title(title)
         self.set_content_width(500)
@@ -3014,7 +3948,7 @@ class PlanExecutionDialog(Adw.Dialog):
                 import os
                 try:
                     os.unlink(plan_file)
-                except:
+                except Exception:
                     pass
         
         thread = threading.Thread(target=run_process, daemon=True)
@@ -3033,7 +3967,7 @@ class PlanExecutionDialog(Adw.Dialog):
                     pct = int(parts[1].replace('[Tux Assistant:PROGRESS]', ''))
                     self.progress.set_fraction(pct / 100)
                     self.progress.set_text(f"{pct}%")
-                except:
+                except Exception:
                     pass
         elif line.startswith('[Tux Assistant:STATUS]'):
             status = line.replace('[Tux Assistant:STATUS]', '').strip()
@@ -3057,6 +3991,10 @@ class PlanExecutionDialog(Adw.Dialog):
         else:
             self.progress.add_css_class("error")
             self.status_label.set_label(f"Installation failed (exit code {return_code})")
+        
+        # Connect close to callback
+        if self.on_complete_callback:
+            self.connect("closed", lambda d: GLib.timeout_add(300, self.on_complete_callback))
     
     def on_error(self, error: str):
         """Handle error."""
@@ -3074,7 +4012,7 @@ class PlanExecutionDialog(Adw.Dialog):
     id="desktop_enhancements",
     name="Desktop Enhancements",
     description="Themes, extensions, widgets, and tweaks",
-    icon="preferences-desktop-appearance-symbolic",
+    icon="tux-preferences-desktop-theme-symbolic",
     category=ModuleCategory.SETUP,
     order=51  # Last in Setup category
 )
@@ -3103,7 +4041,7 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         
         # Refresh button
         refresh_btn = Gtk.Button()
-        refresh_btn.set_icon_name("view-refresh-symbolic")
+        refresh_btn.set_icon_name("tux-view-refresh-symbolic")
         refresh_btn.set_tooltip_text("Refresh")
         refresh_btn.connect("clicked", self.on_refresh)
         header.pack_end(refresh_btn)
@@ -3165,7 +4103,7 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         de_row = Adw.ActionRow()
         de_row.set_title("Environment")
         de_row.set_subtitle(f"{self.desktop.display_name} on {self.desktop.session_type.upper()}")
-        de_row.add_prefix(Gtk.Image.new_from_icon_name("computer-symbolic"))
+        de_row.add_prefix(Gtk.Image.new_from_icon_name("tux-computer-symbolic"))
         
         if self.desktop.is_wayland:
             badge = Gtk.Label(label="Wayland")
@@ -3187,7 +4125,7 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         theme_row = Adw.ActionRow()
         theme_row.set_title("Current Theme")
         theme_row.set_subtitle(f"GTK: {current_gtk or 'Unknown'} • Icons: {current_icon or 'Unknown'}")
-        theme_row.add_prefix(Gtk.Image.new_from_icon_name("applications-graphics-symbolic"))
+        theme_row.add_prefix(Gtk.Image.new_from_icon_name("tux-applications-graphics-symbolic"))
         group.add(theme_row)
         
         return group
@@ -3203,8 +4141,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         gtk_row.set_title("GTK Themes")
         gtk_row.set_subtitle(f"{len(GTK_THEMES)} themes available")
         gtk_row.set_activatable(True)
-        gtk_row.add_prefix(Gtk.Image.new_from_icon_name("preferences-desktop-theme-symbolic"))
-        gtk_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        gtk_row.add_prefix(Gtk.Image.new_from_icon_name("tux-preferences-desktop-theme-symbolic"))
+        gtk_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         gtk_row.connect("activated", self.on_gtk_themes)
         group.add(gtk_row)
         
@@ -3213,8 +4151,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         icon_row.set_title("Icon Themes")
         icon_row.set_subtitle(f"{len(ICON_THEMES)} icon packs available")
         icon_row.set_activatable(True)
-        icon_row.add_prefix(Gtk.Image.new_from_icon_name("folder-symbolic"))
-        icon_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        icon_row.add_prefix(Gtk.Image.new_from_icon_name("tux-folder-symbolic"))
+        icon_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         icon_row.connect("activated", self.on_icon_themes)
         group.add(icon_row)
         
@@ -3223,8 +4161,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         cursor_row.set_title("Cursor Themes")
         cursor_row.set_subtitle(f"{len(CURSOR_THEMES)} cursor themes available")
         cursor_row.set_activatable(True)
-        cursor_row.add_prefix(Gtk.Image.new_from_icon_name("input-mouse-symbolic"))
-        cursor_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        cursor_row.add_prefix(Gtk.Image.new_from_icon_name("tux-input-mouse-symbolic"))
+        cursor_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         cursor_row.connect("activated", self.on_cursor_themes)
         group.add(cursor_row)
         
@@ -3233,8 +4171,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         presets_row.set_title("Theme Presets")
         presets_row.set_subtitle(f"{len(THEME_PRESETS)} complete looks (macOS, Nordic, Dracula...)")
         presets_row.set_activatable(True)
-        presets_row.add_prefix(Gtk.Image.new_from_icon_name("starred-symbolic"))
-        presets_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        presets_row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-default-symbolic"))
+        presets_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         presets_row.connect("activated", self.on_theme_presets)
         group.add(presets_row)
         
@@ -3246,59 +4184,134 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         group.set_title("GNOME Extensions")
         group.set_description("Extend GNOME Shell functionality")
         
-        # Extension Manager tool
+        # NEW: Extensions Browser (main feature)
+        browser_row = Adw.ActionRow()
+        browser_row.set_title("Browse & Manage Extensions")
+        browser_row.set_subtitle("Search, install, and manage GNOME extensions")
+        browser_row.set_activatable(True)
+        browser_row.add_prefix(Gtk.Image.new_from_icon_name("tux-web-browser-symbolic"))
+        browser_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
+        browser_row.connect("activated", self.on_gnome_extensions_browser)
+        group.add(browser_row)
+        
+        # Extension Manager app (external tool)
         em_row = Adw.ActionRow()
-        em_row.set_title("Extension Manager")
-        em_row.set_subtitle("Browse and install GNOME extensions")
+        em_row.set_title("Install Extension Manager App")
+        em_row.set_subtitle("Standalone app for managing extensions")
         em_row.set_activatable(True)
-        em_row.add_prefix(Gtk.Image.new_from_icon_name("application-x-addon-symbolic"))
-        em_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        em_row.add_prefix(Gtk.Image.new_from_icon_name("tux-application-x-addon-symbolic"))
+        em_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         em_row.connect("activated", self.on_install_extension_manager)
         group.add(em_row)
         
-        # Popular extensions
+        # Extensions from repos (curated list)
         ext_row = Adw.ActionRow()
-        ext_row.set_title("Popular Extensions")
-        ext_row.set_subtitle(f"{len(GNOME_EXTENSIONS)} curated extensions")
+        ext_row.set_title("Install from Repos")
+        ext_row.set_subtitle(f"{len(GNOME_EXTENSIONS)} extensions in package manager")
         ext_row.set_activatable(True)
-        ext_row.add_prefix(Gtk.Image.new_from_icon_name("view-grid-symbolic"))
-        ext_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        ext_row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-system-symbolic"))
+        ext_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         ext_row.connect("activated", self.on_gnome_extensions)
         group.add(ext_row)
         
         return group
     
     def _create_gnome_tweaks_section(self) -> Gtk.Widget:
-        """Create GNOME tweaks section."""
-        group = Adw.PreferencesGroup()
-        group.set_title("GNOME Tweaks")
-        group.set_description("Quick settings and customizations")
+        """Create GNOME tweaks section with organized categories."""
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=15)
         
-        for tweak in GNOME_TWEAKS:
-            row = Adw.SwitchRow()
-            row.set_title(tweak.name)
-            row.set_subtitle(tweak.description)
-            
-            # Get current state
-            is_enabled = self.tweak_manager.is_tweak_enabled(tweak)
-            row.set_active(is_enabled)
-            
-            # Connect toggle
-            row.connect("notify::active", self.on_tweak_toggled, tweak)
-            
-            group.add(row)
+        # Define tweak categories by their ID prefixes/keywords
+        categories = [
+            ("Window Behavior", "windows-symbolic", [
+                "titlebar-buttons", "center-new-windows", "edge-tiling", 
+                "attach-modal-dialogs", "focus-mode-click", "raise-on-click",
+                "resize-with-right-button"
+            ]),
+            ("Top Bar & Clock", "preferences-system-time-symbolic", [
+                "show-weekday", "show-date", "clock-seconds", "clock-24h",
+                "show-battery-percentage"
+            ]),
+            ("Appearance", "preferences-desktop-theme-symbolic", [
+                "dark-mode", "animations", "hot-corner"
+            ]),
+            ("Input Devices", "input-mouse-symbolic", [
+                "tap-to-click", "natural-scrolling", "two-finger-scroll",
+                "disable-touchpad-typing", "mouse-natural-scroll", "middle-click-paste"
+            ]),
+            ("Workspaces", "view-grid-symbolic", [
+                "dynamic-workspaces", "workspaces-only-primary"
+            ]),
+            ("Sound", "audio-volume-high-symbolic", [
+                "over-amplification", "event-sounds"
+            ]),
+            ("Power", "battery-symbolic", [
+                "suspend-on-lid-close", "show-suspend-button"
+            ]),
+            ("Privacy & Security", "security-high-symbolic", [
+                "automatic-screen-lock", "show-full-name-login"
+            ]),
+            ("Files", "folder-symbolic", [
+                "show-hidden-files", "sort-folders-first"
+            ]),
+        ]
         
-        # GNOME Tweaks tool
+        # Build a lookup dict for tweaks by ID
+        tweak_lookup = {tweak.id: tweak for tweak in GNOME_TWEAKS}
+        
+        for cat_name, cat_icon, tweak_ids in categories:
+            group = Adw.PreferencesGroup()
+            group.set_title(cat_name)
+            
+            has_tweaks = False
+            for tweak_id in tweak_ids:
+                if tweak_id in tweak_lookup:
+                    tweak = tweak_lookup[tweak_id]
+                    row = Adw.SwitchRow()
+                    row.set_title(tweak.name)
+                    row.set_subtitle(tweak.description)
+                    
+                    # Get current state
+                    try:
+                        is_enabled = self.tweak_manager.is_tweak_enabled(tweak)
+                        row.set_active(is_enabled)
+                    except Exception:
+                        row.set_active(False)
+                    
+                    # Connect toggle
+                    row.connect("notify::active", self.on_tweak_toggled, tweak)
+                    
+                    group.add(row)
+                    has_tweaks = True
+            
+            if has_tweaks:
+                box.append(group)
+        
+        # GNOME Tweaks tool at the bottom
+        tools_group = Adw.PreferencesGroup()
+        tools_group.set_title("Advanced Tools")
+        
         tweaks_row = Adw.ActionRow()
         tweaks_row.set_title("GNOME Tweaks")
-        tweaks_row.set_subtitle("Advanced GNOME settings tool")
+        tweaks_row.set_subtitle("Install the official GNOME Tweaks tool for more options")
         tweaks_row.set_activatable(True)
-        tweaks_row.add_prefix(Gtk.Image.new_from_icon_name("applications-system-symbolic"))
-        tweaks_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        tweaks_row.add_prefix(Gtk.Image.new_from_icon_name("tux-applications-system-symbolic"))
+        tweaks_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         tweaks_row.connect("activated", self.on_install_gnome_tweaks)
-        group.add(tweaks_row)
+        tools_group.add(tweaks_row)
         
-        return group
+        # dconf Editor for power users
+        dconf_row = Adw.ActionRow()
+        dconf_row.set_title("dconf Editor")
+        dconf_row.set_subtitle("Low-level settings editor (advanced users)")
+        dconf_row.set_activatable(True)
+        dconf_row.add_prefix(Gtk.Image.new_from_icon_name("tux-preferences-other-symbolic"))
+        dconf_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
+        dconf_row.connect("activated", self.on_install_dconf_editor)
+        tools_group.add(dconf_row)
+        
+        box.append(tools_group)
+        
+        return box
     
     def _create_kde_section(self) -> Gtk.Widget:
         """Create KDE Plasma section with widgets, themes, KWin scripts, and tweaks."""
@@ -3313,8 +4326,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         widgets_row.set_title("Plasma Widgets")
         widgets_row.set_subtitle(f"{len(KDE_WIDGETS)} widgets available")
         widgets_row.set_activatable(True)
-        widgets_row.add_prefix(Gtk.Image.new_from_icon_name("preferences-desktop-icons-symbolic"))
-        widgets_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        widgets_row.add_prefix(Gtk.Image.new_from_icon_name("tux-view-app-grid-symbolic"))
+        widgets_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         widgets_row.connect("activated", self.on_kde_widgets)
         widgets_group.add(widgets_row)
         box.append(widgets_group)
@@ -3328,8 +4341,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         global_row.set_title("Global Themes")
         global_row.set_subtitle(f"{len(KDE_GLOBAL_THEMES)} themes available")
         global_row.set_activatable(True)
-        global_row.add_prefix(Gtk.Image.new_from_icon_name("preferences-desktop-theme-symbolic"))
-        global_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        global_row.add_prefix(Gtk.Image.new_from_icon_name("tux-preferences-desktop-theme-symbolic"))
+        global_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         global_row.connect("activated", self.on_kde_global_themes)
         themes_group.add(global_row)
         
@@ -3337,8 +4350,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         kvantum_row.set_title("Kvantum Themes")
         kvantum_row.set_subtitle(f"{len(KVANTUM_THEMES)} Qt themes available")
         kvantum_row.set_activatable(True)
-        kvantum_row.add_prefix(Gtk.Image.new_from_icon_name("applications-graphics-symbolic"))
-        kvantum_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        kvantum_row.add_prefix(Gtk.Image.new_from_icon_name("tux-applications-graphics-symbolic"))
+        kvantum_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         kvantum_row.connect("activated", self.on_kvantum_themes)
         themes_group.add(kvantum_row)
         
@@ -3347,8 +4360,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         kvantum_install.set_title("Install Kvantum Manager")
         kvantum_install.set_subtitle("Required to apply Kvantum themes")
         kvantum_install.set_activatable(True)
-        kvantum_install.add_prefix(Gtk.Image.new_from_icon_name("system-software-install-symbolic"))
-        kvantum_install.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        kvantum_install.add_prefix(Gtk.Image.new_from_icon_name("tux-system-software-install-symbolic"))
+        kvantum_install.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         kvantum_install.connect("activated", self.on_install_kvantum)
         themes_group.add(kvantum_install)
         
@@ -3363,8 +4376,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         kwin_row.set_title("Window Manager Scripts")
         kwin_row.set_subtitle(f"{len(KWIN_SCRIPTS)} scripts available (tiling, effects)")
         kwin_row.set_activatable(True)
-        kwin_row.add_prefix(Gtk.Image.new_from_icon_name("preferences-system-windows-symbolic"))
-        kwin_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        kwin_row.add_prefix(Gtk.Image.new_from_icon_name("tux-preferences-system-windows-symbolic"))
+        kwin_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         kwin_row.connect("activated", self.on_kwin_scripts)
         kwin_group.add(kwin_row)
         box.append(kwin_group)
@@ -3405,8 +4418,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         plugins_row.set_title("Panel Plugins")
         plugins_row.set_subtitle(f"{len(XFCE_PLUGINS)} plugins available")
         plugins_row.set_activatable(True)
-        plugins_row.add_prefix(Gtk.Image.new_from_icon_name("view-grid-symbolic"))
-        plugins_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        plugins_row.add_prefix(Gtk.Image.new_from_icon_name("tux-view-grid-symbolic"))
+        plugins_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         plugins_row.connect("activated", self.on_xfce_plugins)
         plugins_group.add(plugins_row)
         box.append(plugins_group)
@@ -3420,8 +4433,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         compositor_row.set_title("Compositor Tools")
         compositor_row.set_subtitle(f"{len(XFCE_COMPOSITOR_TOOLS)} tools available (picom, compton)")
         compositor_row.set_activatable(True)
-        compositor_row.add_prefix(Gtk.Image.new_from_icon_name("preferences-desktop-effects-symbolic"))
-        compositor_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        compositor_row.add_prefix(Gtk.Image.new_from_icon_name("tux-applications-graphics-symbolic"))
+        compositor_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         compositor_row.connect("activated", self.on_xfce_compositor)
         compositor_group.add(compositor_row)
         box.append(compositor_group)
@@ -3462,8 +4475,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         applets_row.set_title("Panel Applets")
         applets_row.set_subtitle(f"{len(CINNAMON_APPLETS)} applets available")
         applets_row.set_activatable(True)
-        applets_row.add_prefix(Gtk.Image.new_from_icon_name("list-add-symbolic"))
-        applets_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        applets_row.add_prefix(Gtk.Image.new_from_icon_name("tux-list-add-symbolic"))
+        applets_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         applets_row.connect("activated", self.on_cinnamon_applets)
         applets_group.add(applets_row)
         box.append(applets_group)
@@ -3477,8 +4490,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         extensions_row.set_title("Extensions (Spices)")
         extensions_row.set_subtitle(f"{len(CINNAMON_EXTENSIONS)} extensions available")
         extensions_row.set_activatable(True)
-        extensions_row.add_prefix(Gtk.Image.new_from_icon_name("application-x-addon-symbolic"))
-        extensions_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        extensions_row.add_prefix(Gtk.Image.new_from_icon_name("tux-application-x-addon-symbolic"))
+        extensions_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         extensions_row.connect("activated", self.on_cinnamon_extensions)
         extensions_group.add(extensions_row)
         box.append(extensions_group)
@@ -3492,8 +4505,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         tools_row.set_title("Cinnamon Tools")
         tools_row.set_subtitle(f"{len(CINNAMON_TOOLS)} tools available")
         tools_row.set_activatable(True)
-        tools_row.add_prefix(Gtk.Image.new_from_icon_name("applications-utilities-symbolic"))
-        tools_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        tools_row.add_prefix(Gtk.Image.new_from_icon_name("tux-applications-utilities-symbolic"))
+        tools_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         tools_row.connect("activated", self.on_cinnamon_tools)
         tools_group.add(tools_row)
         box.append(tools_group)
@@ -3552,8 +4565,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         applets_row.set_title("Panel Applets")
         applets_row.set_subtitle(f"{len(MATE_APPLETS)} applets available")
         applets_row.set_activatable(True)
-        applets_row.add_prefix(Gtk.Image.new_from_icon_name("list-add-symbolic"))
-        applets_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        applets_row.add_prefix(Gtk.Image.new_from_icon_name("tux-list-add-symbolic"))
+        applets_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         applets_row.connect("activated", self.on_mate_applets)
         applets_group.add(applets_row)
         box.append(applets_group)
@@ -3567,8 +4580,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         tools_row.set_title("MATE Tools")
         tools_row.set_subtitle(f"{len(MATE_TOOLS)} tools available")
         tools_row.set_activatable(True)
-        tools_row.add_prefix(Gtk.Image.new_from_icon_name("applications-utilities-symbolic"))
-        tools_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        tools_row.add_prefix(Gtk.Image.new_from_icon_name("tux-applications-utilities-symbolic"))
+        tools_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         tools_row.connect("activated", self.on_mate_tools)
         tools_group.add(tools_row)
         box.append(tools_group)
@@ -3622,8 +4635,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         tools_row.set_title("Desktop Utilities")
         tools_row.set_subtitle(f"{len(relevant_tools)} tools available")
         tools_row.set_activatable(True)
-        tools_row.add_prefix(Gtk.Image.new_from_icon_name("applications-utilities-symbolic"))
-        tools_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        tools_row.add_prefix(Gtk.Image.new_from_icon_name("tux-applications-utilities-symbolic"))
+        tools_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         tools_row.connect("activated", self.on_desktop_tools)
         group.add(tools_row)
         
@@ -3639,8 +4652,8 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         fonts_row.set_title("Font Packages")
         fonts_row.set_subtitle(f"{len(FONT_PACKAGES)} font families available")
         fonts_row.set_activatable(True)
-        fonts_row.add_prefix(Gtk.Image.new_from_icon_name("font-x-generic-symbolic"))
-        fonts_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        fonts_row.add_prefix(Gtk.Image.new_from_icon_name("tux-font-x-generic-symbolic"))
+        fonts_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         fonts_row.connect("activated", self.on_fonts)
         group.add(fonts_row)
         
@@ -3686,6 +4699,11 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
                                   CURSOR_THEMES, ThemeType.CURSOR, "Cursor Themes")
         self.window.navigation_view.push(page)
     
+    def on_gnome_extensions_browser(self, row):
+        """Open the GNOME Extensions browser page."""
+        page = GnomeExtensionsBrowserPage(self.window, self.distro)
+        self.window.navigation_view.push(page)
+    
     def on_gnome_extensions(self, row):
         """Open GNOME extensions page."""
         page = ExtensionSelectionPage(self.window, self.distro, self.extension_manager,
@@ -3719,6 +4737,12 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
     def on_install_gnome_tweaks(self, row):
         """Install GNOME Tweaks."""
         tool = next((t for t in UNIVERSAL_TOOLS if t.id == "gnome-tweaks"), None)
+        if tool:
+            self._install_tool(tool)
+    
+    def on_install_dconf_editor(self, row):
+        """Install dconf Editor."""
+        tool = next((t for t in UNIVERSAL_TOOLS if t.id == "dconf-editor"), None)
         if tool:
             self._install_tool(tool)
     
@@ -3821,7 +4845,8 @@ class ThemeDetailPage(Adw.NavigationPage):
     """Detail page showing theme information."""
     
     def __init__(self, window, theme: Theme, distro, theme_manager: ThemeManager,
-                 theme_type: ThemeType, is_queued: bool, has_packages: bool, on_queue_changed):
+                 theme_type: ThemeType, is_queued: bool, has_packages: bool, on_queue_changed,
+                 nav_view=None):
         super().__init__(title=theme.name)
         
         self.window = window
@@ -3832,6 +4857,7 @@ class ThemeDetailPage(Adw.NavigationPage):
         self.is_queued = is_queued
         self.has_packages = has_packages
         self.on_queue_changed = on_queue_changed
+        self.nav_view = nav_view or (window.navigation_view if hasattr(window, 'navigation_view') else None)
         
         self._build_ui()
     
@@ -3872,7 +4898,7 @@ class ThemeDetailPage(Adw.NavigationPage):
         name_row = Adw.ActionRow()
         name_row.set_title("Theme Name")
         name_row.set_subtitle(self.theme.name)
-        name_row.add_prefix(Gtk.Image.new_from_icon_name("preferences-desktop-theme-symbolic"))
+        name_row.add_prefix(Gtk.Image.new_from_icon_name("tux-preferences-desktop-theme-symbolic"))
         info_group.add(name_row)
         
         # Description row
@@ -3880,14 +4906,14 @@ class ThemeDetailPage(Adw.NavigationPage):
             desc_row = Adw.ActionRow()
             desc_row.set_title("Description")
             desc_row.set_subtitle(self.theme.description)
-            desc_row.add_prefix(Gtk.Image.new_from_icon_name("document-properties-symbolic"))
+            desc_row.add_prefix(Gtk.Image.new_from_icon_name("tux-document-properties-symbolic"))
             info_group.add(desc_row)
         
         # Type row
         type_row = Adw.ActionRow()
         type_row.set_title("Theme Type")
         type_row.set_subtitle(self.theme_type.value.title())
-        type_row.add_prefix(Gtk.Image.new_from_icon_name("applications-graphics-symbolic"))
+        type_row.add_prefix(Gtk.Image.new_from_icon_name("tux-applications-graphics-symbolic"))
         info_group.add(type_row)
         
         # Packages section
@@ -3903,7 +4929,7 @@ class ThemeDetailPage(Adw.NavigationPage):
             for pkg in packages:
                 pkg_row = Adw.ActionRow()
                 pkg_row.set_title(pkg)
-                pkg_row.add_prefix(Gtk.Image.new_from_icon_name("package-x-generic-symbolic"))
+                pkg_row.add_prefix(Gtk.Image.new_from_icon_name("tux-package-x-generic-symbolic"))
                 pkg_group.add(pkg_row)
         else:
             # Not in repos - show alternative options
@@ -3912,34 +4938,47 @@ class ThemeDetailPage(Adw.NavigationPage):
             alt_group.set_description("This theme is not available in your distribution's repositories")
             content_box.append(alt_group)
             
-            if self.theme.gnome_look_url:
+            if self.theme.gnome_look_url and HAS_WEBKIT:
+                # Preview & Install via ocs-url (in-app browser)
+                gnome_row = Adw.ActionRow()
+                gnome_row.set_title("🎨 Preview && Install")
+                gnome_row.set_subtitle("Browse and install from gnome-look.org")
+                gnome_row.add_prefix(Gtk.Image.new_from_icon_name("tux-applications-graphics-symbolic"))
+                gnome_row.set_activatable(True)
+                gnome_row.connect("activated", self._on_preview_install)
+                
+                install_icon = Gtk.Image.new_from_icon_name("tux-go-next-symbolic")
+                gnome_row.add_suffix(install_icon)
+                alt_group.add(gnome_row)
+            elif self.theme.gnome_look_url:
+                # Fallback to external browser
                 gnome_row = Adw.ActionRow()
                 gnome_row.set_title("GNOME Look")
                 gnome_row.set_subtitle("Download from gnome-look.org")
-                gnome_row.add_prefix(Gtk.Image.new_from_icon_name("web-browser-symbolic"))
+                gnome_row.add_prefix(Gtk.Image.new_from_icon_name("tux-web-browser-symbolic"))
                 gnome_row.set_activatable(True)
                 gnome_row.connect("activated", self._on_open_url, self.theme.gnome_look_url)
-                gnome_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+                gnome_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
                 alt_group.add(gnome_row)
             
             if self.theme.github_url:
                 github_row = Adw.ActionRow()
                 github_row.set_title("GitHub")
                 github_row.set_subtitle("View source and installation instructions")
-                github_row.add_prefix(Gtk.Image.new_from_icon_name("folder-remote-symbolic"))
+                github_row.add_prefix(Gtk.Image.new_from_icon_name("tux-folder-remote-symbolic"))
                 github_row.set_activatable(True)
                 github_row.connect("activated", self._on_open_url, self.theme.github_url)
-                github_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+                github_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
                 alt_group.add(github_row)
             
             if self.theme.kde_store_url:
                 kde_row = Adw.ActionRow()
                 kde_row.set_title("KDE Store")
                 kde_row.set_subtitle("Download from KDE Store")
-                kde_row.add_prefix(Gtk.Image.new_from_icon_name("web-browser-symbolic"))
+                kde_row.add_prefix(Gtk.Image.new_from_icon_name("tux-web-browser-symbolic"))
                 kde_row.set_activatable(True)
                 kde_row.connect("activated", self._on_open_url, self.theme.kde_store_url)
-                kde_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+                kde_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
                 alt_group.add(kde_row)
             
             # AUR hint for Arch
@@ -3947,7 +4986,7 @@ class ThemeDetailPage(Adw.NavigationPage):
                 aur_row = Adw.ActionRow()
                 aur_row.set_title("AUR")
                 aur_row.set_subtitle("This theme may be available in the AUR")
-                aur_row.add_prefix(Gtk.Image.new_from_icon_name("system-software-install-symbolic"))
+                aur_row.add_prefix(Gtk.Image.new_from_icon_name("tux-system-software-install-symbolic"))
                 alt_group.add(aur_row)
         
         # Action buttons
@@ -3998,6 +5037,22 @@ class ThemeDetailPage(Adw.NavigationPage):
             subprocess.Popen(['xdg-open', url])
         except Exception as e:
             self.window.show_toast(f"Could not open URL: {e}")
+    
+    def _on_preview_install(self, row):
+        """Open theme preview page for one-click install via ocs-url."""
+        if not self.nav_view:
+            # Fallback to external browser
+            self._on_open_url(row, self.theme.gnome_look_url)
+            return
+        
+        preview_page = ThemePreviewPage(
+            window=self.window,
+            distro=self.distro,
+            theme=self.theme,
+            theme_type=self.theme_type,
+            nav_view=self.nav_view
+        )
+        self.nav_view.push(preview_page)
     
     def _on_apply_clicked(self, button):
         """Apply the theme."""
@@ -4146,7 +5201,7 @@ class ThemeSelectionPage(Adw.NavigationPage):
                 row.connect("activated", self._on_theme_row_clicked, theme)
                 
                 # Arrow to show clickable
-                arrow = Gtk.Image.new_from_icon_name("go-next-symbolic")
+                arrow = Gtk.Image.new_from_icon_name("tux-go-next-symbolic")
                 row.add_suffix(arrow)
             else:
                 # Theme not in repos - show helpful installation options
@@ -4158,7 +5213,7 @@ class ThemeSelectionPage(Adw.NavigationPage):
                 row.connect("activated", self._on_theme_row_clicked, theme)
                 
                 # Arrow to show clickable
-                arrow = Gtk.Image.new_from_icon_name("go-next-symbolic")
+                arrow = Gtk.Image.new_from_icon_name("tux-go-next-symbolic")
                 row.add_suffix(arrow)
                 
                 # Status label
@@ -4167,6 +5222,51 @@ class ThemeSelectionPage(Adw.NavigationPage):
                 row.add_suffix(status_label)
             
             group.add(row)
+        
+        # Browse More section
+        browse_group = Adw.PreferencesGroup()
+        browse_group.set_title("Browse More Online")
+        browse_group.set_description("Find and download additional themes")
+        content.append(browse_group)
+        
+        # Determine the appropriate website based on DE
+        desktop_info = get_desktop()
+        de = desktop_info.desktop_env.value.lower() if desktop_info.desktop_env else "unknown"
+        
+        # Site URLs by DE and theme type
+        sites = []
+        
+        if self.theme_type == ThemeType.ICON:
+            if de in ["gnome", "cinnamon", "mate", "budgie", "unity"]:
+                sites.append(("GNOME-Look.org", "https://www.gnome-look.org/browse?cat=132&ord=rating", "tux-emblem-system-symbolic"))
+            if de in ["kde", "plasma"]:
+                sites.append(("KDE Store", "https://store.kde.org/browse?cat=132&ord=rating", "tux-emblem-system-symbolic"))
+            if de == "xfce":
+                sites.append(("XFCE-Look.org", "https://www.xfce-look.org/browse?cat=132&ord=rating", "tux-emblem-system-symbolic"))
+            sites.append(("Pling.com (Icons)", "https://www.pling.com/browse?cat=132&ord=rating", "tux-emblem-system-symbolic"))
+        elif self.theme_type == ThemeType.GTK:
+            if de in ["gnome", "cinnamon", "mate", "budgie", "unity"]:
+                sites.append(("GNOME-Look.org", "https://www.gnome-look.org/browse?cat=135&ord=rating", "tux-emblem-system-symbolic"))
+            if de == "xfce":
+                sites.append(("XFCE-Look.org", "https://www.xfce-look.org/browse?cat=135&ord=rating", "tux-emblem-system-symbolic"))
+            sites.append(("Pling.com (GTK Themes)", "https://www.pling.com/browse?cat=135&ord=rating", "tux-emblem-system-symbolic"))
+        elif self.theme_type == ThemeType.CURSOR:
+            sites.append(("GNOME-Look.org (Cursors)", "https://www.gnome-look.org/browse?cat=107&ord=rating", "tux-emblem-system-symbolic"))
+            sites.append(("Pling.com (Cursors)", "https://www.pling.com/browse?cat=107&ord=rating", "tux-emblem-system-symbolic"))
+        elif self.theme_type == ThemeType.PLASMA:
+            sites.append(("KDE Store (Plasma)", "https://store.kde.org/browse?cat=104&ord=rating", "tux-emblem-system-symbolic"))
+        elif self.theme_type == ThemeType.KVANTUM:
+            sites.append(("KDE Store (Kvantum)", "https://store.kde.org/browse?cat=123&ord=rating", "tux-emblem-system-symbolic"))
+        
+        for site_name, site_url, icon_name in sites:
+            browse_row = Adw.ActionRow()
+            browse_row.set_title(f"Browse {site_name}")
+            browse_row.set_subtitle("Search and download themes online")
+            browse_row.set_activatable(True)
+            browse_row.add_prefix(Gtk.Image.new_from_icon_name(icon_name))
+            browse_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
+            browse_row.connect("activated", self._on_browse_online, site_url)
+            browse_group.add(browse_row)
         
         # Install button
         button_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
@@ -4223,6 +5323,17 @@ class ThemeSelectionPage(Adw.NavigationPage):
         
         self._update_install_button()
     
+    def _on_browse_online(self, row, url: str):
+        """Open theme website in embedded browser."""
+        page = ThemeBrowserPage(
+            window=self.window,
+            distro=self.distro,
+            url=url,
+            title=f"Browse {self.get_title()}",
+            theme_type=self.theme_type
+        )
+        self.window.navigation_view.push(page)
+    
     def _update_install_button(self):
         """Update install button state and label."""
         count = len(self.selected_themes)
@@ -4258,8 +5369,16 @@ class ThemeSelectionPage(Adw.NavigationPage):
             }]
         }
         
-        dialog = PlanExecutionDialog(self.window, plan, "Installing Themes", self.distro)
+        dialog = PlanExecutionDialog(self.window, plan, "Installing Themes", self.distro, self._clear_selection_after_install)
         dialog.present()
+    
+    def _clear_selection_after_install(self):
+        """Clear selection after install."""
+        self.selected_themes.clear()
+        for checkbox in self.theme_checkboxes.values():
+            checkbox.set_active(False)
+        self.install_btn.set_sensitive(False)
+        self.window.show_toast("✓ Themes installed - selection cleared")
 
 
 class ThemeDownloadDialog(Adw.Dialog):
@@ -4327,7 +5446,7 @@ class ThemeDownloadDialog(Adw.Dialog):
                 aur_row = Adw.ActionRow()
                 aur_row.set_title("Install from AUR")
                 aur_row.set_subtitle(f"Package: {packages[0]}")
-                aur_row.add_prefix(Gtk.Image.new_from_icon_name("system-software-install-symbolic"))
+                aur_row.add_prefix(Gtk.Image.new_from_icon_name("tux-system-software-install-symbolic"))
                 
                 aur_btn = Gtk.Button(label="Install")
                 aur_btn.set_valign(Gtk.Align.CENTER)
@@ -4342,7 +5461,7 @@ class ThemeDownloadDialog(Adw.Dialog):
             gnome_row = Adw.ActionRow()
             gnome_row.set_title("Download from GNOME Look")
             gnome_row.set_subtitle("Opens in your browser")
-            gnome_row.add_prefix(Gtk.Image.new_from_icon_name("web-browser-symbolic"))
+            gnome_row.add_prefix(Gtk.Image.new_from_icon_name("tux-web-browser-symbolic"))
             
             gnome_btn = Gtk.Button(label="Open")
             gnome_btn.set_valign(Gtk.Align.CENTER)
@@ -4356,7 +5475,7 @@ class ThemeDownloadDialog(Adw.Dialog):
             github_row = Adw.ActionRow()
             github_row.set_title("Download from GitHub")
             github_row.set_subtitle("Clone or download ZIP")
-            github_row.add_prefix(Gtk.Image.new_from_icon_name("folder-download-symbolic"))
+            github_row.add_prefix(Gtk.Image.new_from_icon_name("tux-folder-download-symbolic"))
             
             github_btn = Gtk.Button(label="Open")
             github_btn.set_valign(Gtk.Align.CENTER)
@@ -4370,7 +5489,7 @@ class ThemeDownloadDialog(Adw.Dialog):
             kde_row = Adw.ActionRow()
             kde_row.set_title("Download from KDE Store")
             kde_row.set_subtitle("Opens in your browser")
-            kde_row.add_prefix(Gtk.Image.new_from_icon_name("kde-symbolic"))
+            kde_row.add_prefix(Gtk.Image.new_from_icon_name("tux-kde-symbolic"))
             
             kde_btn = Gtk.Button(label="Open")
             kde_btn.set_valign(Gtk.Align.CENTER)
@@ -4392,7 +5511,7 @@ class ThemeDownloadDialog(Adw.Dialog):
             ocs_row = Adw.ActionRow()
             ocs_row.set_title("Install ocs-url")
             ocs_row.set_subtitle("Enables 'Install' buttons on gnome-look.org")
-            ocs_row.add_prefix(Gtk.Image.new_from_icon_name("application-x-addon-symbolic"))
+            ocs_row.add_prefix(Gtk.Image.new_from_icon_name("tux-application-x-addon-symbolic"))
             
             ocs_btn = Gtk.Button(label="Install")
             ocs_btn.set_valign(Gtk.Align.CENTER)
@@ -4471,7 +5590,7 @@ class ThemeDownloadDialog(Adw.Dialog):
                     self.window.show_toast(f"Installing {package} via {aur_helper}")
                     self.close()
                     return
-                except:
+                except Exception:
                     continue
         
         self.window.show_toast("Could not open terminal. Run manually: " + cmd)
@@ -4498,6 +5617,831 @@ class ThemeDownloadDialog(Adw.Dialog):
 
 
 # =============================================================================
+# Theme Preview Page (with ocs-url integration)
+# =============================================================================
+
+class ThemePreviewPage(Adw.NavigationPage):
+    """Preview and install themes from gnome-look.org via ocs-url."""
+    
+    def __init__(self, window, distro, theme: Theme, theme_type: ThemeType, nav_view):
+        super().__init__(title=f"Preview: {theme.name}")
+        
+        self.window = window
+        self.distro = distro
+        self.theme = theme
+        self.theme_type = theme_type
+        self.nav_view = nav_view
+        self.webview = None
+        self.ocs_installing = False
+        
+        self.build_ui()
+    
+    def build_ui(self):
+        """Build the preview page UI."""
+        toolbar_view = Adw.ToolbarView()
+        self.set_child(toolbar_view)
+        
+        # Header bar
+        header = Adw.HeaderBar()
+        toolbar_view.add_top_bar(header)
+        
+        # Main content box
+        main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        toolbar_view.set_content(main_box)
+        
+        if not HAS_WEBKIT:
+            # WebKit not available - show fallback
+            self._show_no_webkit_fallback(main_box)
+            return
+        
+        # Info bar at top
+        info_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        info_bar.set_margin_start(16)
+        info_bar.set_margin_end(16)
+        info_bar.set_margin_top(8)
+        info_bar.set_margin_bottom(8)
+        info_bar.add_css_class("card")
+        
+        info_icon = Gtk.Image.new_from_icon_name("tux-dialog-information-symbolic")
+        info_bar.append(info_icon)
+        
+        info_label = Gtk.Label()
+        info_label.set_markup(
+            "<small>Click the <b>Install</b> button on the website to install the theme. "
+            "Choose your preferred variant.</small>"
+        )
+        info_label.set_wrap(True)
+        info_label.set_xalign(0)
+        info_label.set_hexpand(True)
+        info_bar.append(info_label)
+        
+        main_box.append(info_bar)
+        
+        # WebView for gnome-look.org
+        self.webview = WebKit.WebView()
+        self.webview.set_vexpand(True)
+        self.webview.set_hexpand(True)
+        
+        # Connect to decide-policy to intercept ocs:// links
+        self.webview.connect("decide-policy", self._on_decide_policy)
+        
+        # Configure settings
+        settings = self.webview.get_settings()
+        settings.set_enable_javascript(True)
+        settings.set_enable_javascript_markup(True)
+        
+        # Load the gnome-look page
+        url = self.theme.gnome_look_url or self.theme.kde_store_url
+        if url:
+            self.webview.load_uri(url)
+        
+        main_box.append(self.webview)
+        
+        # Status bar at bottom
+        status_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        status_bar.set_margin_start(16)
+        status_bar.set_margin_end(16)
+        status_bar.set_margin_top(8)
+        status_bar.set_margin_bottom(8)
+        
+        self.status_label = Gtk.Label(label="Browse the theme and click Install when ready")
+        self.status_label.add_css_class("dim-label")
+        self.status_label.set_hexpand(True)
+        self.status_label.set_xalign(0)
+        status_bar.append(self.status_label)
+        
+        # Manual open button
+        open_btn = Gtk.Button(label="Open in Browser")
+        open_btn.add_css_class("flat")
+        open_btn.connect("clicked", self._on_open_external)
+        status_bar.append(open_btn)
+        
+        main_box.append(status_bar)
+    
+    def _show_no_webkit_fallback(self, container):
+        """Show fallback when WebKit is not available."""
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
+        box.set_valign(Gtk.Align.CENTER)
+        box.set_vexpand(True)
+        box.set_margin_start(32)
+        box.set_margin_end(32)
+        
+        icon = Gtk.Image.new_from_icon_name("tux-web-browser-symbolic")
+        icon.set_pixel_size(64)
+        icon.add_css_class("dim-label")
+        box.append(icon)
+        
+        title = Gtk.Label(label="WebKit Not Available")
+        title.add_css_class("title-2")
+        box.append(title)
+        
+        desc = Gtk.Label(label="Install webkit2gtk to enable in-app preview")
+        desc.add_css_class("dim-label")
+        box.append(desc)
+        
+        # Open in browser button
+        open_btn = Gtk.Button(label="Open in External Browser")
+        open_btn.add_css_class("suggested-action")
+        open_btn.connect("clicked", self._on_open_external)
+        box.append(open_btn)
+        
+        container.append(box)
+    
+    def _on_decide_policy(self, webview, decision, decision_type):
+        """Handle navigation - intercept ocs:// links."""
+        if decision_type == WebKit.PolicyDecisionType.NAVIGATION_ACTION:
+            nav_action = decision.get_navigation_action()
+            request = nav_action.get_request()
+            uri = request.get_uri()
+            
+            if uri:
+                # Check for ocs:// links
+                if uri.startswith("ocs://"):
+                    decision.ignore()
+                    self._handle_ocs_url(uri)
+                    return True
+                
+                # Allow navigation within opendesktop family domains
+                allowed_domains = [
+                    # GNOME
+                    'gnome-look.org', 'www.gnome-look.org',
+                    # KDE
+                    'kde-store.net', 'www.kde-store.net',
+                    'store.kde.org', 'www.store.kde.org',
+                    # XFCE
+                    'xfce-look.org', 'www.xfce-look.org',
+                    # Cinnamon
+                    'cinnamon-look.org', 'www.cinnamon-look.org',
+                    # MATE
+                    'mate-look.org', 'www.mate-look.org',
+                    # Enlightenment
+                    'enlightenment-themes.org', 'www.enlightenment-themes.org',
+                    # General opendesktop
+                    'opendesktop.org', 'www.opendesktop.org',
+                    'pling.com', 'www.pling.com',
+                    'linux-apps.com', 'www.linux-apps.com',
+                ]
+                
+                from urllib.parse import urlparse
+                parsed = urlparse(uri)
+                if any(domain in parsed.netloc for domain in allowed_domains):
+                    decision.use()
+                    return False
+                
+                # Block navigation to other sites
+                decision.ignore()
+                return True
+        
+        decision.use()
+        return False
+    
+    def _handle_ocs_url(self, ocs_uri: str):
+        """Handle an ocs:// URI - download and install theme directly."""
+        self.status_label.set_text("🎨 Downloading theme...")
+        
+        if self.window:
+            self.window.show_toast(f"📦 Downloading {self.theme.name}...")
+        
+        # Parse the ocs:// URL
+        # Format: ocs://install?url=https%3A%2F%2F...&type=themes&filename=Name.tar.xz
+        try:
+            from urllib.parse import urlparse, parse_qs, unquote
+            
+            # Remove ocs:// prefix and parse
+            if ocs_uri.startswith('ocs://'):
+                ocs_uri = ocs_uri[6:]  # Remove 'ocs://'
+            
+            # Parse the path and query
+            if '?' in ocs_uri:
+                path, query = ocs_uri.split('?', 1)
+            else:
+                self.status_label.set_text("Invalid ocs:// URL format")
+                return
+            
+            params = parse_qs(query)
+            
+            # Get the download URL
+            download_url = params.get('url', [None])[0]
+            if download_url:
+                download_url = unquote(download_url)
+            
+            # Get the content type
+            content_type = params.get('type', ['themes'])[0]
+            
+            # Get the filename
+            filename = params.get('filename', [None])[0]
+            if filename:
+                filename = unquote(filename)
+            
+            if not download_url:
+                self.status_label.set_text("No download URL in ocs:// link")
+                if self.window:
+                    self.window.show_toast("❌ Invalid download link")
+                return
+            
+            # Download and install in background thread
+            def do_download_and_install():
+                try:
+                    success, message = self._download_and_install_theme(
+                        download_url, content_type, filename
+                    )
+                    GLib.idle_add(self._on_theme_installed, success, message)
+                except Exception as e:
+                    GLib.idle_add(self._on_theme_installed, False, str(e))
+            
+            threading.Thread(target=do_download_and_install, daemon=True).start()
+            
+        except Exception as e:
+            self.status_label.set_text(f"Error parsing URL: {e}")
+            if self.window:
+                self.window.show_toast(f"❌ Error: {e}")
+    
+    def _download_and_install_theme(self, url: str, content_type: str, filename: str) -> tuple[bool, str]:
+        """Download and install a theme/icon pack. Returns (success, message)."""
+        import tempfile
+        import tarfile
+        import zipfile
+        
+        # Determine install directory based on content type
+        home = Path.home()
+        
+        # GTK themes (GNOME, XFCE, Cinnamon, MATE)
+        if content_type in ['themes', 'gtk3-themes', 'gtk-themes', 'gnome-shell-themes',
+                            'xfce-themes', 'cinnamon-themes', 'mate-themes', 'metacity-themes']:
+            install_dir = home / '.themes'
+        
+        # KDE/Plasma specific
+        elif content_type in ['plasma-themes', 'plasma5-themes', 'plasma-desktopthemes']:
+            install_dir = home / '.local' / 'share' / 'plasma' / 'desktoptheme'
+        elif content_type in ['plasma-look-and-feel', 'plasma-lookandfeel']:
+            install_dir = home / '.local' / 'share' / 'plasma' / 'look-and-feel'
+        elif content_type in ['aurorae-themes', 'kde-window-decorations']:
+            install_dir = home / '.local' / 'share' / 'aurorae' / 'themes'
+        elif content_type in ['color-schemes', 'kde-color-schemes']:
+            install_dir = home / '.local' / 'share' / 'color-schemes'
+        elif content_type in ['kvantum-themes', 'kvantum']:
+            install_dir = home / '.config' / 'Kvantum'
+        elif content_type in ['plasma-splashscreens', 'kde-splash']:
+            install_dir = home / '.local' / 'share' / 'plasma' / 'look-and-feel'
+        elif content_type in ['konsole-themes', 'konsole']:
+            install_dir = home / '.local' / 'share' / 'konsole'
+        elif content_type in ['yakuake-skins']:
+            install_dir = home / '.local' / 'share' / 'yakuake' / 'skins'
+        
+        # Icons (use XDG standard path - GNOME Settings looks here)
+        elif content_type in ['icons', 'icon-themes', 'full-icon-themes', 'kde-icons',
+                              'gnome-icons', 'xfce-icons', 'cinnamon-icons', 'mate-icons',
+                              'icon-theme', 'icon', 'icons-gnome', 'icons-kde']:
+            install_dir = home / '.local' / 'share' / 'icons'
+        
+        # Cursors (also go in icons directory)
+        elif content_type in ['cursors', 'cursor-themes', 'xcursors', 'x11-cursors',
+                              'cursor', 'cursor-theme', 'mouse-cursors', 'xcursor']:
+            install_dir = home / '.local' / 'share' / 'icons'
+        
+        # Wallpapers (universal)
+        elif content_type in ['wallpapers', 'wallpaper', 'wallpapers-hd', 'backgrounds',
+                              'gnome-backgrounds', 'kde-wallpapers', 'desktop-wallpapers',
+                              'wallpapers-uhd', 'wallpapers-4k']:
+            install_dir = home / 'Pictures' / 'Wallpapers'
+        
+        # Fonts (universal)
+        elif content_type in ['fonts', 'font', 'ttf-fonts', 'otf-fonts']:
+            install_dir = home / '.local' / 'share' / 'fonts'
+        
+        # SDDM login themes (KDE)
+        elif content_type in ['sddm-themes', 'sddm', 'sddm-theme']:
+            install_dir = home / '.local' / 'share' / 'sddm' / 'themes'
+        
+        # GDM/LightDM themes (GNOME)
+        elif content_type in ['gdm-themes', 'lightdm-themes']:
+            install_dir = home / '.themes'  # These typically need system install
+        
+        # Conky configs
+        elif content_type in ['conky', 'conky-themes', 'conky-configs']:
+            install_dir = home / '.config' / 'conky'
+        
+        # Plank themes (dock)
+        elif content_type in ['plank-themes', 'plank']:
+            install_dir = home / '.local' / 'share' / 'plank' / 'themes'
+        
+        # Latte Dock themes (KDE)
+        elif content_type in ['latte-dock', 'latte-layouts']:
+            install_dir = home / '.config' / 'latte'
+        
+        # Rofi themes
+        elif content_type in ['rofi-themes', 'rofi']:
+            install_dir = home / '.config' / 'rofi' / 'themes'
+        
+        # Default to ~/.themes for unknown types
+        else:
+            install_dir = home / '.themes'
+        
+        # Create install directory if needed
+        install_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Create temp directory for download
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+            
+            # Determine filename if not provided
+            if not filename:
+                filename = url.split('/')[-1]
+                if not filename or '.' not in filename:
+                    filename = 'theme-download.tar.xz'
+            
+            download_path = tmpdir / filename
+            
+            # Download the file
+            try:
+                result = subprocess.run(
+                    ['wget', '-q', '--show-progress', '-O', str(download_path), url],
+                    capture_output=True, text=True, timeout=120
+                )
+                if result.returncode != 0:
+                    # Try curl as fallback
+                    result = subprocess.run(
+                        ['curl', '-L', '-o', str(download_path), url],
+                        capture_output=True, text=True, timeout=120
+                    )
+                    if result.returncode != 0:
+                        return False, "Download failed"
+            except subprocess.TimeoutExpired:
+                return False, "Download timed out"
+            except Exception as e:
+                return False, f"Download error: {e}"
+            
+            if not download_path.exists() or download_path.stat().st_size == 0:
+                return False, "Downloaded file is empty"
+            
+            # Extract the archive
+            try:
+                if filename.endswith('.tar.xz') or filename.endswith('.tar.gz') or filename.endswith('.tar.bz2') or filename.endswith('.tar'):
+                    with tarfile.open(download_path) as tar:
+                        # Get the top-level directory name
+                        members = tar.getmembers()
+                        if members:
+                            top_dirs = set()
+                            for m in members:
+                                parts = m.name.split('/')
+                                if parts[0]:
+                                    top_dirs.add(parts[0])
+                            
+                            # Extract to install directory
+                            tar.extractall(path=install_dir)
+                            
+                            theme_name = list(top_dirs)[0] if len(top_dirs) == 1 else filename.rsplit('.', 2)[0]
+                        else:
+                            return False, "Archive is empty"
+                            
+                elif filename.endswith('.zip'):
+                    with zipfile.ZipFile(download_path, 'r') as zf:
+                        # Get the top-level directory name
+                        names = zf.namelist()
+                        if names:
+                            top_dirs = set()
+                            for n in names:
+                                parts = n.split('/')
+                                if parts[0]:
+                                    top_dirs.add(parts[0])
+                            
+                            # Extract to install directory
+                            zf.extractall(path=install_dir)
+                            
+                            theme_name = list(top_dirs)[0] if len(top_dirs) == 1 else filename.rsplit('.', 1)[0]
+                        else:
+                            return False, "Archive is empty"
+                else:
+                    return False, f"Unsupported archive format: {filename}"
+                
+                # Update icon cache and create symlinks for icon/cursor themes
+                if content_type in ['icons', 'icon-themes', 'full-icon-themes', 'kde-icons',
+                                   'gnome-icons', 'xfce-icons', 'cinnamon-icons', 'mate-icons',
+                                   'icon-theme', 'icon', 'icons-gnome', 'icons-kde',
+                                   'cursors', 'cursor-themes', 'xcursors', 'x11-cursors',
+                                   'cursor', 'cursor-theme', 'mouse-cursors', 'xcursor']:
+                    theme_path = install_dir / theme_name
+                    if theme_path.exists():
+                        try:
+                            subprocess.run(
+                                ['gtk-update-icon-cache', '-f', '-t', str(theme_path)],
+                                capture_output=True, timeout=30
+                            )
+                        except Exception:
+                            pass  # Icon cache update is optional
+                        
+                        # Create symlink in ~/.icons for legacy compatibility
+                        legacy_dir = home / '.icons'
+                        legacy_dir.mkdir(parents=True, exist_ok=True)
+                        legacy_link = legacy_dir / theme_name
+                        if not legacy_link.exists():
+                            try:
+                                legacy_link.symlink_to(theme_path)
+                            except Exception:
+                                pass  # Symlink is optional
+                    
+            except Exception as e:
+                return False, f"Extraction failed: {e}"
+        
+        return True, f"Installed to {install_dir}"
+    
+    def _on_theme_installed(self, success: bool, message: str):
+        """Handle theme installation completion."""
+        if success:
+            self.status_label.set_text(f"✓ {self.theme.name} installed!")
+            if self.window:
+                self.window.show_toast(f"✓ {self.theme.name} installed! You may need to select it in Settings → Appearance")
+        else:
+            self.status_label.set_text(f"❌ Installation failed: {message}")
+            if self.window:
+                self.window.show_toast(f"❌ Failed: {message}")
+        
+        return False
+    
+    def _on_open_external(self, button):
+        """Open the theme page in external browser."""
+        url = self.theme.gnome_look_url or self.theme.kde_store_url
+        if url:
+            subprocess.Popen(['xdg-open', url])
+
+
+# =============================================================================
+# =============================================================================
+# Theme Browser Page (embedded browser for gnome-look/kde-store/etc)
+# =============================================================================
+
+class ThemeBrowserPage(Adw.NavigationPage):
+    """Embedded browser for browsing and installing themes from online stores."""
+    
+    def __init__(self, window, distro, url: str, title: str, theme_type: ThemeType):
+        super().__init__(title=title)
+        
+        self.window = window
+        self.distro = distro
+        self.url = url
+        self.theme_type = theme_type
+        self.webview = None
+        
+        self.build_ui()
+    
+    def build_ui(self):
+        """Build the browser UI."""
+        toolbar_view = Adw.ToolbarView()
+        self.set_child(toolbar_view)
+        
+        # Header bar with navigation
+        header = Adw.HeaderBar()
+        toolbar_view.add_top_bar(header)
+        
+        # Navigation buttons
+        nav_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        nav_box.add_css_class("linked")
+        
+        self.back_btn = Gtk.Button()
+        self.back_btn.set_icon_name("tux-go-previous-symbolic")
+        self.back_btn.set_tooltip_text("Back")
+        self.back_btn.set_sensitive(False)
+        self.back_btn.connect("clicked", self._on_back)
+        nav_box.append(self.back_btn)
+        
+        self.forward_btn = Gtk.Button()
+        self.forward_btn.set_icon_name("tux-go-next-symbolic")
+        self.forward_btn.set_tooltip_text("Forward")
+        self.forward_btn.set_sensitive(False)
+        self.forward_btn.connect("clicked", self._on_forward)
+        nav_box.append(self.forward_btn)
+        
+        refresh_btn = Gtk.Button()
+        refresh_btn.set_icon_name("tux-view-refresh-symbolic")
+        refresh_btn.set_tooltip_text("Refresh")
+        refresh_btn.connect("clicked", self._on_refresh)
+        nav_box.append(refresh_btn)
+        
+        header.pack_start(nav_box)
+        
+        # Open in external browser button
+        external_btn = Gtk.Button()
+        external_btn.set_icon_name("tux-emblem-system-symbolic")
+        external_btn.set_tooltip_text("Open in external browser")
+        external_btn.connect("clicked", self._on_open_external)
+        header.pack_end(external_btn)
+        
+        # Main content
+        main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        toolbar_view.set_content(main_box)
+        
+        if not HAS_WEBKIT:
+            self._show_no_webkit_fallback(main_box)
+            return
+        
+        # Info bar
+        info_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        info_bar.set_margin_start(16)
+        info_bar.set_margin_end(16)
+        info_bar.set_margin_top(8)
+        info_bar.set_margin_bottom(8)
+        
+        info_icon = Gtk.Image.new_from_icon_name("tux-dialog-information-symbolic")
+        info_bar.append(info_icon)
+        
+        info_label = Gtk.Label()
+        info_label.set_markup(
+            "<small>Click <b>Install</b> on any theme to download and install it automatically. "
+            "Tux Assistant handles the installation for you!</small>"
+        )
+        info_label.set_wrap(True)
+        info_label.set_xalign(0)
+        info_label.set_hexpand(True)
+        info_bar.append(info_label)
+        
+        main_box.append(info_bar)
+        main_box.append(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
+        
+        # WebView
+        self.webview = WebKit.WebView()
+        self.webview.set_vexpand(True)
+        self.webview.set_hexpand(True)
+        
+        # Connect signals
+        self.webview.connect("decide-policy", self._on_decide_policy)
+        self.webview.connect("load-changed", self._on_load_changed)
+        
+        # Configure settings
+        settings = self.webview.get_settings()
+        settings.set_enable_javascript(True)
+        settings.set_enable_javascript_markup(True)
+        
+        # Load the URL
+        self.webview.load_uri(self.url)
+        
+        main_box.append(self.webview)
+        
+        # Status bar
+        self.status_label = Gtk.Label()
+        self.status_label.set_markup("<small>Loading...</small>")
+        self.status_label.add_css_class("dim-label")
+        self.status_label.set_margin_top(4)
+        self.status_label.set_margin_bottom(4)
+        main_box.append(self.status_label)
+    
+    def _show_no_webkit_fallback(self, container):
+        """Show fallback when WebKit isn't available."""
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
+        box.set_valign(Gtk.Align.CENTER)
+        box.set_halign(Gtk.Align.CENTER)
+        box.set_margin_top(40)
+        box.set_margin_bottom(40)
+        container.append(box)
+        
+        icon = Gtk.Image.new_from_icon_name("tux-dialog-warning-symbolic")
+        icon.set_pixel_size(64)
+        box.append(icon)
+        
+        label = Gtk.Label()
+        label.set_markup("<b>WebKit Not Available</b>\n\nInstall WebKitGTK for the embedded browser.")
+        label.set_justify(Gtk.Justification.CENTER)
+        box.append(label)
+        
+        open_btn = Gtk.Button(label="Open in External Browser")
+        open_btn.add_css_class("suggested-action")
+        open_btn.connect("clicked", self._on_open_external)
+        box.append(open_btn)
+    
+    def _on_back(self, button):
+        if self.webview and self.webview.can_go_back():
+            self.webview.go_back()
+    
+    def _on_forward(self, button):
+        if self.webview and self.webview.can_go_forward():
+            self.webview.go_forward()
+    
+    def _on_refresh(self, button):
+        if self.webview:
+            self.webview.reload()
+    
+    def _on_open_external(self, button):
+        import subprocess
+        url = self.webview.get_uri() if self.webview else self.url
+        try:
+            subprocess.Popen(['xdg-open', url])
+        except Exception as e:
+            self.window.show_toast(f"Could not open browser: {e}")
+    
+    def _on_load_changed(self, webview, event):
+        """Update navigation buttons and status."""
+        if event == WebKit.LoadEvent.STARTED:
+            self.status_label.set_markup("<small>Loading...</small>")
+        elif event == WebKit.LoadEvent.FINISHED:
+            title = webview.get_title() or "Theme Browser"
+            self.status_label.set_markup(f"<small>{title}</small>")
+            self.back_btn.set_sensitive(webview.can_go_back())
+            self.forward_btn.set_sensitive(webview.can_go_forward())
+    
+    def _on_decide_policy(self, webview, decision, decision_type):
+        """Intercept navigation to handle ocs:// links."""
+        if decision_type == WebKit.PolicyDecisionType.NAVIGATION_ACTION:
+            nav_action = decision.get_navigation_action()
+            request = nav_action.get_request()
+            uri = request.get_uri()
+            
+            # Handle ocs:// protocol
+            if uri and uri.startswith('ocs://'):
+                decision.ignore()
+                self._handle_ocs_url(uri)
+                return True
+        
+        return False
+    
+    def _handle_ocs_url(self, ocs_uri: str):
+        """Handle ocs:// URL - download and install theme."""
+        self.status_label.set_markup("<small>🎨 Downloading theme...</small>")
+        self.window.show_toast("📦 Downloading theme...")
+        
+        try:
+            from urllib.parse import parse_qs, unquote
+            
+            # Parse ocs:// URL
+            if ocs_uri.startswith('ocs://'):
+                ocs_uri = ocs_uri[6:]
+            
+            if '?' in ocs_uri:
+                path, query = ocs_uri.split('?', 1)
+            else:
+                self.window.show_toast("❌ Invalid ocs:// URL")
+                return
+            
+            params = parse_qs(query)
+            download_url = params.get('url', [None])[0]
+            if download_url:
+                download_url = unquote(download_url)
+            
+            content_type = params.get('type', ['themes'])[0]
+            filename = params.get('filename', [None])[0]
+            if filename:
+                filename = unquote(filename)
+            
+            # Log for debugging
+            print(f"[OCS] content_type={content_type}, filename={filename}")
+            print(f"[OCS] download_url={download_url}")
+            
+            if not download_url:
+                self.window.show_toast("❌ No download URL in link")
+                return
+            
+            # Download and install in background
+            def do_install():
+                try:
+                    success, message = self._download_and_install_theme(download_url, content_type, filename)
+                    GLib.idle_add(self._on_install_complete, success, message)
+                except Exception as e:
+                    GLib.idle_add(self._on_install_complete, False, str(e))
+            
+            threading.Thread(target=do_install, daemon=True).start()
+            
+        except Exception as e:
+            self.window.show_toast(f"❌ Error: {e}")
+    
+    def _download_and_install_theme(self, url: str, content_type: str, filename: str) -> tuple[bool, str]:
+        """Download and install a theme. Returns (success, message)."""
+        import tempfile
+        import tarfile
+        import zipfile
+        import urllib.request
+        import subprocess
+        
+        home = Path.home()
+        content_type_lower = content_type.lower() if content_type else ""
+        
+        # Determine install directory based on content type
+        # Use flexible matching to handle variations
+        
+        # Icons - check for 'icon' anywhere in the type
+        if 'icon' in content_type_lower:
+            install_dir = home / '.local' / 'share' / 'icons'
+            is_icon_theme = True
+        # Cursors
+        elif 'cursor' in content_type_lower or 'xcursor' in content_type_lower:
+            install_dir = home / '.local' / 'share' / 'icons'
+            is_icon_theme = True
+        # Plasma/KDE specific
+        elif 'plasma' in content_type_lower and 'desktoptheme' in content_type_lower:
+            install_dir = home / '.local' / 'share' / 'plasma' / 'desktoptheme'
+            is_icon_theme = False
+        elif 'plasma' in content_type_lower and ('look' in content_type_lower or 'feel' in content_type_lower):
+            install_dir = home / '.local' / 'share' / 'plasma' / 'look-and-feel'
+            is_icon_theme = False
+        elif 'aurorae' in content_type_lower or 'window-decoration' in content_type_lower:
+            install_dir = home / '.local' / 'share' / 'aurorae' / 'themes'
+            is_icon_theme = False
+        elif 'color-scheme' in content_type_lower:
+            install_dir = home / '.local' / 'share' / 'color-schemes'
+            is_icon_theme = False
+        elif 'kvantum' in content_type_lower:
+            install_dir = home / '.config' / 'Kvantum'
+            is_icon_theme = False
+        # GTK/GNOME themes
+        elif 'gtk' in content_type_lower or 'gnome-shell' in content_type_lower:
+            install_dir = home / '.themes'
+            is_icon_theme = False
+        elif 'theme' in content_type_lower:
+            # Generic "themes" - probably GTK
+            install_dir = home / '.themes'
+            is_icon_theme = False
+        # Wallpapers
+        elif 'wallpaper' in content_type_lower or 'background' in content_type_lower:
+            install_dir = home / '.local' / 'share' / 'wallpapers'
+            is_icon_theme = False
+        else:
+            # Default fallback - if we got here via icon themes browser, assume icons
+            if self.theme_type == ThemeType.ICON:
+                install_dir = home / '.local' / 'share' / 'icons'
+                is_icon_theme = True
+            elif self.theme_type == ThemeType.CURSOR:
+                install_dir = home / '.local' / 'share' / 'icons'
+                is_icon_theme = True
+            else:
+                install_dir = home / '.themes'
+                is_icon_theme = False
+        
+        print(f"[OCS] Installing to: {install_dir}")
+        install_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Download to temp file
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=filename or '.tar.gz') as tmp:
+                tmp_path = Path(tmp.name)
+                urllib.request.urlretrieve(url, tmp_path)
+        except Exception as e:
+            return False, f"Download failed: {e}"
+        
+        theme_name = "Unknown"
+        try:
+            # Extract archive
+            if tmp_path.suffix in ['.gz', '.xz', '.bz2'] or '.tar' in str(tmp_path):
+                with tarfile.open(tmp_path) as tar:
+                    members = tar.getnames()
+                    if members:
+                        # Get root folder, handling potential nested structures
+                        root_folder = members[0].split('/')[0]
+                        theme_name = root_folder
+                    
+                    # Extract with security filter if available (Python 3.12+)
+                    try:
+                        tar.extractall(install_dir, filter='data')
+                    except TypeError:
+                        tar.extractall(install_dir)
+                        
+            elif tmp_path.suffix == '.zip':
+                with zipfile.ZipFile(tmp_path) as zf:
+                    members = zf.namelist()
+                    if members:
+                        root_folder = members[0].split('/')[0]
+                        theme_name = root_folder
+                    zf.extractall(install_dir)
+            else:
+                return False, f"Unknown archive format: {tmp_path.suffix}"
+            
+            # Update icon cache if this was an icon/cursor theme
+            if is_icon_theme:
+                theme_path = install_dir / theme_name
+                if theme_path.exists():
+                    try:
+                        subprocess.run(
+                            ['gtk-update-icon-cache', '-f', '-t', str(theme_path)],
+                            capture_output=True, timeout=30
+                        )
+                        print(f"[OCS] Updated icon cache for {theme_name}")
+                    except Exception:
+                        pass  # Icon cache update is optional
+                
+                # Also create symlink in ~/.icons for compatibility
+                legacy_dir = home / '.icons'
+                legacy_dir.mkdir(parents=True, exist_ok=True)
+                legacy_link = legacy_dir / theme_name
+                if not legacy_link.exists() and theme_path.exists():
+                    try:
+                        legacy_link.symlink_to(theme_path)
+                        print(f"[OCS] Created symlink: {legacy_link} -> {theme_path}")
+                    except Exception:
+                        pass  # Symlink is optional
+            
+            return True, f"Installed: {theme_name} to {install_dir}"
+            
+        except Exception as e:
+            return False, str(e)
+        finally:
+            tmp_path.unlink(missing_ok=True)
+    
+    def _on_install_complete(self, success: bool, message: str):
+        """Handle installation completion."""
+        if success:
+            self.status_label.set_markup(f"<small>✓ {message}</small>")
+            self.window.show_toast(f"✓ {message} - Check Settings → Appearance to apply")
+        else:
+            self.status_label.set_markup(f"<small>❌ {message}</small>")
+            self.window.show_toast(f"❌ {message}")
+
+
 # Extension Selection Page
 # =============================================================================
 
@@ -4867,7 +6811,7 @@ class ToolSelectionPage(Adw.NavigationPage):
                         ['flatpak', 'install', '-y', 'flathub', app_id],
                         capture_output=True, timeout=300
                     )
-                except:
+                except Exception:
                     pass
             GLib.idle_add(self.window.show_toast, f"Installed {len(app_ids)} Flatpak(s)")
         
@@ -4973,7 +6917,7 @@ class ThemePresetPage(Adw.NavigationPage):
         install_row.set_title("Install Popular Theme Packages")
         install_row.set_subtitle("Arc, Papirus, Bibata, and more")
         install_row.set_activatable(True)
-        install_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        install_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         install_row.connect("activated", self.on_install_theme_packages)
         install_group.add(install_row)
     

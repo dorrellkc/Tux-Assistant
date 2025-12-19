@@ -6,7 +6,7 @@
 #   A polished installer that makes setup painless.
 #   (Not a PITA - the pain OR the bread)
 #
-#   Copyright (c) 2025 Christopher Dorrell. All Rights Reserved.
+#   Copyright (c) 2025 Christopher Dorrell. Licensed under GPL-3.0.
 #
 #===============================================================================
 
@@ -87,21 +87,65 @@ detect_distro() {
         DISTRO_NAME="${NAME}"
         DISTRO_FAMILY=""
         
-        # Determine package manager family
-        if command -v pacman &>/dev/null; then
-            DISTRO_FAMILY="arch"
-            PKG_INSTALL="pacman -S --noconfirm --needed"
-        elif command -v apt &>/dev/null; then
-            DISTRO_FAMILY="debian"
-            PKG_INSTALL="apt install -y"
-        elif command -v dnf &>/dev/null; then
-            DISTRO_FAMILY="fedora"
-            PKG_INSTALL="dnf install -y"
-        elif command -v zypper &>/dev/null; then
-            DISTRO_FAMILY="opensuse"
-            PKG_INSTALL="zypper install -y"
-        else
-            DISTRO_FAMILY="unknown"
+        # First, try to determine family from os-release ID/ID_LIKE (most reliable)
+        case "${ID}" in
+            arch|manjaro|endeavouros|garuda|cachyos)
+                DISTRO_FAMILY="arch"
+                PKG_INSTALL="pacman -S --noconfirm --needed"
+                ;;
+            opensuse*|suse*)
+                DISTRO_FAMILY="opensuse"
+                PKG_INSTALL="zypper install -y"
+                ;;
+            fedora|rhel|centos|rocky|alma|nobara)
+                DISTRO_FAMILY="fedora"
+                PKG_INSTALL="dnf install -y"
+                ;;
+            debian|ubuntu|linuxmint|pop|zorin|elementary|kali)
+                DISTRO_FAMILY="debian"
+                PKG_INSTALL="apt install -y"
+                ;;
+        esac
+        
+        # If ID didn't match, check ID_LIKE
+        if [ -z "$DISTRO_FAMILY" ] && [ -n "${ID_LIKE}" ]; then
+            case "${ID_LIKE}" in
+                *arch*)
+                    DISTRO_FAMILY="arch"
+                    PKG_INSTALL="pacman -S --noconfirm --needed"
+                    ;;
+                *suse*|*opensuse*)
+                    DISTRO_FAMILY="opensuse"
+                    PKG_INSTALL="zypper install -y"
+                    ;;
+                *fedora*|*rhel*)
+                    DISTRO_FAMILY="fedora"
+                    PKG_INSTALL="dnf install -y"
+                    ;;
+                *debian*|*ubuntu*)
+                    DISTRO_FAMILY="debian"
+                    PKG_INSTALL="apt install -y"
+                    ;;
+            esac
+        fi
+        
+        # Fall back to package manager detection only if os-release didn't help
+        if [ -z "$DISTRO_FAMILY" ]; then
+            if command -v pacman &>/dev/null; then
+                DISTRO_FAMILY="arch"
+                PKG_INSTALL="pacman -S --noconfirm --needed"
+            elif command -v zypper &>/dev/null; then
+                DISTRO_FAMILY="opensuse"
+                PKG_INSTALL="zypper install -y"
+            elif command -v dnf &>/dev/null; then
+                DISTRO_FAMILY="fedora"
+                PKG_INSTALL="dnf install -y"
+            elif command -v apt &>/dev/null; then
+                DISTRO_FAMILY="debian"
+                PKG_INSTALL="apt install -y"
+            else
+                DISTRO_FAMILY="unknown"
+            fi
         fi
     else
         DISTRO_FAMILY="unknown"
@@ -158,6 +202,19 @@ check_dependencies() {
         esac
     fi
     
+    # Check WebKitGTK 6.0 (for Browser and Claude AI)
+    if python3 -c "import gi; gi.require_version('WebKit', '6.0'); from gi.repository import WebKit" 2>/dev/null; then
+        print_success "WebKitGTK 6.0 found"
+    else
+        print_warning "WebKitGTK 6.0 not found (needed for Browser and Claude AI)"
+        case $DISTRO_FAMILY in
+            arch) missing_pkgs+=("webkit2gtk-4.1") ;;
+            debian) missing_pkgs+=("gir1.2-webkit-6.0" "libwebkitgtk-6.0-4") ;;
+            fedora) missing_pkgs+=("webkitgtk6.0") ;;
+            opensuse) missing_pkgs+=("libwebkitgtk-6_0-4" "typelib-1_0-WebKit-6_0" "typelib-1_0-WebKitWebProcessExtension-6_0") ;;
+        esac
+    fi
+    
     # Check GStreamer (for Tux Tunes)
     if python3 -c "import gi; gi.require_version('Gst', '1.0'); from gi.repository import Gst" 2>/dev/null; then
         print_success "GStreamer found"
@@ -167,7 +224,7 @@ check_dependencies() {
             arch) missing_pkgs+=("gstreamer" "gst-plugins-base" "gst-plugins-good") ;;
             debian) missing_pkgs+=("gstreamer1.0-tools" "gir1.2-gst-plugins-base-1.0" "gstreamer1.0-plugins-good") ;;
             fedora) missing_pkgs+=("gstreamer1" "gstreamer1-plugins-base" "gstreamer1-plugins-good") ;;
-            opensuse) missing_pkgs+=("gstreamer" "gstreamer-plugins-base" "gstreamer-plugins-good") ;;
+            opensuse) missing_pkgs+=("gstreamer" "gstreamer-plugins-base" "gstreamer-plugins-good" "typelib-1_0-Gst-1_0" "typelib-1_0-GstPlayer-1_0" "typelib-1_0-GstAudio-1_0" "typelib-1_0-GstVideo-1_0" "typelib-1_0-GstPbutils-1_0" "typelib-1_0-GstTag-1_0") ;;
         esac
     fi
     
@@ -203,6 +260,13 @@ install_dependencies() {
         $PKG_INSTALL $MISSING_PACKAGES
         echo ""
         print_success "Dependencies installed"
+        
+        # Install Python audio dependencies via pip (librosa not in most repos)
+        print_info "Installing Python audio libraries..."
+        pip3 install --user --break-system-packages --quiet numpy librosa pydub 2>/dev/null || \
+        pip3 install --user --quiet numpy librosa pydub 2>/dev/null || \
+        pip install --user --quiet numpy librosa pydub 2>/dev/null || true
+        print_success "Audio libraries installed"
     else
         print_error "Cannot continue without dependencies"
         exit 1
@@ -236,7 +300,8 @@ install_app() {
     chmod +x "$INSTALL_DIR/tux/apps/tux_tunes/tux-tunes.py"
     print_success "Copied application files"
     
-    # Create Tux Assistant launcher
+    # Create Tux Assistant launcher (remove any existing symlink first!)
+    rm -f "$BIN_LINK"
     cat > "$BIN_LINK" << 'EOF'
 #!/bin/bash
 cd /opt/tux-assistant
@@ -245,7 +310,8 @@ EOF
     chmod +x "$BIN_LINK"
     print_success "Created tux-assistant launcher"
     
-    # Create Tux Tunes launcher
+    # Create Tux Tunes launcher (remove any existing symlink first!)
+    rm -f "$TUXTUNES_BIN"
     cat > "$TUXTUNES_BIN" << 'EOF'
 #!/bin/bash
 python3 /opt/tux-assistant/tux/apps/tux_tunes/tux-tunes.py "$@"
@@ -265,50 +331,289 @@ EOF
 }
 
 install_icons() {
-    print_step "Installing icons..."
+    print_step "Installing self-contained icon theme..."
     
-    # Install Tux Assistant icon
-    for size in 16 24 32 48 64 128 256; do
-        local icon_path="$ICON_DIR/${size}x${size}/apps"
-        mkdir -p "$icon_path"
-        cp "$INSTALL_DIR/assets/icon.svg" "$icon_path/tux-assistant.svg"
+    # ==========================================================================
+    # BULLETPROOF ICON STRATEGY
+    # ==========================================================================
+    # We create our OWN icon theme at /opt/tux-assistant/icons/tux-icons/
+    # This theme is self-contained and doesn't rely on system icon themes.
+    # The app prepends this path to GTK's icon search, so we're found FIRST.
+    #
+    # We ALSO install to hicolor as a backup (belt and suspenders).
+    # We ALSO update both GTK and KDE icon caches.
+    # ==========================================================================
+    
+    local THEME_DIR="$INSTALL_DIR/icons/tux-icons"
+    local THEME_SCALABLE="$THEME_DIR/scalable"
+    
+    # Create theme directory structure
+    mkdir -p "$THEME_SCALABLE/apps"
+    mkdir -p "$THEME_SCALABLE/actions"
+    mkdir -p "$THEME_SCALABLE/status"
+    mkdir -p "$THEME_SCALABLE/emblems"
+    mkdir -p "$THEME_SCALABLE/categories"
+    mkdir -p "$THEME_SCALABLE/devices"
+    mkdir -p "$THEME_SCALABLE/mimetypes"
+    mkdir -p "$THEME_SCALABLE/places"
+    
+    # Create index.theme - this makes it a proper icon theme
+    cat > "$THEME_DIR/index.theme" << 'THEME_EOF'
+[Icon Theme]
+Name=Tux Icons
+Comment=Self-contained icon theme for Tux Assistant
+Inherits=hicolor,Adwaita,breeze,gnome,elementary
+Directories=scalable/apps,scalable/actions,scalable/status,scalable/emblems,scalable/categories,scalable/devices,scalable/mimetypes,scalable/places
+
+[scalable/apps]
+Size=64
+MinSize=16
+MaxSize=512
+Type=Scalable
+Context=Applications
+
+[scalable/actions]
+Size=64
+MinSize=16
+MaxSize=512
+Type=Scalable
+Context=Actions
+
+[scalable/status]
+Size=64
+MinSize=16
+MaxSize=512
+Type=Scalable
+Context=Status
+
+[scalable/emblems]
+Size=64
+MinSize=16
+MaxSize=512
+Type=Scalable
+Context=Emblems
+
+[scalable/categories]
+Size=64
+MinSize=16
+MaxSize=512
+Type=Scalable
+Context=Categories
+
+[scalable/devices]
+Size=64
+MinSize=16
+MaxSize=512
+Type=Scalable
+Context=Devices
+
+[scalable/mimetypes]
+Size=64
+MinSize=16
+MaxSize=512
+Type=Scalable
+Context=MimeTypes
+
+[scalable/places]
+Size=64
+MinSize=16
+MaxSize=512
+Type=Scalable
+Context=Places
+THEME_EOF
+    print_success "Created icon theme definition"
+    
+    # --------------------------------------------------------------------------
+    # Install app icons with BOTH friendly names AND app-id names
+    # This covers: GNOME (uses friendly name), KDE (often uses app-id)
+    # --------------------------------------------------------------------------
+    
+    # Tux Assistant icon
+    cp "$INSTALL_DIR/assets/icon.svg" "$THEME_SCALABLE/apps/tux-assistant.svg"
+    cp "$INSTALL_DIR/assets/icon.svg" "$THEME_SCALABLE/apps/com.tuxassistant.app.svg"
+    
+    # Tux Tunes icon
+    cp "$INSTALL_DIR/assets/tux-tunes.svg" "$THEME_SCALABLE/apps/tux-tunes.svg"
+    cp "$INSTALL_DIR/assets/tux-tunes.svg" "$THEME_SCALABLE/apps/com.tuxassistant.tuxtunes.svg"
+    
+    # Tux Browser icon  
+    cp "$INSTALL_DIR/assets/tux-browser.svg" "$THEME_SCALABLE/apps/tux-browser.svg"
+    cp "$INSTALL_DIR/assets/tux-browser.svg" "$THEME_SCALABLE/apps/com.tuxassistant.tuxbrowser.svg"
+    
+    # Tux Claude icon (AI assistant)
+    cp "$INSTALL_DIR/assets/tux-claude.svg" "$THEME_SCALABLE/apps/tux-claude.svg"
+    
+    print_success "Installed app icons (friendly + app-id names)"
+    
+    # --------------------------------------------------------------------------
+    # Install all symbolic icons to multiple contexts
+    # Different DEs look in different places, so we cover them all
+    # --------------------------------------------------------------------------
+    
+    local icon_count=0
+    if [ -d "$INSTALL_DIR/assets/icons" ]; then
+        for icon_file in "$INSTALL_DIR/assets/icons/"*.svg; do
+            if [ -f "$icon_file" ]; then
+                icon_name=$(basename "$icon_file")
+                # Install to all relevant contexts
+                cp "$icon_file" "$THEME_SCALABLE/actions/$icon_name"
+                cp "$icon_file" "$THEME_SCALABLE/status/$icon_name"
+                cp "$icon_file" "$THEME_SCALABLE/apps/$icon_name"
+                cp "$icon_file" "$THEME_SCALABLE/emblems/$icon_name"
+                icon_count=$((icon_count + 1))
+            fi
+        done
+        print_success "Installed $icon_count symbolic icons (4 contexts each)"
+    fi
+    
+    # --------------------------------------------------------------------------
+    # BACKUP: Also install to system hicolor theme
+    # This is belt-and-suspenders - if our theme somehow isn't found,
+    # hicolor is the universal fallback that every toolkit checks
+    # --------------------------------------------------------------------------
+    
+    print_info "Also installing to system hicolor (backup)..."
+    
+    # Create hicolor directories
+    for size in 16 24 32 48 64 128 256 scalable; do
+        if [ "$size" = "scalable" ]; then
+            mkdir -p "$ICON_DIR/scalable/apps"
+        else
+            mkdir -p "$ICON_DIR/${size}x${size}/apps"
+        fi
     done
-    mkdir -p "$ICON_DIR/scalable/apps"
+    
+    # Install app icons to hicolor at multiple sizes
+    for size in 16 24 32 48 64 128 256; do
+        cp "$INSTALL_DIR/assets/icon.svg" "$ICON_DIR/${size}x${size}/apps/tux-assistant.svg"
+        cp "$INSTALL_DIR/assets/icon.svg" "$ICON_DIR/${size}x${size}/apps/com.tuxassistant.app.svg"
+        cp "$INSTALL_DIR/assets/tux-tunes.svg" "$ICON_DIR/${size}x${size}/apps/tux-tunes.svg"
+        cp "$INSTALL_DIR/assets/tux-tunes.svg" "$ICON_DIR/${size}x${size}/apps/com.tuxassistant.tuxtunes.svg"
+        cp "$INSTALL_DIR/assets/tux-browser.svg" "$ICON_DIR/${size}x${size}/apps/tux-browser.svg"
+        cp "$INSTALL_DIR/assets/tux-browser.svg" "$ICON_DIR/${size}x${size}/apps/com.tuxassistant.tuxbrowser.svg"
+        cp "$INSTALL_DIR/assets/tux-claude.svg" "$ICON_DIR/${size}x${size}/apps/tux-claude.svg"
+    done
+    
+    # Scalable versions
     cp "$INSTALL_DIR/assets/icon.svg" "$ICON_DIR/scalable/apps/tux-assistant.svg"
-    print_success "Installed Tux Assistant icon"
-    
-    # Install Tux Tunes icon
-    for size in 16 24 32 48 64 128 256; do
-        local icon_path="$ICON_DIR/${size}x${size}/apps"
-        mkdir -p "$icon_path"
-        cp "$INSTALL_DIR/assets/tux-tunes.svg" "$icon_path/tux-tunes.svg"
-    done
+    cp "$INSTALL_DIR/assets/icon.svg" "$ICON_DIR/scalable/apps/com.tuxassistant.app.svg"
     cp "$INSTALL_DIR/assets/tux-tunes.svg" "$ICON_DIR/scalable/apps/tux-tunes.svg"
-    print_success "Installed Tux Tunes icon"
+    cp "$INSTALL_DIR/assets/tux-tunes.svg" "$ICON_DIR/scalable/apps/com.tuxassistant.tuxtunes.svg"
+    cp "$INSTALL_DIR/assets/tux-browser.svg" "$ICON_DIR/scalable/apps/tux-browser.svg"
+    cp "$INSTALL_DIR/assets/tux-browser.svg" "$ICON_DIR/scalable/apps/com.tuxassistant.tuxbrowser.svg"
+    cp "$INSTALL_DIR/assets/tux-claude.svg" "$ICON_DIR/scalable/apps/tux-claude.svg"
     
-    # Update icon cache
+    # Install symbolic icons to hicolor actions (for apps that check there)
+    mkdir -p "$ICON_DIR/scalable/actions"
+    mkdir -p "$ICON_DIR/scalable/status"
+    if [ -d "$INSTALL_DIR/assets/icons" ]; then
+        for icon_file in "$INSTALL_DIR/assets/icons/"*.svg; do
+            if [ -f "$icon_file" ]; then
+                icon_name=$(basename "$icon_file")
+                cp "$icon_file" "$ICON_DIR/scalable/actions/$icon_name"
+                cp "$icon_file" "$ICON_DIR/scalable/status/$icon_name"
+            fi
+        done
+    fi
+    
+    print_success "Installed to hicolor theme"
+    
+    # --------------------------------------------------------------------------
+    # Update ALL icon caches - GTK, KDE, and any others
+    # --------------------------------------------------------------------------
+    
+    print_info "Updating icon caches..."
+    
+    # GTK icon cache
     if command -v gtk-update-icon-cache &>/dev/null; then
         gtk-update-icon-cache -f -t "$ICON_DIR" 2>/dev/null || true
-        print_success "Updated icon cache"
+        gtk-update-icon-cache -f -t "$THEME_DIR" 2>/dev/null || true
+        print_success "Updated GTK icon cache"
     fi
+    
+    # GTK4 icon cache (some systems have separate command)
+    if command -v gtk4-update-icon-cache &>/dev/null; then
+        gtk4-update-icon-cache -f -t "$ICON_DIR" 2>/dev/null || true
+        gtk4-update-icon-cache -f -t "$THEME_DIR" 2>/dev/null || true
+        print_success "Updated GTK4 icon cache"
+    fi
+    
+    # KDE icon cache (Plasma 5)
+    if command -v kbuildsycoca5 &>/dev/null; then
+        kbuildsycoca5 --noincremental 2>/dev/null || true
+        print_success "Updated KDE5 cache"
+    fi
+    
+    # KDE icon cache (Plasma 6)
+    if command -v kbuildsycoca6 &>/dev/null; then
+        kbuildsycoca6 --noincremental 2>/dev/null || true
+        print_success "Updated KDE6 cache"
+    fi
+    
+    # XDG icon resource (used by some DEs)
+    if command -v xdg-icon-resource &>/dev/null; then
+        xdg-icon-resource forceupdate --theme hicolor 2>/dev/null || true
+    fi
+    
+    print_success "Icon installation complete"
 }
 
 install_desktop_entries() {
     print_step "Creating desktop entries..."
     
-    # Install Tux Assistant desktop entry
-    cp "data/tux-assistant.desktop" "$DESKTOP_DIR/"
+    # Remove old naming convention desktop files (cleanup from previous versions)
+    rm -f "$DESKTOP_DIR/tux-assistant.desktop" 2>/dev/null || true
+    rm -f "$DESKTOP_DIR/tux-tunes.desktop" 2>/dev/null || true
+    
+    # Install Tux Assistant desktop entry (GNOME standard naming)
+    cp "data/com.tuxassistant.app.desktop" "$DESKTOP_DIR/"
     print_success "Created Tux Assistant desktop entry"
     
-    # Install Tux Tunes desktop entry
-    cp "data/tux-tunes.desktop" "$DESKTOP_DIR/"
+    # Install Tux Tunes desktop entry (GNOME standard naming)
+    cp "data/com.tuxassistant.tuxtunes.desktop" "$DESKTOP_DIR/"
     print_success "Created Tux Tunes desktop entry"
+    
+    # Install Tux Browser desktop entry (GNOME standard naming)
+    cp "data/com.tuxassistant.tuxbrowser.desktop" "$DESKTOP_DIR/"
+    print_success "Created Tux Browser desktop entry"
     
     # Update desktop database
     if command -v update-desktop-database &>/dev/null; then
         update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
         print_success "Updated desktop database"
     fi
+}
+
+install_native_messaging() {
+    print_step "Installing OCS protocol handler..."
+    
+    # Ensure scripts directory exists
+    mkdir -p "$INSTALL_DIR/scripts"
+    
+    # Install OCS handler script
+    cp "scripts/tux-ocs-handler" "$INSTALL_DIR/scripts/"
+    chmod +x "$INSTALL_DIR/scripts/tux-ocs-handler"
+    print_success "Installed OCS handler script"
+    
+    # Install OCS handler desktop file
+    cp "data/tux-ocs-handler.desktop" "$DESKTOP_DIR/"
+    print_success "Installed OCS handler desktop entry"
+    
+    # Register as protocol handler for ocs:// links
+    if command -v xdg-mime &>/dev/null; then
+        xdg-mime default tux-ocs-handler.desktop x-scheme-handler/ocs 2>/dev/null || true
+        print_success "Registered ocs:// protocol handler"
+    fi
+    
+    # Update desktop database
+    if command -v update-desktop-database &>/dev/null; then
+        update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
+    fi
+    
+    echo ""
+    echo -e "  ${GREEN}✓ One-click theme installs from gnome-look.org now work!${NC}"
+    echo -e "  ${DIM}Click 'Install' on any theme and Tux Assistant will handle it.${NC}"
+    echo ""
 }
 
 #-------------------------------------------------------------------------------
@@ -338,8 +643,8 @@ uninstall_app() {
         fi
     done
     
-    # Remove desktop entries
-    for desktop in "tux-assistant.desktop" "tux-tunes.desktop"; do
+    # Remove desktop entries (both old and new naming conventions)
+    for desktop in "tux-assistant.desktop" "tux-tunes.desktop" "com.tuxassistant.app.desktop" "com.tuxassistant.tuxtunes.desktop" "com.tuxassistant.tuxbrowser.desktop" "tux-ocs-handler.desktop"; do
         if [ -f "$DESKTOP_DIR/$desktop" ]; then
             rm -f "$DESKTOP_DIR/$desktop"
             print_success "Removed $desktop"
@@ -347,8 +652,15 @@ uninstall_app() {
         fi
     done
     
-    # Remove icons
-    for icon in "tux-assistant.svg" "tux-tunes.svg"; do
+    # Remove native messaging host manifest (legacy, may not exist)
+    if [ -f "/usr/lib/mozilla/native-messaging-hosts/tux_assistant.json" ]; then
+        rm -f "/usr/lib/mozilla/native-messaging-hosts/tux_assistant.json"
+        print_success "Removed Firefox native messaging manifest"
+        found_something=true
+    fi
+    
+    # Remove icons (both friendly names AND app-id names)
+    for icon in "tux-assistant.svg" "tux-tunes.svg" "tux-browser.svg" "com.tuxassistant.app.svg" "com.tuxassistant.tuxtunes.svg" "com.tuxassistant.tuxbrowser.svg"; do
         for size in 16 24 32 48 64 128 256 scalable; do
             local icon_path="$ICON_DIR/${size}x${size}/apps/$icon"
             if [ "$size" = "scalable" ]; then
@@ -360,6 +672,25 @@ uninstall_app() {
             fi
         done
     done
+    
+    # Remove bundled tux-* symbolic icons
+    for category in actions status apps emblems; do
+        if [ -d "$ICON_DIR/scalable/$category" ]; then
+            for icon_file in "$ICON_DIR/scalable/$category"/tux-*.svg; do
+                if [ -f "$icon_file" ]; then
+                    rm -f "$icon_file"
+                    found_something=true
+                fi
+            done
+        fi
+    done
+    
+    # Remove runtime icon theme (created by the app)
+    if [ -d "$HOME/.local/share/icons/tux-runtime" ]; then
+        rm -rf "$HOME/.local/share/icons/tux-runtime"
+        found_something=true
+    fi
+    
     if [ "$found_something" = true ]; then
         print_success "Removed icons"
     fi
@@ -452,6 +783,37 @@ main() {
     install_icons
     echo ""
     install_desktop_entries
+    echo ""
+    install_native_messaging
+    
+    # Ensure 7z is available for extracting themes from gnome-look.org
+    echo ""
+    print_step "Ensuring archive extraction tools..."
+    if ! command -v 7z &>/dev/null && ! command -v 7za &>/dev/null; then
+        # Install based on distro
+        if command -v zypper &>/dev/null; then
+            zypper install -y p7zip 2>/dev/null || true
+        elif command -v dnf &>/dev/null; then
+            dnf install -y p7zip p7zip-plugins 2>/dev/null || true
+        elif command -v apt &>/dev/null; then
+            apt install -y p7zip-full 2>/dev/null || true
+        elif command -v pacman &>/dev/null; then
+            pacman -S --noconfirm p7zip 2>/dev/null || true
+        fi
+    fi
+    if command -v 7z &>/dev/null || command -v 7za &>/dev/null; then
+        print_success "7z extraction ready"
+    else
+        echo -e "  ${YELLOW}⚠ Could not install p7zip - some theme archives may not extract${NC}"
+    fi
+    
+    # Ensure Python audio libraries are installed (for Tux Tunes audio analysis)
+    echo ""
+    print_step "Ensuring Python audio libraries..."
+    pip3 install --user --break-system-packages --quiet numpy librosa pydub 2>/dev/null || \
+    pip3 install --user --quiet numpy librosa pydub 2>/dev/null || \
+    pip install --user --quiet numpy librosa pydub 2>/dev/null || true
+    print_success "Audio libraries ready"
     
     echo ""
     echo -e "${GREEN}${BOLD}  ╔═══════════════════════════════════════════╗${NC}"

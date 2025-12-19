@@ -1,0 +1,302 @@
+#!/usr/bin/env python3
+"""
+Tux OCS Handler - Handles ocs:// protocol links for theme/extension installation
+
+Called by the system when user clicks an ocs:// link in any browser.
+Format: ocs://install?url=https://...&type=...&filename=...
+"""
+
+import sys
+import os
+import urllib.parse
+import urllib.request
+import tempfile
+import shutil
+import subprocess
+from pathlib import Path
+
+
+def show_notification(title, message, icon="tux-assistant"):
+    """Show a desktop notification."""
+    try:
+        subprocess.run([
+            'notify-send',
+            '--app-name=Tux Assistant',
+            f'--icon={icon}',
+            title,
+            message
+        ], capture_output=True, timeout=5)
+    except:
+        pass
+
+
+def log_to_file(message):
+    """Log to a debug file."""
+    log_path = os.path.join(os.path.expanduser("~"), ".config", "tux-assistant", "ocs-handler.log")
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+    with open(log_path, 'a') as f:
+        from datetime import datetime
+        f.write(f"[{datetime.now()}] {message}\n")
+
+
+def download_file(url, dest_path):
+    """Download a file from URL."""
+    try:
+        log_to_file(f"download_file: Starting download from {url}")
+        req = urllib.request.Request(url, headers={
+            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0'
+        })
+        with urllib.request.urlopen(req, timeout=60) as response:
+            log_to_file(f"download_file: Got response, status={response.status}")
+            with open(dest_path, 'wb') as f:
+                shutil.copyfileobj(response, f)
+        log_to_file(f"download_file: Saved to {dest_path}")
+        return True
+    except Exception as e:
+        print(f"Download error: {e}")
+        log_to_file(f"download_file ERROR: {e}")
+        return False
+
+
+def extract_archive(archive_path, dest_dir):
+    """Extract an archive to destination directory."""
+    import tarfile
+    import zipfile
+    
+    filename = archive_path.lower()
+    
+    try:
+        if filename.endswith('.zip'):
+            with zipfile.ZipFile(archive_path, 'r') as z:
+                z.extractall(dest_dir)
+        elif filename.endswith('.tar.gz') or filename.endswith('.tgz'):
+            with tarfile.open(archive_path, 'r:gz') as tar:
+                tar.extractall(dest_dir)
+        elif filename.endswith('.tar.xz'):
+            with tarfile.open(archive_path, 'r:xz') as tar:
+                tar.extractall(dest_dir)
+        elif filename.endswith('.tar.bz2'):
+            with tarfile.open(archive_path, 'r:bz2') as tar:
+                tar.extractall(dest_dir)
+        elif filename.endswith('.tar'):
+            with tarfile.open(archive_path, 'r') as tar:
+                tar.extractall(dest_dir)
+        elif filename.endswith('.7z'):
+            # Check if 7z is available
+            have_7z = subprocess.run(['which', '7z'], capture_output=True).returncode == 0
+            have_7za = subprocess.run(['which', '7za'], capture_output=True).returncode == 0
+            
+            if not have_7z and not have_7za:
+                # Try to install p7zip
+                log_to_file("7z not found, attempting to install p7zip...")
+                show_notification("Tux Assistant", "Installing p7zip for archive extraction...")
+                
+                install_cmds = [
+                    ['pkexec', 'zypper', 'install', '-y', 'p7zip'],
+                    ['pkexec', 'dnf', 'install', '-y', 'p7zip', 'p7zip-plugins'],
+                    ['pkexec', 'apt', 'install', '-y', 'p7zip-full'],
+                    ['pkexec', 'pacman', '-S', '--noconfirm', 'p7zip'],
+                ]
+                
+                for cmd in install_cmds:
+                    result = subprocess.run(cmd, capture_output=True)
+                    if result.returncode == 0:
+                        log_to_file(f"Installed p7zip with: {' '.join(cmd)}")
+                        have_7z = subprocess.run(['which', '7z'], capture_output=True).returncode == 0
+                        have_7za = subprocess.run(['which', '7za'], capture_output=True).returncode == 0
+                        break
+            
+            if not have_7z and not have_7za:
+                log_to_file("Could not install p7zip")
+                show_notification("Installation Failed", "Could not install p7zip for .7z extraction", "dialog-error")
+                return False
+            
+            # Use whichever is available
+            cmd_7z = '7z' if have_7z else '7za'
+            result = subprocess.run(
+                [cmd_7z, 'x', '-y', f'-o{dest_dir}', archive_path],
+                capture_output=True,
+                text=True
+            )
+            if result.returncode != 0:
+                log_to_file(f"7z extraction failed: {result.stderr}")
+                return False
+        else:
+            # Just copy the file
+            shutil.copy(archive_path, dest_dir)
+        return True
+    except Exception as e:
+        print(f"Extract error: {e}")
+        log_to_file(f"Extract error: {e}")
+        return False
+
+
+def get_install_dir(content_type):
+    """Get the installation directory based on content type."""
+    home = Path.home()
+    
+    # Normalize: lowercase and replace underscores with spaces
+    normalized = content_type.lower().replace('_', ' ')
+    
+    # OCS content type mapping (all lowercase for matching)
+    type_mapping = {
+        # GTK Themes
+        'gtk3 themes': home / '.themes',
+        'gtk3/4 themes': home / '.themes',
+        'gtk2 themes': home / '.themes',
+        'gnome shell themes': home / '.themes',
+        'cinnamon themes': home / '.themes',
+        'metacity themes': home / '.themes',
+        'xfwm4 themes': home / '.themes',
+        
+        # Icons and Cursors
+        'icon themes': home / '.icons',
+        'cursor themes': home / '.icons',
+        'full icon themes': home / '.icons',
+        
+        # Plasma/KDE
+        'plasma themes': home / '.local/share/plasma/desktoptheme',
+        'plasma color schemes': home / '.local/share/color-schemes',
+        'plasma look and feel': home / '.local/share/plasma/look-and-feel',
+        'aurorae themes': home / '.local/share/aurorae/themes',
+        'sddm themes': home / '.local/share/sddm/themes',
+        'kwin effects': home / '.local/share/kwin/effects',
+        'kwin scripts': home / '.local/share/kwin/scripts',
+        'plasma widgets': home / '.local/share/plasma/plasmoids',
+        
+        # Wallpapers
+        'wallpapers': home / '.local/share/wallpapers',
+        'wallpapers hd': home / '.local/share/wallpapers',
+        
+        # Fonts
+        'fonts': home / '.local/share/fonts',
+    }
+    
+    # Try to find a match
+    install_dir = type_mapping.get(normalized)
+    
+    # If no exact match, try partial matching
+    if not install_dir:
+        for key, path in type_mapping.items():
+            if key in normalized or normalized in key:
+                install_dir = path
+                break
+    
+    # Default to themes directory
+    if not install_dir:
+        install_dir = home / '.themes'
+    
+    return install_dir
+
+
+def parse_ocs_url(url):
+    """Parse an ocs:// URL and extract parameters."""
+    # ocs://install?url=...&type=...&filename=...
+    if not url.startswith('ocs://'):
+        return None
+    
+    # Remove ocs:// prefix
+    url = url[6:]
+    
+    # Parse the rest
+    if '?' in url:
+        action, query = url.split('?', 1)
+        params = urllib.parse.parse_qs(query)
+        
+        return {
+            'action': action,
+            'url': params.get('url', [None])[0],
+            'type': params.get('type', ['unknown'])[0],
+            'filename': params.get('filename', ['download'])[0]
+        }
+    
+    return None
+
+
+def install_content(download_url, content_type, filename):
+    """Download and install OCS content."""
+    print(f"Installing: {filename}")
+    print(f"Type: {content_type}")
+    print(f"URL: {download_url}")
+    log_to_file(f"Installing: {filename}, Type: {content_type}, URL: {download_url}")
+    
+    show_notification("Tux Assistant", f"Downloading: {filename}")
+    
+    # Create temp directory
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Download
+        download_path = os.path.join(tmpdir, filename)
+        log_to_file(f"Downloading to: {download_path}")
+        
+        if not download_file(download_url, download_path):
+            log_to_file("Download FAILED")
+            show_notification("Installation Failed", f"Could not download: {filename}", "dialog-error")
+            return False
+        
+        log_to_file(f"Download complete, size: {os.path.getsize(download_path)} bytes")
+        
+        # Get install directory
+        install_dir = get_install_dir(content_type)
+        install_dir.mkdir(parents=True, exist_ok=True)
+        
+        print(f"Installing to: {install_dir}")
+        log_to_file(f"Installing to: {install_dir}")
+        
+        # Extract or copy
+        if not extract_archive(download_path, install_dir):
+            log_to_file("Extract FAILED")
+            show_notification("Installation Failed", f"Could not extract: {filename}", "dialog-error")
+            return False
+        
+        log_to_file("Extract complete")
+        show_notification("Installation Complete", f"Installed: {filename}", "emblem-ok-symbolic")
+        print(f"Successfully installed: {filename}")
+        return True
+
+
+def main():
+    log_to_file(f"=== Handler started with args: {sys.argv} ===")
+    
+    if len(sys.argv) < 2:
+        print("Usage: tux-ocs-handler ocs://install?url=...&type=...&filename=...")
+        log_to_file("ERROR: No arguments provided")
+        sys.exit(1)
+    
+    ocs_url = sys.argv[1]
+    print(f"Received OCS URL: {ocs_url}")
+    log_to_file(f"Received OCS URL: {ocs_url}")
+    
+    # Parse the URL
+    params = parse_ocs_url(ocs_url)
+    log_to_file(f"Parsed params: {params}")
+    
+    if not params:
+        print("Error: Invalid OCS URL")
+        log_to_file("ERROR: Invalid OCS URL")
+        show_notification("Installation Failed", "Invalid OCS URL", "dialog-error")
+        sys.exit(1)
+    
+    if params['action'] != 'install':
+        print(f"Error: Unknown action: {params['action']}")
+        log_to_file(f"ERROR: Unknown action: {params['action']}")
+        sys.exit(1)
+    
+    if not params['url']:
+        print("Error: No download URL in OCS link")
+        log_to_file("ERROR: No download URL in OCS link")
+        show_notification("Installation Failed", "No download URL in link", "dialog-error")
+        sys.exit(1)
+    
+    # Install the content
+    success = install_content(
+        params['url'],
+        params['type'],
+        params['filename']
+    )
+    
+    log_to_file(f"Install result: {'SUCCESS' if success else 'FAILED'}")
+    sys.exit(0 if success else 1)
+
+
+if __name__ == "__main__":
+    main()

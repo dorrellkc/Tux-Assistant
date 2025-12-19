@@ -1,9 +1,9 @@
 """
-Tux Assistant - Help & Learning Module
+Tux Assistant - Help and Learning Module
 
 Interactive tutorials, troubleshooter, and guided help for Linux beginners.
 
-Copyright (c) 2025 Christopher Dorrell. All Rights Reserved.
+Copyright (c) 2025 Christopher Dorrell. Licensed under GPL-3.0.
 """
 
 import gi
@@ -65,7 +65,7 @@ TUTORIALS = [
         id="terminal_basics",
         title="Terminal Basics",
         description="Learn to use the command line - it's not as scary as it looks!",
-        icon="utilities-terminal-symbolic",
+        icon="tux-utilities-terminal-symbolic",
         category="basics",
         steps=[
             {
@@ -148,7 +148,7 @@ The more you practice, the more natural it becomes. Many Linux users actually pr
         id="software_install",
         title="Installing Software",
         description="Learn the different ways to install apps on Linux",
-        icon="system-software-install-symbolic",
+        icon="tux-system-software-install-symbolic",
         category="basics",
         steps=[
             {
@@ -216,7 +216,7 @@ Tux Assistant handles all this for you automatically!"""
         id="file_management",
         title="Files & Folders",
         description="Navigate your files like a pro",
-        icon="system-file-manager-symbolic",
+        icon="tux-system-file-manager-symbolic",
         category="basics",
         steps=[
             {
@@ -279,7 +279,7 @@ Most files in your home folder you have full access to. System files require adm
         id="updates_security",
         title="Updates & Security",
         description="Keep your system safe and up-to-date",
-        icon="system-software-update-symbolic",
+        icon="tux-system-software-update-symbolic",
         category="basics",
         steps=[
             {
@@ -342,7 +342,7 @@ TROUBLESHOOT_ITEMS = [
         id="no_sound",
         title="No Sound",
         description="Audio not working? Let's fix it.",
-        icon="audio-volume-muted-symbolic",
+        icon="tux-audio-volume-muted-symbolic",
         checks=[
             {
                 "name": "Check if audio is muted",
@@ -377,7 +377,7 @@ TROUBLESHOOT_ITEMS = [
         id="no_wifi",
         title="WiFi Not Working",
         description="Can't connect to WiFi? Let's diagnose.",
-        icon="network-wireless-offline-symbolic",
+        icon="tux-network-wireless-offline-symbolic",
         checks=[
             {
                 "name": "Check if WiFi is enabled",
@@ -411,7 +411,7 @@ TROUBLESHOOT_ITEMS = [
         id="no_print",
         title="Printer Not Working",
         description="Can't print? Let's troubleshoot.",
-        icon="printer-error-symbolic",
+        icon="tux-printer-error-symbolic",
         checks=[
             {
                 "name": "Check if printer is on and connected",
@@ -441,7 +441,7 @@ TROUBLESHOOT_ITEMS = [
         id="slow_system",
         title="System Running Slow",
         description="Computer feeling sluggish? Let's speed it up.",
-        icon="utilities-system-monitor-symbolic",
+        icon="tux-utilities-system-monitor-symbolic",
         checks=[
             {
                 "name": "Check what's using resources",
@@ -477,7 +477,7 @@ TROUBLESHOOT_ITEMS = [
         id="app_crash",
         title="App Keeps Crashing",
         description="Application crashing or freezing?",
-        icon="dialog-error-symbolic",
+        icon="tux-dialog-error-symbolic",
         checks=[
             {
                 "name": "Update the application",
@@ -511,7 +511,7 @@ TROUBLESHOOT_ITEMS = [
         id="bluetooth_issues",
         title="Bluetooth Problems",
         description="Bluetooth device not connecting?",
-        icon="bluetooth-disabled-symbolic",
+        icon="tux-network-bluetooth-symbolic",
         checks=[
             {
                 "name": "Check if Bluetooth is enabled",
@@ -546,8 +546,8 @@ TROUBLESHOOT_ITEMS = [
 # =============================================================================
 
 QUICK_TASKS = [
-    QuickTask("play_dvd", "Play a DVD", "media-optical-dvd-symbolic", "media_server", 
-              "Install DVD playback support and media player"),
+    QuickTask("play_dvd", "Play a DVD", "media-optical-dvd-symbolic", "software_center:media", 
+              "Install VLC or other media player with DVD support"),
     QuickTask("connect_wifi", "Connect to WiFi", "network-wireless-symbolic", "networking_simple",
               "Open WiFi settings to connect to a network"),
     QuickTask("print_doc", "Print a document", "printer-symbolic", "hardware_manager",
@@ -560,7 +560,7 @@ QUICK_TASKS = [
               "Create backups of important files"),
     QuickTask("share_files", "Share files on network", "folder-publicshare-symbolic", "networking_simple",
               "Set up file sharing with other computers"),
-    QuickTask("customize_look", "Customize my desktop", "preferences-desktop-wallpaper-symbolic", "desktop_enhancements",
+    QuickTask("customize_look", "Customize my desktop", "preferences-desktop-theme-symbolic", "desktop_enhancements",
               "Themes, icons, fonts, and more"),
     QuickTask("update_system", "Update my system", "system-software-update-symbolic", "system_maintenance",
               "Check for and install updates"),
@@ -570,14 +570,14 @@ QUICK_TASKS = [
 
 
 # =============================================================================
-# Help & Learning Module
+# Help and Learning Module
 # =============================================================================
 
 @register_module(
     id="help_learning",
-    name="Help & Learning",
+    name="Help and Learning",
     description="Tutorials, troubleshooting, and guided help",
-    icon="help-browser-symbolic",
+    icon="tux-help-browser-symbolic",
     category=ModuleCategory.SYSTEM,
     order=2  # Second - help for new users
 )
@@ -585,7 +585,7 @@ class HelpLearningPage(Adw.NavigationPage):
     """Help and learning center for Linux beginners."""
     
     def __init__(self, window: 'LinuxToolkitWindow'):
-        super().__init__(title="Help & Learning")
+        super().__init__(title="Help and Learning")
         
         self.window = window
         self.distro = get_distro()
@@ -652,7 +652,7 @@ class HelpLearningPage(Adw.NavigationPage):
             row.add_prefix(Gtk.Image.new_from_icon_name(task.icon))
             row.set_activatable(True)
             row.connect("activated", self._on_quick_task, task)
-            row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+            row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
             group.add(row)
         
         # Show more button
@@ -660,7 +660,7 @@ class HelpLearningPage(Adw.NavigationPage):
         more_row.set_title("More tasks...")
         more_row.set_activatable(True)
         more_row.connect("activated", self._on_show_all_tasks)
-        more_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        more_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         group.add(more_row)
         
         return group
@@ -678,7 +678,7 @@ class HelpLearningPage(Adw.NavigationPage):
             row.add_prefix(Gtk.Image.new_from_icon_name(item.icon))
             row.set_activatable(True)
             row.connect("activated", self._on_troubleshoot, item)
-            row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+            row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
             group.add(row)
         
         return group
@@ -696,7 +696,7 @@ class HelpLearningPage(Adw.NavigationPage):
             row.add_prefix(Gtk.Image.new_from_icon_name(tutorial.icon))
             row.set_activatable(True)
             row.connect("activated", self._on_tutorial, tutorial)
-            row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+            row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
             group.add(row)
         
         return group
@@ -711,7 +711,7 @@ class HelpLearningPage(Adw.NavigationPage):
         shortcuts_row = Adw.ExpanderRow()
         shortcuts_row.set_title("Keyboard Shortcuts")
         shortcuts_row.set_subtitle("Essential shortcuts to know")
-        shortcuts_row.add_prefix(Gtk.Image.new_from_icon_name("input-keyboard-symbolic"))
+        shortcuts_row.add_prefix(Gtk.Image.new_from_icon_name("tux-input-keyboard-symbolic"))
         
         shortcuts = [
             ("Ctrl + C", "Copy / Cancel command in terminal"),
@@ -737,7 +737,7 @@ class HelpLearningPage(Adw.NavigationPage):
         terms_row = Adw.ExpanderRow()
         terms_row.set_title("Linux Terminology")
         terms_row.set_subtitle("What do these words mean?")
-        terms_row.add_prefix(Gtk.Image.new_from_icon_name("accessories-dictionary-symbolic"))
+        terms_row.add_prefix(Gtk.Image.new_from_icon_name("tux-accessories-dictionary-symbolic"))
         
         terms = [
             ("Distribution (Distro)", "A version of Linux, like Ubuntu, Fedora, or Arch"),
@@ -762,10 +762,10 @@ class HelpLearningPage(Adw.NavigationPage):
         help_row = Adw.ActionRow()
         help_row.set_title("Get Help Online")
         help_row.set_subtitle("Forums, wikis, and communities")
-        help_row.add_prefix(Gtk.Image.new_from_icon_name("web-browser-symbolic"))
+        help_row.add_prefix(Gtk.Image.new_from_icon_name("tux-web-browser-symbolic"))
         help_row.set_activatable(True)
         help_row.connect("activated", self._on_online_help)
-        help_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        help_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         group.add(help_row)
         
         return group
@@ -776,6 +776,7 @@ class HelpLearningPage(Adw.NavigationPage):
     
     def _on_quick_task(self, row, task: QuickTask):
         """Handle quick task selection."""
+        print(f"[Help] Quick task clicked: {task.title} -> {task.action}")
         if task.action.startswith("troubleshoot_"):
             # It's a troubleshoot item
             item_id = task.action.replace("troubleshoot_", "")
@@ -783,6 +784,9 @@ class HelpLearningPage(Adw.NavigationPage):
                 if item.id == item_id:
                     self._show_troubleshooter(item)
                     return
+        elif ":" in task.action:
+            # Deep link: module:subcategory (e.g., software_center:media)
+            self._navigate_deep(task.action)
         else:
             # It's a module - navigate to it
             self._navigate_to_module(task.action)
@@ -837,16 +841,62 @@ class HelpLearningPage(Adw.NavigationPage):
     
     def _navigate_to_module(self, module_id: str):
         """Navigate to a module."""
-        from ..modules.registry import get_all_modules
+        from ..modules.registry import ModuleRegistry
         
-        modules = get_all_modules()
+        modules = ModuleRegistry.get_all_modules()
         for mod in modules:
             if mod.id == module_id:
-                page = mod.page_class(self.window)
-                self.window.navigation_view.push(page)
+                try:
+                    page = mod.page_class(self.window)
+                    self.window.navigation_view.push(page)
+                except Exception as e:
+                    print(f"[Help] Error loading module '{module_id}': {e}")
+                    self.window.show_toast(f"Error loading module: {e}")
                 return
         
+        print(f"[Help] Module '{module_id}' not found in registry")
         self.window.show_toast(f"Module '{module_id}' not found")
+    
+    def _navigate_deep(self, action: str):
+        """Navigate to a module and then to a specific subcategory.
+        
+        Format: module_id:category_id (e.g., software_center:media)
+        """
+        parts = action.split(":", 1)
+        if len(parts) != 2:
+            self._navigate_to_module(action)
+            return
+        
+        module_id, category_id = parts
+        
+        # Handle software_center deep links
+        if module_id == "software_center":
+            try:
+                from .software_center import build_catalog, CategoryPage
+                from ..core.distro import get_distro
+                
+                # Find the category
+                catalog = build_catalog()
+                category = None
+                for cat in catalog:
+                    if cat.id == category_id:
+                        category = cat
+                        break
+                
+                if category:
+                    # Navigate directly to the category page
+                    distro = get_distro()
+                    page = CategoryPage(self.window, category, distro)
+                    self.window.navigation_view.push(page)
+                else:
+                    print(f"[Help] Category '{category_id}' not found in software center")
+                    self._navigate_to_module(module_id)
+            except Exception as e:
+                print(f"[Help] Error navigating to {action}: {e}")
+                self._navigate_to_module(module_id)
+        else:
+            # For other modules, just navigate to the module
+            self._navigate_to_module(module_id)
     
     def execute_action(self, action_id: str):
         """Execute a tutorial/troubleshooter action."""
@@ -884,10 +934,10 @@ class HelpLearningPage(Adw.NavigationPage):
         """Open system settings."""
         try:
             subprocess.Popen(['gnome-control-center', section])
-        except:
+        except Exception:
             try:
                 subprocess.Popen(['systemsettings5'])
-            except:
+            except Exception:
                 self.window.show_toast("Could not open settings")
     
     def _open_system_monitor(self):
@@ -909,28 +959,28 @@ class HelpLearningPage(Adw.NavigationPage):
             subprocess.run(['systemctl', '--user', 'restart', 'pipewire'], capture_output=True)
             subprocess.run(['systemctl', '--user', 'restart', 'pipewire-pulse'], capture_output=True)
             self.window.show_toast("Audio service restarted")
-        except:
+        except Exception:
             try:
                 subprocess.run(['pulseaudio', '-k'], capture_output=True)
                 subprocess.run(['pulseaudio', '--start'], capture_output=True)
                 self.window.show_toast("PulseAudio restarted")
-            except:
+            except Exception:
                 self.window.show_toast("Could not restart audio")
     
     def _restart_network(self):
         """Restart network service."""
         try:
-            subprocess.run(['sudo', 'systemctl', 'restart', 'NetworkManager'], capture_output=True)
+            subprocess.run(['pkexec', 'systemctl', 'restart', 'NetworkManager'], capture_output=True)
             self.window.show_toast("Network service restarted")
-        except:
+        except Exception:
             self.window.show_toast("Could not restart network")
     
     def _restart_bluetooth(self):
         """Restart Bluetooth service."""
         try:
-            subprocess.run(['sudo', 'systemctl', 'restart', 'bluetooth'], capture_output=True)
+            subprocess.run(['pkexec', 'systemctl', 'restart', 'bluetooth'], capture_output=True)
             self.window.show_toast("Bluetooth service restarted")
-        except:
+        except Exception:
             self.window.show_toast("Could not restart Bluetooth")
 
 
@@ -1100,7 +1150,7 @@ class TroubleshooterPage(Adw.NavigationPage):
         for i, check in enumerate(self.item.checks):
             row = Adw.ExpanderRow()
             row.set_title(f"{i + 1}. {check['name']}")
-            row.add_prefix(Gtk.Image.new_from_icon_name("checkbox-symbolic"))
+            row.add_prefix(Gtk.Image.new_from_icon_name("tux-checkbox-symbolic"))
             
             # Info row
             info_row = Adw.ActionRow()
@@ -1129,10 +1179,10 @@ class TroubleshooterPage(Adw.NavigationPage):
         search_row = Adw.ActionRow()
         search_row.set_title("Search online for help")
         search_row.set_subtitle(f"Search: '{self.item.title} linux fix'")
-        search_row.add_prefix(Gtk.Image.new_from_icon_name("web-browser-symbolic"))
+        search_row.add_prefix(Gtk.Image.new_from_icon_name("tux-web-browser-symbolic"))
         search_row.set_activatable(True)
         search_row.connect("activated", self._on_search_online)
-        search_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        search_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         still_group.add(search_row)
         
         content.append(still_group)
@@ -1186,7 +1236,7 @@ class AllTasksPage(Adw.NavigationPage):
             row.add_prefix(Gtk.Image.new_from_icon_name(task.icon))
             row.set_activatable(True)
             row.connect("activated", lambda r, t=task: self._on_task(t))
-            row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+            row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
             group.add(row)
         
         clamp.set_child(group)

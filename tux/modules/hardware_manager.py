@@ -4,7 +4,7 @@ Tux Assistant - Hardware Manager Module
 Printers, Bluetooth, Displays, and Audio management.
 Provides friendly interfaces to system hardware settings.
 
-Copyright (c) 2025 Christopher Dorrell. All Rights Reserved.
+Copyright (c) 2025 Christopher Dorrell. Licensed under GPL-3.0.
 """
 
 import gi
@@ -124,12 +124,34 @@ def check_cups_status() -> Tuple[str, str]:
     """
     try:
         # Check if CUPS is installed
+        # Method 1: Check common PATH locations
+        cups_found = False
         result = subprocess.run(['which', 'lpstat'], capture_output=True)
-        if result.returncode != 0:
-            # Also check for cups package
-            result = subprocess.run(['which', 'cupsd'], capture_output=True)
-            if result.returncode != 0:
-                return "CUPS not installed", "not_installed"
+        if result.returncode == 0:
+            cups_found = True
+        else:
+            # Method 2: Check /usr/sbin paths (not in PATH on openSUSE, etc.)
+            cups_paths = [
+                '/usr/sbin/cupsd',
+                '/usr/bin/lpstat',
+                '/usr/sbin/lpinfo',
+            ]
+            for path in cups_paths:
+                if os.path.exists(path):
+                    cups_found = True
+                    break
+        
+        if not cups_found:
+            # Method 3: Check if cups service unit exists
+            result = subprocess.run(
+                ['systemctl', 'list-unit-files', 'cups.service'],
+                capture_output=True, text=True
+            )
+            if 'cups.service' in result.stdout:
+                cups_found = True
+        
+        if not cups_found:
+            return "CUPS not installed", "not_installed"
         
         # Check if CUPS service is running
         result = subprocess.run(
@@ -234,9 +256,9 @@ def get_bluetooth_devices() -> List[BluetoothDevice]:
 def toggle_bluetooth_power(on: bool) -> bool:
     """Turn Bluetooth on or off."""
     try:
-        cmd = "power on" if on else "power off"
+        cmd = "on" if on else "off"
         result = subprocess.run(
-            ['bluetoothctl', cmd],
+            ['bluetoothctl', 'power', cmd],
             capture_output=True, text=True,
             input=""
         )
@@ -460,7 +482,7 @@ def get_displays() -> List[DisplayInfo]:
     id="hardware_manager",
     name="Hardware Manager",
     description="Printers, Bluetooth, displays, audio",
-    icon="computer-symbolic",
+    icon="tux-computer-symbolic",
     category=ModuleCategory.SYSTEM,
     order=11  # Windows refugee essential
 )
@@ -486,7 +508,7 @@ class HardwareManagerPage(Adw.NavigationPage):
         
         # Refresh button
         refresh_btn = Gtk.Button()
-        refresh_btn.set_icon_name("view-refresh-symbolic")
+        refresh_btn.set_icon_name("tux-view-refresh-symbolic")
         refresh_btn.set_tooltip_text("Refresh")
         refresh_btn.connect("clicked", lambda b: self._refresh_all())
         header.pack_end(refresh_btn)
@@ -554,7 +576,7 @@ class HardwareManagerPage(Adw.NavigationPage):
             row = Adw.ActionRow()
             row.set_title("Bluetooth Tools Not Installed")
             row.set_subtitle("Install Bluetooth support to use wireless devices")
-            row.add_prefix(Gtk.Image.new_from_icon_name("dialog-warning-symbolic"))
+            row.add_prefix(Gtk.Image.new_from_icon_name("tux-dialog-warning-symbolic"))
             
             install_btn = Gtk.Button(label="Install Bluetooth")
             install_btn.set_valign(Gtk.Align.CENTER)
@@ -570,7 +592,7 @@ class HardwareManagerPage(Adw.NavigationPage):
             row = Adw.ActionRow()
             row.set_title("Bluetooth Service Stopped")
             row.set_subtitle("Start the Bluetooth service to use wireless devices")
-            row.add_prefix(Gtk.Image.new_from_icon_name("bluetooth-disabled-symbolic"))
+            row.add_prefix(Gtk.Image.new_from_icon_name("tux-network-bluetooth-symbolic"))
             
             start_btn = Gtk.Button(label="Start Service")
             start_btn.set_valign(Gtk.Align.CENTER)
@@ -586,7 +608,7 @@ class HardwareManagerPage(Adw.NavigationPage):
             row = Adw.ActionRow()
             row.set_title("No Bluetooth Adapter")
             row.set_subtitle("No Bluetooth hardware detected on this computer")
-            row.add_prefix(Gtk.Image.new_from_icon_name("bluetooth-disabled-symbolic"))
+            row.add_prefix(Gtk.Image.new_from_icon_name("tux-network-bluetooth-symbolic"))
             
             self.bluetooth_group.add(row)
             self.bt_rows.append(row)
@@ -596,7 +618,7 @@ class HardwareManagerPage(Adw.NavigationPage):
             row = Adw.ActionRow()
             row.set_title("Bluetooth Disabled")
             row.set_subtitle("Enable Bluetooth to connect wireless devices")
-            row.add_prefix(Gtk.Image.new_from_icon_name("bluetooth-disabled-symbolic"))
+            row.add_prefix(Gtk.Image.new_from_icon_name("tux-network-bluetooth-symbolic"))
             
             enable_btn = Gtk.Button(label="Enable Bluetooth")
             enable_btn.set_valign(Gtk.Align.CENTER)
@@ -613,7 +635,7 @@ class HardwareManagerPage(Adw.NavigationPage):
             status_row = Adw.ActionRow()
             status_row.set_title("Bluetooth Enabled")
             status_row.set_subtitle("Ready to connect devices")
-            status_row.add_prefix(Gtk.Image.new_from_icon_name("bluetooth-active-symbolic"))
+            status_row.add_prefix(Gtk.Image.new_from_icon_name("tux-network-bluetooth-symbolic"))
             
             disable_btn = Gtk.Button(label="Disable")
             disable_btn.set_valign(Gtk.Align.CENTER)
@@ -637,7 +659,7 @@ class HardwareManagerPage(Adw.NavigationPage):
                     status_text = "Connected" if device.connected else "Paired"
                     dev_row.set_subtitle(f"{device.address} • {status_text}")
                     
-                    icon = "bluetooth-active-symbolic" if device.connected else "bluetooth-symbolic"
+                    icon = "network-bluetooth-symbolic"
                     dev_row.add_prefix(Gtk.Image.new_from_icon_name(icon))
                     
                     devices_expander.add_row(dev_row)
@@ -651,10 +673,10 @@ class HardwareManagerPage(Adw.NavigationPage):
             settings_row = Adw.ActionRow()
             settings_row.set_title("Bluetooth Settings")
             settings_row.set_subtitle("Pair new devices and manage connections")
-            settings_row.add_prefix(Gtk.Image.new_from_icon_name("preferences-system-symbolic"))
+            settings_row.add_prefix(Gtk.Image.new_from_icon_name("tux-preferences-system-symbolic"))
             settings_row.set_activatable(True)
             settings_row.connect("activated", self._on_open_bluetooth_settings)
-            settings_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+            settings_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
             
             self.bluetooth_group.add(settings_row)
             self.bt_rows.append(settings_row)
@@ -670,24 +692,24 @@ class HardwareManagerPage(Adw.NavigationPage):
         self.audio_output_expander = Adw.ExpanderRow()
         self.audio_output_expander.set_title("Output Device")
         self.audio_output_expander.set_subtitle("Loading...")
-        self.audio_output_expander.add_prefix(Gtk.Image.new_from_icon_name("audio-speakers-symbolic"))
+        self.audio_output_expander.add_prefix(Gtk.Image.new_from_icon_name("tux-audio-speakers-symbolic"))
         self.audio_group.add(self.audio_output_expander)
         
         # Input devices
         self.audio_input_expander = Adw.ExpanderRow()
         self.audio_input_expander.set_title("Input Device")
         self.audio_input_expander.set_subtitle("Loading...")
-        self.audio_input_expander.add_prefix(Gtk.Image.new_from_icon_name("audio-input-microphone-symbolic"))
+        self.audio_input_expander.add_prefix(Gtk.Image.new_from_icon_name("tux-audio-input-microphone-symbolic"))
         self.audio_group.add(self.audio_input_expander)
         
         # Volume control row
         volume_row = Adw.ActionRow()
         volume_row.set_title("Volume Settings")
         volume_row.set_subtitle("Open system sound settings")
-        volume_row.add_prefix(Gtk.Image.new_from_icon_name("multimedia-volume-control-symbolic"))
+        volume_row.add_prefix(Gtk.Image.new_from_icon_name("tux-audio-volume-high-symbolic"))
         volume_row.set_activatable(True)
         volume_row.connect("activated", self._on_open_sound_settings)
-        volume_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        volume_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         self.audio_group.add(volume_row)
         
         self.audio_output_rows = []
@@ -735,7 +757,7 @@ class HardwareManagerPage(Adw.NavigationPage):
             row = Adw.ActionRow()
             row.set_title("Printer Support Not Installed")
             row.set_subtitle("Install CUPS to use printers")
-            row.add_prefix(Gtk.Image.new_from_icon_name("dialog-warning-symbolic"))
+            row.add_prefix(Gtk.Image.new_from_icon_name("tux-dialog-warning-symbolic"))
             
             install_btn = Gtk.Button(label="Install CUPS")
             install_btn.set_valign(Gtk.Align.CENTER)
@@ -752,7 +774,7 @@ class HardwareManagerPage(Adw.NavigationPage):
             row = Adw.ActionRow()
             row.set_title("Printer Service Stopped")
             row.set_subtitle("Start the printer service to manage printers")
-            row.add_prefix(Gtk.Image.new_from_icon_name("printer-symbolic"))
+            row.add_prefix(Gtk.Image.new_from_icon_name("tux-printer-symbolic"))
             
             start_btn = Gtk.Button(label="Start Service")
             start_btn.set_valign(Gtk.Align.CENTER)
@@ -769,7 +791,7 @@ class HardwareManagerPage(Adw.NavigationPage):
             row = Adw.ActionRow()
             row.set_title("No Printers Configured")
             row.set_subtitle("Add a printer to get started")
-            row.add_prefix(Gtk.Image.new_from_icon_name("printer-symbolic"))
+            row.add_prefix(Gtk.Image.new_from_icon_name("tux-printer-symbolic"))
             
             add_btn = Gtk.Button(label="Add Printer")
             add_btn.set_valign(Gtk.Align.CENTER)
@@ -788,7 +810,7 @@ class HardwareManagerPage(Adw.NavigationPage):
                     title += " (Default)"
                 row.set_title(title)
                 row.set_subtitle(f"Status: {printer.state}")
-                row.add_prefix(Gtk.Image.new_from_icon_name("printer-symbolic"))
+                row.add_prefix(Gtk.Image.new_from_icon_name("tux-printer-symbolic"))
                 
                 self.printers_group.add(row)
                 self.printer_rows.append(row)
@@ -797,10 +819,10 @@ class HardwareManagerPage(Adw.NavigationPage):
             add_row = Adw.ActionRow()
             add_row.set_title("Add Printer")
             add_row.set_subtitle("Configure a new printer")
-            add_row.add_prefix(Gtk.Image.new_from_icon_name("list-add-symbolic"))
+            add_row.add_prefix(Gtk.Image.new_from_icon_name("tux-list-add-symbolic"))
             add_row.set_activatable(True)
             add_row.connect("activated", lambda r: self._on_add_printer(None))
-            add_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+            add_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
             
             self.printers_group.add(add_row)
             self.printer_rows.append(add_row)
@@ -849,7 +871,7 @@ class HardwareManagerPage(Adw.NavigationPage):
             
             if device.is_default:
                 row.set_subtitle("Default")
-                row.add_prefix(Gtk.Image.new_from_icon_name("emblem-default-symbolic"))
+                row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-default-symbolic"))
             else:
                 btn = Gtk.Button(label="Set Default")
                 btn.set_valign(Gtk.Align.CENTER)
@@ -872,7 +894,7 @@ class HardwareManagerPage(Adw.NavigationPage):
             
             if device.is_default:
                 row.set_subtitle("Default")
-                row.add_prefix(Gtk.Image.new_from_icon_name("emblem-default-symbolic"))
+                row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-default-symbolic"))
             else:
                 btn = Gtk.Button(label="Set Default")
                 btn.set_valign(Gtk.Align.CENTER)
@@ -921,7 +943,7 @@ class HardwareManagerPage(Adw.NavigationPage):
                     subtitle_parts.append(display.refresh_rate)
                 row.set_subtitle(" @ ".join(subtitle_parts) if subtitle_parts else "Unknown resolution")
                 
-                row.add_prefix(Gtk.Image.new_from_icon_name("video-display-symbolic"))
+                row.add_prefix(Gtk.Image.new_from_icon_name("tux-video-display-symbolic"))
                 
                 self.displays_group.add(row)
                 self.display_rows.append(row)
@@ -930,10 +952,10 @@ class HardwareManagerPage(Adw.NavigationPage):
         settings_row = Adw.ActionRow()
         settings_row.set_title("Display Settings")
         settings_row.set_subtitle("Resolution, arrangement, night light")
-        settings_row.add_prefix(Gtk.Image.new_from_icon_name("preferences-desktop-display-symbolic"))
+        settings_row.add_prefix(Gtk.Image.new_from_icon_name("tux-video-display-symbolic"))
         settings_row.set_activatable(True)
         settings_row.connect("activated", self._on_open_display_settings)
-        settings_row.add_suffix(Gtk.Image.new_from_icon_name("go-next-symbolic"))
+        settings_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         
         self.displays_group.add(settings_row)
         self.display_rows.append(settings_row)
@@ -1092,21 +1114,41 @@ read'''
     
     def _on_enable_bluetooth(self, button):
         """Enable Bluetooth."""
-        success = toggle_bluetooth_power(True)
-        if success:
-            self.window.show_toast("Bluetooth enabled")
-            GLib.timeout_add(1000, self._refresh_bluetooth)
-        else:
-            self.window.show_toast("Could not enable Bluetooth")
+        button.set_sensitive(False)
+        button.set_label("Enabling...")
+        
+        def do_enable():
+            success = toggle_bluetooth_power(True)
+            GLib.idle_add(self._on_bluetooth_toggle_done, success, True, button)
+        
+        threading.Thread(target=do_enable, daemon=True).start()
     
     def _on_disable_bluetooth(self, button):
         """Disable Bluetooth."""
-        success = toggle_bluetooth_power(False)
+        button.set_sensitive(False)
+        button.set_label("Disabling...")
+        
+        def do_disable():
+            success = toggle_bluetooth_power(False)
+            GLib.idle_add(self._on_bluetooth_toggle_done, success, False, button)
+        
+        threading.Thread(target=do_disable, daemon=True).start()
+    
+    def _on_bluetooth_toggle_done(self, success: bool, was_enabling: bool, button):
+        """Handle bluetooth toggle completion."""
         if success:
-            self.window.show_toast("Bluetooth disabled")
-            GLib.timeout_add(1000, self._refresh_bluetooth)
+            action = "enabled" if was_enabling else "disabled"
+            self.window.show_toast(f"Bluetooth {action}")
         else:
-            self.window.show_toast("Could not disable Bluetooth")
+            action = "enable" if was_enabling else "disable"
+            self.window.show_toast(f"Could not {action} Bluetooth")
+            # Re-enable button on failure
+            button.set_sensitive(True)
+            button.set_label("Enable Bluetooth" if was_enabling else "Disable")
+        
+        # Refresh UI to show new state
+        self._refresh_bluetooth()
+        return False
     
     def _on_open_bluetooth_settings(self, row):
         """Open system Bluetooth settings."""

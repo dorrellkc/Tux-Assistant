@@ -1,0 +1,242 @@
+#!/usr/bin/env python3
+"""
+Tux Assistant Native Messaging Host
+
+Receives install requests from the Tux Browser Connector extension
+and handles theme/extension installation.
+
+Native Messaging Protocol:
+- Input: 4-byte length (little-endian) + JSON message
+- Output: 4-byte length (little-endian) + JSON response
+"""
+
+import sys
+import json
+import struct
+import os
+import subprocess
+import tempfile
+import urllib.request
+import shutil
+from pathlib import Path
+
+
+def get_message():
+    """Read a message from stdin using native messaging protocol."""
+    # Read 4-byte length
+    raw_length = sys.stdin.buffer.read(4)
+    if not raw_length:
+        return None
+    
+    # Unpack as little-endian unsigned int
+    length = struct.unpack('<I', raw_length)[0]
+    
+    # Read the message
+    message = sys.stdin.buffer.read(length).decode('utf-8')
+    return json.loads(message)
+
+
+def send_message(message):
+    """Send a message to stdout using native messaging protocol."""
+    encoded = json.dumps(message).encode('utf-8')
+    
+    # Write 4-byte length
+    sys.stdout.buffer.write(struct.pack('<I', len(encoded)))
+    
+    # Write message
+    sys.stdout.buffer.write(encoded)
+    sys.stdout.buffer.flush()
+
+
+def log(msg):
+    """Log to file for debugging."""
+    log_path = Path.home() / ".config" / "tux-assistant" / "native-host.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(log_path, 'a') as f:
+        f.write(f"{msg}\n")
+
+
+def download_file(url, dest_path):
+    """Download a file from URL to destination path."""
+    try:
+        req = urllib.request.Request(url, headers={
+            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0'
+        })
+        with urllib.request.urlopen(req, timeout=30) as response:
+            with open(dest_path, 'wb') as f:
+                shutil.copyfileobj(response, f)
+        return True
+    except Exception as e:
+        log(f"Download error: {e}")
+        return False
+
+
+def install_gnome_extension(uuid, download_url):
+    """Install a GNOME Shell extension."""
+    log(f"Installing GNOME extension: {uuid}")
+    
+    # Create temp directory for download
+    with tempfile.TemporaryDirectory() as tmpdir:
+        zip_path = os.path.join(tmpdir, f"{uuid}.zip")
+        
+        # Download the extension
+        if not download_file(download_url, zip_path):
+            return {"success": False, "error": "Download failed"}
+        
+        # Install using gnome-extensions command if available
+        result = subprocess.run(
+            ['gnome-extensions', 'install', '--force', zip_path],
+            capture_output=True,
+            text=True
+        )
+        
+        if result.returncode == 0:
+            # Try to enable the extension
+            subprocess.run(['gnome-extensions', 'enable', uuid], capture_output=True)
+            return {"success": True, "message": f"Installed extension: {uuid}"}
+        else:
+            # Fallback: manual installation
+            extensions_dir = Path.home() / ".local" / "share" / "gnome-shell" / "extensions" / uuid
+            extensions_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Extract zip
+            import zipfile
+            with zipfile.ZipFile(zip_path, 'r') as z:
+                z.extractall(extensions_dir)
+            
+            return {"success": True, "message": f"Installed extension: {uuid} (manual)", "needs_restart": True}
+
+
+def install_ocs_content(download_url, content_type, filename):
+    """Install OCS content (themes, icons, cursors, etc.)."""
+    log(f"Installing OCS content: {content_type} - {filename}")
+    
+    # Determine install location based on content type
+    home = Path.home()
+    
+    type_mapping = {
+        'GTK3 Themes': home / '.themes',
+        'GTK3/4 Themes': home / '.themes',
+        'Gnome Shell Themes': home / '.themes',
+        'Icon Themes': home / '.icons',
+        'Cursor Themes': home / '.icons',
+        'Full Icon Themes': home / '.icons',
+        'Plasma Themes': home / '.local' / 'share' / 'plasma' / 'desktoptheme',
+        'Plasma Color Schemes': home / '.local' / 'share' / 'color-schemes',
+        'Wallpapers': home / '.local' / 'share' / 'wallpapers',
+    }
+    
+    # Default to themes directory
+    install_dir = type_mapping.get(content_type, home / '.themes')
+    install_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Create temp directory for download
+    with tempfile.TemporaryDirectory() as tmpdir:
+        download_path = os.path.join(tmpdir, filename)
+        
+        # Download the file
+        if not download_file(download_url, download_path):
+            return {"success": False, "error": "Download failed"}
+        
+        # Extract based on file type
+        if filename.endswith(('.tar.gz', '.tgz')):
+            import tarfile
+            with tarfile.open(download_path, 'r:gz') as tar:
+                tar.extractall(install_dir)
+        elif filename.endswith('.tar.xz'):
+            import tarfile
+            with tarfile.open(download_path, 'r:xz') as tar:
+                tar.extractall(install_dir)
+        elif filename.endswith('.zip'):
+            import zipfile
+            with zipfile.ZipFile(download_path, 'r') as z:
+                z.extractall(install_dir)
+        else:
+            # Just copy the file
+            shutil.copy(download_path, install_dir)
+        
+        return {"success": True, "message": f"Installed {content_type}: {filename}", "location": str(install_dir)}
+
+
+def show_notification(title, message):
+    """Show a desktop notification."""
+    try:
+        subprocess.run([
+            'notify-send',
+            '--app-name=Tux Assistant',
+            '--icon=tux-assistant',
+            title,
+            message
+        ], capture_output=True)
+    except:
+        pass
+
+
+def handle_message(message):
+    """Process incoming message and return response."""
+    action = message.get('action', '')
+    log(f"Received action: {action}")
+    
+    if action == 'ping':
+        return {"success": True, "message": "Tux Assistant native host is running"}
+    
+    elif action == 'install_gnome_extension':
+        uuid = message.get('uuid')
+        download_url = message.get('download_url')
+        
+        if uuid and download_url:
+            result = install_gnome_extension(uuid, download_url)
+            if result.get('success'):
+                show_notification("Extension Installed", f"Installed: {uuid}")
+            return result
+        return {"success": False, "error": "Missing uuid or download_url"}
+    
+    elif action == 'install_ocs':
+        download_url = message.get('download_url')
+        content_type = message.get('content_type', 'unknown')
+        filename = message.get('filename', 'download')
+        
+        if download_url:
+            result = install_ocs_content(download_url, content_type, filename)
+            if result.get('success'):
+                show_notification("Content Installed", f"Installed: {filename}")
+            return result
+        return {"success": False, "error": "Missing download_url"}
+    
+    elif action == 'install_theme':
+        download_url = message.get('download_url')
+        if download_url:
+            # For direct theme downloads, let the browser handle it
+            # We just log it for now
+            log(f"Theme download detected: {download_url}")
+            return {"success": True, "message": "Theme download detected"}
+        return {"success": False, "error": "Missing download_url"}
+    
+    else:
+        return {"success": False, "error": f"Unknown action: {action}"}
+
+
+def main():
+    """Main entry point."""
+    log("Native host started")
+    
+    try:
+        # Read one message
+        message = get_message()
+        
+        if message:
+            log(f"Message: {json.dumps(message)}")
+            response = handle_message(message)
+            send_message(response)
+        else:
+            send_message({"success": False, "error": "No message received"})
+    
+    except Exception as e:
+        log(f"Error: {e}")
+        send_message({"success": False, "error": str(e)})
+    
+    log("Native host finished")
+
+
+if __name__ == "__main__":
+    main()

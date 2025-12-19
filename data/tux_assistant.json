@@ -1,0 +1,7 @@
+{
+  "name": "tux_assistant",
+  "description": "Tux Assistant Native Messaging Host - handles theme and extension installation",
+  "path": "/opt/tux-assistant/scripts/tux-native-host",
+  "type": "stdio",
+  "allowed_extensions": ["tux-connector@tuxassistant.com"]
+}

@@ -2,6 +2,1756 @@
 
 All notable changes to Tux Assistant will be documented in this file.
 
+## [0.9.279] - 2025-12-18
+
+### Added - Automatic p7zip Installation
+- **install.sh now installs p7zip** - Detected and installed for each distro:
+  - openSUSE: `zypper install p7zip`
+  - Fedora: `dnf install p7zip p7zip-plugins`
+  - Debian/Ubuntu: `apt install p7zip-full`
+  - Arch: `pacman -S p7zip`
+- **Runtime fallback** - If 7z not found when extracting a .7z file:
+  - Uses `pkexec` (graphical sudo prompt) to install p7zip
+  - Automatically retries extraction after install
+  - Shows notification during installation
+
+This is Tux Assistant - we handle the hard stuff so users don't have to.
+
+## [0.9.278] - 2025-12-18
+
+### Fixed - OCS Handler Improvements
+- **Case-insensitive content type matching** - Handles `gnome_shell_themes` same as `Gnome Shell Themes`
+- **Added 7z extraction support** - Uses system `7z` or `7za` command
+- **Partial content type matching** - Falls back to reasonable defaults
+
+## [0.9.277] - 2025-12-18
+
+### Debug
+- Added logging to `tux-ocs-handler` - writes to `~/.config/tux-assistant/ocs-handler.log`
+- Logs received URLs, parsed parameters, download progress, and results
+
+## [0.9.276] - 2025-12-18
+
+### Changed - Replaced Browser Extension with Protocol Handler
+Firefox won't load unsigned extensions. Switched to a much simpler approach.
+
+**Removed:**
+- Firefox extension (tux-browser-extension/)
+- Native messaging host
+- All the complicated XPI/signing stuff
+
+**Added:**
+- **OCS Protocol Handler** (`tux-ocs-handler`) - System-level handler for `ocs://` links
+- **Desktop entry** (`tux-ocs-handler.desktop`) - Registers with the system
+
+**How it works now:**
+1. You browse gnome-look.org in ANY browser
+2. Click "Install" on a theme
+3. The system sees `ocs://install?...` link
+4. System calls Tux Assistant's handler
+5. Theme downloads and installs to ~/.themes or ~/.icons
+6. Desktop notification confirms success
+
+No browser extension needed. Works with Firefox, Chrome, whatever.
+
+## [0.9.275] - 2025-12-18
+
+### Debug
+- Added verbose debugging to XPI creation to track down why extension isn't being installed
+
+## [0.9.274] - 2025-12-18
+
+### Fixed - Extension Auto-Enable
+- **Added `extensions.autoDisableScopes = 0`** - Prevents Firefox from disabling sideloaded extensions
+- **Added `extensions.enabledScopes = 15`** - Enables all extension scopes
+- **Added `extensions.startupScanScopes = 15`** - Scans all scopes on startup
+- **Always install native messaging manifest** - Even if extension already exists
+- **Updated existing profile handling** - Adds new settings to existing user.js files
+
+These settings should make Firefox automatically enable the Tux Connector extension
+instead of silently ignoring it.
+
+## [0.9.273] - 2025-12-18
+
+### Fixed
+- **install.sh** - Create `/opt/tux-assistant/scripts/` directory before copying native host
+
+## [0.9.272] - 2025-12-18
+
+### Added - Automatic Extension Installation
+- **Auto-install Tux Connector** - Extension is automatically installed to Firefox profile
+  - No manual about:debugging steps required
+  - Installs on first Tux Browser launch
+  - Updates existing profiles automatically
+- **Unsigned extension support** - `xpinstall.signatures.required = false` in user.js
+- **User-level native messaging** - Manifest also installed to `~/.mozilla/native-messaging-hosts/`
+
+### Changed
+- Removed manual installation instructions from install.sh
+- Extension now "just works" when you launch Tux Browser
+
+### How It Works
+1. First time you click the browser button
+2. Profile is created with unsigned extension support enabled
+3. Tux Connector extension (XPI) is installed to profile
+4. Native messaging manifest is set up
+5. Firefox launches with everything ready
+
+One-click installs from gnome-look.org and extensions.gnome.org should work automatically.
+
+## [0.9.271] - 2025-12-18
+
+### Added - Phase 2: Native Messaging Extension
+- **Firefox WebExtension** (`tux-browser-extension/`) - Catches install requests
+  - Intercepts OCS protocol links (gnome-look.org, pling.com, opendesktop.org)
+  - Catches GNOME Extensions install requests (extensions.gnome.org)
+  - Sends requests to Tux Assistant via native messaging
+- **Native messaging host** (`tux-native-host`) - Receives messages from Firefox
+  - Handles GNOME Shell extension installation
+  - Handles OCS content installation (themes, icons, cursors)
+  - Shows desktop notifications on success
+  - Logs activity to `~/.config/tux-assistant/native-host.log`
+- **Native messaging manifest** - Registered system-wide for Firefox
+
+### Installation Notes
+The extension must be loaded manually in Firefox:
+1. Go to `about:debugging#/runtime/this-firefox`
+2. Click "Load Temporary Add-on..."
+3. Navigate to `/opt/tux-assistant/data/tux-browser-extension/`
+4. Select `manifest.json`
+
+(Temporary add-ons are removed on Firefox restart. For permanent installation,
+the extension would need to be signed by Mozilla and submitted to AMO.)
+
+## [0.9.270] - 2025-12-18
+
+### Changed - Native Wayland, Firefox Icon
+- **Reverted X11 hack** - Firefox runs native Wayland again
+- **Removed --class flag** - Let Firefox use its default identity
+- **StartupWMClass=firefox** - GNOME/KDE will show Firefox icon
+- Desktop file simplified, no shell wrapper hacks
+
+The blue diamond was caused by --class setting a WM_CLASS that didn't match
+any desktop file. By not overriding, Firefox reports "firefox" and GNOME
+matches it to firefox.desktop for proper icon display.
+
+## [0.9.269] - 2025-12-18
+
+### Fixed - Force X11 Mode for Icon Matching
+- **GDK_BACKEND=x11** - Force XWayland mode where --class actually works
+- **MOZ_ENABLE_WAYLAND=0** - Explicitly disable Wayland backend
+- Firefox on native Wayland ignores --class entirely, X11 respects it
+- Updated desktop file, app.py, and CLI handler
+
+This is a workaround for Firefox ignoring custom WM_CLASS on Wayland.
+
+## [0.9.268] - 2025-12-18
+
+### Fixed - Wayland Icon Association
+- **MOZ_APP_LAUNCHER env var** - Tells Firefox which .desktop file to use for icon
+- **Updated StartupWMClass** - Now matches `com.tuxassistant.tuxbrowser`
+- **Desktop file Exec** - Sets MOZ_APP_LAUNCHER before launching Firefox
+- **Both app.py and CLI** - Consistent icon behavior from Tux Assistant or command line
+
+This should fix the missing icon in GNOME dock on Wayland.
+
+## [0.9.267] - 2025-12-18
+
+### Fixed
+- **Desktop file Exec** - Fixed home directory expansion (use sh -c with $HOME)
+- **Simplified Firefox launch** - Removed gio launch attempt, direct Firefox call
+- **StartupWMClass** - Should match --class flag for icon association
+
+## [0.9.266] - 2025-12-18
+
+### Added - Tux Browser Desktop Integration
+- **Tux Browser desktop entry** - Shows in app menu with proper icon
+- **Full-color Tux Browser icon** - Tux with globe/web theme (matches Tux Tunes style)
+- **`--browser` command line option** - Launch Tux Browser directly: `tux-assistant --browser`
+- **URL support** - Open URLs directly: `tux-assistant --browser https://example.com`
+
+### Changed
+- Browser can now be launched standalone from app menu or command line
+
+## [0.9.265] - 2025-12-18
+
+### Fixed
+- Added missing `subprocess` import for Firefox launcher
+
+## [0.9.264] - 2025-12-18
+
+### Changed - Tux Browser Now Uses Firefox
+- **Major: Browser button now launches Firefox** with a managed profile
+- Firefox profile stored at `~/.config/tux-assistant/firefox-profile/`
+- First launch creates profile with privacy-focused defaults
+- User can sign into Firefox Sync to get their extensions, bookmarks, etc.
+- **CAPTCHAs now work** - real browser, real extensions, no fingerprinting issues
+- Claude AI panel still uses WebKitGTK (works fine for claude.ai)
+
+### Added
+- `_setup_firefox_profile()` - Creates Firefox profile with sensible defaults
+- `_launch_tux_browser()` - Launches Firefox with managed profile
+- `_find_firefox()` - Detects Firefox installation (native, ESR, Flatpak)
+- Privacy defaults in user.js: HTTPS-only, tracking protection, no telemetry
+
+### Technical Notes
+- WebKitGTK browser code kept for potential future use
+- Browser button changed from ToggleButton to regular Button
+- Web searches now open in Firefox instead of internal browser
+
+## [0.9.166] - 2025-12-07
+
+### Fixed - SponsorBlock Complete Rewrite
+- **Now injects on ALL YouTube pages** - not just watch pages
+- **Properly handles SPA navigation** - when you click a video from a channel, it now works
+- **Checks if on watch page** before trying to find segments
+- **Listens for yt-navigate-finish** - YouTube's internal navigation event
+- **Multiple navigation detection methods** - MutationObserver + URL polling + YouTube events
+- **Clearer debug messages** - Shows "Not a watch page" when on channel/search/etc.
+- **Better video element reset** - Resets when navigating between videos
+
+### How it works now:
+1. Script injects when you visit ANY youtube.com page
+2. Script continuously monitors for URL changes
+3. When URL contains `/watch`, it fetches segments and attaches to video
+4. Skip happens automatically when video reaches segment
+
+## [0.9.165] - 2025-12-07
+
+### Fixed
+- **SponsorBlock watch pages only** - Only inject on youtube.com/watch pages, not channel pages
+- **Better video element selection** - Target #movie_player video specifically
+- **Clearer debug output** - Shows segment times with start-end format
+- **Improved skip logging** - Shows "Playing: X:XX | Segment at: Y:YY-Z:ZZ" every 10 seconds
+
+### Changed
+- Debug box now shows full segment time ranges
+- Terminal shows attached video element for debugging
+
+## [0.9.164] - 2025-12-07
+
+### Added
+- **SponsorBlock time tracking** - Shows current time vs next segment time every 5 seconds
+- **Better video detection** - Checks for video element more frequently
+
+## [0.9.163] - 2025-12-07
+
+### Added
+- **SponsorBlock visual debugger** - Green debug box in top-left corner of YouTube
+  - Shows exactly what the script is doing in real-time
+  - Will tell us if video ID is detected
+  - Will show if API fetch succeeds/fails
+  - Will show segment count when found
+  - Helps diagnose why skipping isn't working
+
+## [0.9.162] - 2025-12-07
+
+### Fixed
+- **SponsorBlock complete rewrite** - Now fully JavaScript-based!
+  - Injects a monitor script that runs continuously on YouTube
+  - Detects video ID from URL OR from YouTube's internal player data
+  - Handles SPA navigation (clicking videos from channel pages)
+  - Fetches segments via JavaScript fetch() instead of Python
+  - Monitors every second for new videos
+  - Works on /watch, /shorts, and embedded videos
+  - No longer requires page reload to detect videos
+
+## [0.9.161] - 2025-12-07
+
+### Fixed
+- **SponsorBlock debugging** - Added extensive logging to diagnose detection issues
+  - Logs URL checking on every page load
+  - Logs SponsorBlock enabled/disabled state
+  - Improved YouTube URL patterns (www., m., shorts)
+  - JS console logs showing video detection attempts
+  - Fixed urllib.error import for proper HTTP error handling
+
+## [0.9.160] - 2025-12-07
+
+### Added
+- **SponsorBlock Integration** 🎉 - Auto-skip YouTube sponsor segments!
+  - Uses free SponsorBlock API (sponsor.ajay.app)
+  - Skips: Sponsors, Self-promo, Interaction reminders, Intros, Outros
+  - Visual notification when skipping ("🛡️ Skipped Sponsor (30s)")
+  - Toggle in Privacy Shield popover
+  - Runs automatically on any YouTube video page
+  - Background API fetch (non-blocking)
+  - Handles YouTube SPA navigation
+
+## [0.9.159] - 2025-12-07
+
+### Added
+- **Browser Settings Panel** - Complete Phase 4! New settings button (⚙️) with:
+  - Homepage URL setting (applied to home button and new tabs)
+  - Search engine dropdown (DuckDuckGo, Google, Bing, Startpage, Brave)
+  - Default zoom level (50% - 200%)
+  - Clear History button
+  - Clear Cookies button  
+  - Clear Cache button
+  - Clear All Data button (with confirmation dialog)
+- Search engine setting now applies to:
+  - URL bar searches (non-URL text)
+  - Main page search box
+  - Web search fallback from module search
+
+## [0.9.158] - 2025-12-07
+
+### Added
+- **uBlock Origin-style ad blocking** - Smarter banner detection:
+  - Banner-sized image detection (IAB standard sizes: 728x90, 300x250, etc.)
+  - Ad keyword detection in image URLs (banner, sponsor, affiliate, etc.)
+  - Affiliate link detection (ShareASale, Awin, Impact, CJ, etc.)
+  - WebKit UserContentFilterStore integration (when available)
+  - Network-level blocking rules in Safari/WebKit JSON format
+
+## [0.9.157] - 2025-12-07
+
+### Fixed
+- **Privacy Shield v3** - Made ad blocking more conservative
+  - Removed overly broad selectors that were hiding legitimate content
+  - Now only targets definite ad patterns (ad-container, adsbygoogle, etc.)
+  - Removed text-based matching that was too aggressive
+  - Sites like Yahoo now display correctly while still blocking ads
+
+## [0.9.156] - 2025-12-07
+
+### Enhanced
+- **Privacy Shield v2** 🛡️
+  - **CSS-based ad hiding** - Injects stylesheet to hide ad containers, sponsored content, and popups
+  - Expanded ad blocklist to 50+ ad networks (added mobile ad networks, verification services)
+  - Expanded tracker blocklist to 60+ domains (added analytics APIs, marketing automation, app tracking)
+  - Blocks cookie consent banners and GDPR popups
+  - Blocks newsletter/subscription popups
+  - Hides Taboola, Outbrain, and other "recommended content" widgets
+
+## [0.9.155] - 2025-12-07
+
+### Added
+- **Phase 5: Privacy Shield** 🛡️
+  - Privacy shield button in browser toolbar
+  - **Force HTTPS** - Automatically upgrades HTTP links to HTTPS
+  - **Ad Blocking** - Blocks 30+ common ad networks (Google Ads, Facebook Ads, Amazon Ads, etc.)
+  - **Tracker Blocking** - Blocks 40+ tracking domains (Google Analytics, Facebook Pixel, Hotjar, etc.)
+  - Live blocked count display ("🛡️ X blocked this session")
+  - All settings toggleable and persist across sessions
+  - Smart blocking: skips localhost and local network addresses
+
+## [0.9.154] - 2025-12-07
+
+### Added
+- **Downloads Manager** 📥
+  - Downloads button in browser toolbar
+  - Shows download progress, completed, and failed downloads
+  - Open file button (▶️) to launch downloaded files
+  - Open folder button (📁) to open containing folder
+  - "Open Downloads Folder" button
+  - "Clear" button to remove completed downloads from list
+  - Policy handler for proper download detection
+
+### Fixed
+- History navigation now works (was calling non-existent method)
+- Ampersand characters in URLs now display correctly in history
+- Downloads properly trigger via decide-policy handler
+
+## [0.9.153] - 2025-12-07
+
+### Added
+- **Downloads Manager** 📥
+  - Downloads button in browser toolbar
+  - Shows download progress, completed, and failed downloads
+  - Open file directly from downloads list
+  - Open Downloads folder button
+  - Clear completed downloads
+
+## [0.9.152] - 2025-12-07
+
+### Added
+- **Print Page (Ctrl+P)** 🖨️
+  - Opens system print dialog
+  - Print to printer or save as PDF
+
+## [0.9.151] - 2025-12-07
+
+### Added
+- **Fullscreen Mode (F11)** 🖥️
+  - Press F11 to toggle fullscreen anywhere in the app
+  - Press Escape to exit fullscreen
+  - Immersive browsing experience
+  - Works via window-level handler (not blocked by WebView)
+
+## [0.9.150] - 2025-12-07
+
+### Added
+- **Find in Page (Ctrl+F)** - Phase 4 begins! 🔍
+  - Search bar appears at bottom of browser
+  - Live search as you type
+  - Match count display
+  - Previous/Next navigation (Shift+Enter / Enter)
+  - Case-insensitive with wrap-around
+  - Escape to close
+  - Visual feedback for no matches
+
+### Fixed
+- Keyboard shortcuts use CAPTURE phase to intercept before WebView
+- Focus returns to webview after closing find bar (fixes Ctrl+F not working after first use)
+
+## [0.9.149] - 2025-12-07
+
+### Added
+- **Persistent Zoom Level** - Browser remembers your zoom preference
+  - Saved to `~/.config/tux-assistant/browser.conf`
+  - Applied to all tabs automatically
+  - Persists between app launches
+
+## [0.9.148] - 2025-12-07
+
+### Added
+- **Browser Zoom Controls** 🔍
+  - Ctrl++ (or Ctrl+=): Zoom in
+  - Ctrl+-: Zoom out
+  - Ctrl+0: Reset to 100%
+  - Ctrl+Scroll wheel: Zoom in/out (throttled for smooth scrolling)
+  - Zoom range: 30% to 300%
+  - Toast notification shows current zoom level (keyboard shortcuts only)
+
+### Changed
+- **Browser opens wide by default** - When docked, browser now takes most of the window, leaving just enough navigation sidebar to browse. Makes the browser the star of the show!
+
+## [0.9.147] - 2025-12-07
+
+### Added - Browser Phase 3: Complete History System 🎉
+
+**History Database**
+- SQLite database at `~/.config/tux-assistant/history.db`
+- Frecency scoring (frequency × recency) for smart autocomplete
+- Auto-records every page visit with title
+- 200MB / 500k entry limits designed for years of daily use
+- Background maintenance: cleanup and VACUUM without UI freeze
+
+**History Panel**
+- New history button in browser toolbar (clock icon)
+- Dropdown showing recent history with time grouping
+- Sections: Today, Yesterday, This Week, Older
+- Search, delete individual entries, clear by time range
+
+**Full History Window**
+- Dedicated window for comprehensive history management
+- Time filter: All Time, Today, Yesterday, This Week, This Month
+- Search by URL or title
+- Multi-select with bulk delete
+- Keyboard shortcuts: Delete, Ctrl+A, Ctrl+F, Escape
+
+**URL Bar Autocomplete**
+- Smart suggestions as you type (2+ characters)
+- Frecency-ranked results - your frequent sites appear first
+- Bookmarks (⭐) prioritized over history (🕐)
+- Keyboard navigation: Up/Down arrows, Enter, Escape
+
+### Fixed
+- Browser panel now builds lazily (fixes startup on some systems)
+- Clear history uses dialog instead of nested popover
+
+## [0.9.143] - 2025-12-07
+
+### Added
+- **Complete Tags System** - Phase 2 complete! 🎉
+  - Tag filter dropdown in Bookmark Manager header
+  - Tags displayed on bookmark rows (up to 3 inline, "+N" for more)
+  - Full tag editing in bookmark edit dialog:
+    - Current tags shown as removable chips
+    - Add new tags via entry (Enter to add)
+    - Click suggestions from existing tags
+  - Tag Management dialog (tag icon in header):
+    - View all tags with bookmark counts
+    - Rename tag (updates all bookmarks)
+    - Delete tag (removes from all bookmarks)
+  - Search includes tag names
+  - Tags stored as `["tag1", "tag2"]` array in bookmark data
+
+## [0.9.142] - 2025-12-07
+
+### Added
+- **Full Bookmark Manager window** - Phase 2 milestone!
+  - Dedicated window for comprehensive bookmark management
+  - Multi-select support (Ctrl+Click, Shift+Click)
+  - Bulk delete selected bookmarks
+  - Move selected to folder dropdown
+  - Create new folders from manager
+  - Edit bookmark details inline
+  - Search/filter all bookmarks
+  - Folders shown as collapsible sections
+  - Keyboard shortcuts: Delete, Ctrl+A (select all), Ctrl+F (search), Escape (close)
+  - Access via "Manage..." button in bookmark dropdown
+
+## [0.9.140] - 2025-12-06
+
+### Fixed
+- **Separator drag & drop COMPLETE** - Full reordering support!
+  - Separators can now be dragged and reordered on toolbar
+  - Bookmarks can be dragged past separators
+  - Drop ON widgets to reorder (standard GTK4 behavior)
+  - Uses proper `GObject.TYPE_STRING` content providers
+  - Added `accept` signal handlers for reliable drop acceptance
+  - Removed parent bar drop target that was intercepting child drops
+
+### Technical Details
+- `_on_unified_drop` handler for all toolbar reordering
+- `_on_drop_accept` always returns True to accept drops
+- `set_preload(True)` on all drop targets for reliable data transfer
+- Typed `GObject.Value` instead of raw bytes for DnD content
+
+## [0.9.139] - 2025-12-06
+
+### Fixed
+- **Separator drag & drop** - Separators can now be reordered via drag & drop
+  - Updated reorder handler to find separators (they have no URL)
+  - Added drag source to toolbar separators (previously static)
+  - Separators in dropdown list can be dragged to reorder
+  - Separators in toolbar can be dragged to reorder
+
+## [0.9.138] - 2025-12-06
+
+### Added
+- **Bookmark Separators** - Add visual separators between bookmarks
+  - New "Separator" button in bookmarks popover
+  - Separators appear as horizontal lines in dropdown list
+  - Separators appear as vertical lines in toolbar
+  - Can delete separators with trash icon
+  - Separators can be dragged to reorder
+
+## [0.9.137] - 2025-12-06
+
+### Fixed
+- **Drag from folder popover to toolbar** - Fixed critical bug where dragging bookmarks OUT of folder popovers in toolbar didn't work
+  - Root cause: autohide=True was closing popover when drag started, destroying the widget mid-drag
+  - Solution: Disable autohide on folder popovers, close manually when drag begins
+  - Added separate drag handlers for popover rows
+- Removed debug output
+
+## [0.9.136] - 2025-12-06
+
+### Fixed
+- **Drag from folder to toolbar** - Fixed bug where dragging a bookmark from a folder popover to the toolbar didn't work (reorder handler only searched unfiled bookmarks, now searches all)
+
+## [0.9.135] - 2025-12-06
+
+### Added
+- **Drag from folder popovers** - Bookmarks inside folder dropdowns in toolbar now have drag sources
+- Drag a bookmark out of a folder dropdown and drop on toolbar to unfiled
+- Complete drag & drop: dropdown ↔ toolbar ↔ folder popovers
+
+## [0.9.134] - 2025-12-06
+
+### Added
+- **Drag from toolbar** - Bookmark buttons in the toolbar now have drag sources
+- **Reorder in toolbar** - Drag and drop bookmarks to reorder them in the toolbar
+- Drop on another bookmark to swap positions
+- Tooltip now shows "(drag to reorder)"
+
+## [0.9.133] - 2025-12-06
+
+### Fixed
+- **Drag and drop crash** - Fixed force close when dropping bookmarks (used instance variable instead of DnD type system)
+- Added error handling to all drag/drop callbacks
+
+### Added
+- **Drop to bookmarks bar** - Drag bookmarks onto folder buttons in the toolbar
+- **Drop to bar itself** - Drag to the bar area to move to unfiled
+- Tooltips now indicate drop capability ("drop to add")
+
+## [0.9.132] - 2025-12-06
+
+### Added
+- **Drag and drop bookmarks** - Drag bookmarks between folders
+  - Drag handle icon on each bookmark row
+  - Drop on folder header to move bookmark into folder
+  - Drop on "Unfiled" section to remove from folder
+  - Visual highlight when dragging over drop targets
+  - Drag icon shows bookmark title
+
+## [0.9.131] - 2025-12-06
+
+### Fixed
+- **tux-helper Permission denied error** - Fixed issue where privileged operations failed with "Permission denied" error on .run installer or when running from extracted location. The helper script now gets execute permissions automatically before running.
+
+## [0.9.130] - 2025-12-06
+
+### Added
+- **Folders in bookmarks bar** - Folders show as dropdown menus with their bookmarks
+- **Empty folders visible** - Empty folders now show in the list with "(empty)" indicator
+- **Delete folder button** - Trash icon on each folder to delete it (bookmarks move to Unfiled)
+- Folder expanders now properly collapse/expand their contents
+
+## [0.9.129] - 2025-12-06
+
+### Added
+- **Bookmark Folders** - Organize bookmarks into folders
+  - "New Folder" button to create folders
+  - Folder dropdown when adding/editing bookmarks
+  - Folders shown as collapsible expanders in bookmarks list
+  - Unfiled bookmarks shown separately
+  - Clear All now also clears folders
+- Backwards compatible with existing bookmarks (auto-migrates old format)
+
+## [0.9.128] - 2025-12-06
+
+### Added
+- **Show/Hide Bookmarks Bar toggle** - Switch in bookmarks dropdown to show or hide the bookmarks bar
+- Preference saved to `~/.config/tux-assistant/browser.conf`
+
+## [0.9.127] - 2025-12-06
+
+### Fixed
+- Bookmarks popover now closes properly when clicking outside after using sort dropdown
+
+## [0.9.126] - 2025-12-06
+
+### Added
+- **Ctrl+D shortcut** - Quickly bookmark/unbookmark current page
+- **Sort bookmarks** - Dropdown to sort by Default, Name A-Z, Name Z-A, or Recent
+- **Favicons** - Website icons shown next to bookmarks (cached locally)
+- Bookmarks now store timestamps for "Recent" sorting
+
+## [0.9.125] - 2025-12-06
+
+### Added
+- **Bookmark Manager Enhancements (Phase 2.5)**
+  - **Search bar** - Filter bookmarks by title or URL in real-time
+  - **Add button** - Manually add bookmarks with custom title and URL
+  - **Edit button** - Modify existing bookmark title and URL
+  - Edit and delete buttons now shown on each bookmark row
+
+## [0.9.124] - 2025-12-06
+
+### Fixed
+- **Browser panel sizing issue** - Bookmarks bar now scrolls horizontally instead of expanding the window beyond screen bounds
+
+## [0.9.123] - 2025-12-06
+
+### Added
+- **Bookmarks Bar** - Visual bar below URL bar showing bookmarks as buttons
+  - Click any bookmark to navigate directly
+  - Shows up to 15 bookmarks with "+N more" indicator
+  - Auto-updates when bookmarks change
+- **Clear All Bookmarks** - Red "Clear All" button in bookmarks dropdown
+  - Confirmation dialog before deleting
+  - Shows count of bookmarks to be deleted
+
+## [0.9.122] - 2025-12-06
+
+### Added
+- **Bookmark Import/Export (Phase 2 Complete)**
+  - Import button: Load bookmarks from Firefox/Chrome HTML format
+  - Export button: Save bookmarks to HTML (compatible with all browsers)
+  - Automatically skips duplicate URLs on import
+  - Standard Netscape bookmark format for maximum compatibility
+
+## [0.9.121] - 2025-12-06
+
+### Added
+- **Browser Bookmarks (Phase 2)**
+  - Star button in toolbar to add/remove current page
+  - Bookmarks menu button with dropdown list
+  - Click bookmark to navigate
+  - Delete button on each bookmark
+  - Bookmarks saved to `~/.config/tux-assistant/bookmarks.json`
+  - Star icon updates based on current URL (filled = bookmarked)
+
+## [0.9.120] - 2025-12-06
+
+### Fixed
+- **System Fetch now works on Fedora 43+** - added ptyxis terminal support
+- Terminal detection uses exact same code as Developer Tools (which works)
+- Added ptyxis to all terminal detection lists across the app
+
+## [0.9.117] - 2025-12-06
+
+### Fixed
+- **System Fetch button now finds terminal on all distros**
+  - Uses proper terminal detection from `core/commands.py`
+  - Supports: konsole, kgx (gnome-console), gnome-terminal, xfce4-terminal, mate-terminal, qterminal, lxterminal, tilix, terminator, alacritty, kitty, foot, wezterm, and more
+
+### Changed
+- **System Fetch button moved under Hardware** in System Information section
+
+## [0.9.116] - 2025-12-06
+
+### Changed
+- System Fetch button placed in System Information section
+
+## [0.9.115] - 2025-12-06
+
+### Changed
+- **Tux Tunes button moved to header bar** - now next to Claude and Browser buttons
+- **Sidebar removed** (code preserved for future use)
+- Cleaner main page layout without right sidebar
+
+## [0.9.114] - 2025-12-06
+
+### Changed
+- **Search bar moved above system info banner** on main page
+- **Removed TuxFetch sidebar panel** - no more fastfetch in the sidebar
+- **Added System Fetch button** in "Quick Tools" section at bottom of main page
+  - Opens fastfetch in your terminal (gnome-terminal, konsole, xfce4-terminal, kitty, alacritty, tilix, xterm)
+  - Shows "Press Enter to close..." after output
+
+### Fixed
+- **Tab close now works properly** - can close any tab except the last one
+- **No more tab explosion** when trying to close the last tab
+
+## [0.9.113] - 2025-12-06
+
+### Added - Tabbed Browser (Phase 1)
+- **Full tabbed browsing in Tux Browser!**
+  - Adw.TabView + Adw.TabBar for modern libadwaita tabs
+  - Open unlimited tabs, each with its own webview
+  - Tab titles auto-update to page title
+  - Close tabs with X button (always keeps at least one tab)
+  - New tab button in toolbar
+
+- **Keyboard shortcuts**
+  - Ctrl+T: New tab
+  - Ctrl+W: Close current tab
+  - Ctrl+L: Focus URL bar
+  - Ctrl+Tab: Next tab
+  - Ctrl+Shift+Tab: Previous tab
+  - Ctrl+R: Reload page
+
+- **Shared browser session**
+  - All tabs share cookies and cache
+  - Stay logged in across tabs
+  - Downloads work from any tab
+
+## [0.9.100] - 2025-12-05
+
+### Fixed
+- **Tux Tunes icon now appears in AUR installs**
+  - Added `tux-assistant.install` hook file to update icon cache after install
+  - Runs `gtk-update-icon-cache` and `update-desktop-database` on post_install/post_upgrade
+  - Added `hicolor-icon-theme` as dependency to ensure base icon theme exists
+  - Updated PKGBUILD and .SRCINFO to include the install hook
+
+## [0.9.99] - 2025-12-05
+
+### Fixed
+- **Bluetooth toggle now works on XFCE/Arch** (and other systems)
+  - Fixed `bluetoothctl` command syntax - args were incorrectly combined
+  - Changed from `['bluetoothctl', 'power on']` to `['bluetoothctl', 'power', 'on']`
+  - Added instant visual feedback: button shows "Enabling..." / "Disabling..." during operation
+  - Operation runs in background thread to prevent UI freeze
+
+- **XFCE themes no longer revert after applying**
+  - Now sets both GTK theme (`xsettings`) AND window manager theme (`xfwm4`)
+  - Without setting xfwm4, window decorations wouldn't match and could revert on session restart
+
+## [0.9.98] - 2025-12-05
+
+### Fixed
+- **AUR publish button now works reliably**
+  - Fixed path mismatch: was using `~/.cache/tux-assistant/aur/tux-assistant`, now uses `~/.cache/tux-assistant/aur-repo`
+  - Added `git reset --hard` before pull to handle local changes
+  - Added `--rebase` to pull to handle diverged branches
+  - If pull fails, automatically re-clones fresh
+  - Better error messages showing actual failure reason
+
+## [0.9.97] - 2025-12-05
+
+### Fixed
+- **AUR publish now works from any distro** (not just Arch-based)
+  - .SRCINFO is generated in Python, doesn't require makepkg
+  - Fixed branch handling - explicitly uses 'master' (what AUR requires)
+  - Auto-detects current branch instead of hardcoding
+  - Better error messages on push failure
+  - Cleans up broken repo directories before fresh clone
+
+## [0.9.96] - 2025-12-05
+
+### Fixed
+- **Software Center: Fixed dnf5 package parsing** on Fedora 43+
+  - Package names were including arch suffix and description in install command
+  - Improved parsing to handle tab, multiple spaces, or single space separators
+  - Added safety sanitization to strip .x86_64/.noarch suffix and descriptions
+  - Package names are now properly cleaned before installation
+
+## [0.9.95] - 2025-12-05
+
+### Fixed
+- **Codec detection now checks if packages are INSTALLED first** before checking repo availability
+  - Fixes bug where already-installed packages showed as "unavailable" 
+  - Fixes Fedora ffmpeg detection when installed from RPM Fusion
+- Added binary existence fallback for ffmpeg detection (handles package name variations)
+- Packages that are already installed will now correctly show as installed regardless of repo state
+
+## [0.9.94] - 2025-12-05
+
+### Fixed
+- **AUR PKGBUILD now installs Tux Tunes properly:**
+  - Added `/usr/bin/tux-tunes` launcher script
+  - Added `/usr/share/applications/com.tuxassistant.tuxtunes.desktop`
+  - Added `/usr/share/icons/hicolor/scalable/apps/tux-tunes.svg`
+- Added GStreamer dependencies to AUR package (gstreamer, gst-plugins-base, gst-plugins-good)
+- Added optional GStreamer plugins (ugly, bad) for extended audio format support
+
+## [0.9.93] - 2025-12-05
+
+### Fixed
+- Fixed zypper command syntax (`--non-interactive` instead of `-y`)
+- Added fallback package names if distro not recognized
+- Ensures rpm-build is properly installed for Fedora/openSUSE RPM builds
+
+## [0.9.92] - 2025-12-05
+
+### Added
+- **Auto-dependency installation** for package building:
+  - Detects distro (Arch, Fedora, openSUSE, Debian/Ubuntu)
+  - Auto-installs `ruby` if missing
+  - Auto-installs `binutils` (provides `ar`) for .deb builds
+  - Auto-installs `rpm-build` for .rpm builds
+  - Shows helpful dialog if auto-install fails with manual command
+- Support for EndeavourOS, Manjaro, Rocky Linux, CentOS, Mint, Pop!_OS detection
+
+## [0.9.91] - 2025-12-05
+
+### Fixed
+- fpm detection now checks `gems/fpm-*/bin/fpm` path (user-install location)
+- Uses glob to find fpm regardless of version number in path
+- Should now correctly find fpm after `gem install --user-install fpm`
+
+## [0.9.90] - 2025-12-05
+
+### Fixed
+- Simplified fpm detection - removed execute permission check that was failing
+- Now just checks if file exists (Ruby scripts don't always have +x)
+- Added more gem path locations to search
+
+## [0.9.89] - 2025-12-05
+
+### Fixed
+- fpm path detection now USES the found path instead of asking user to update PATH
+- Added Ruby 3.4.0 to fallback paths
+- Should now work without requiring PATH modification
+
+## [0.9.88] - 2025-12-05
+
+### Improved
+- fpm PATH errors now show a dialog instead of a toast
+- Dialog includes exact commands to add fpm to PATH
+- Dialog stays visible until dismissed
+
+## [0.9.87] - 2025-12-05
+
+### Fixed
+- fpm detection now uses Ruby to dynamically find gem bin path
+- Checks `Gem.user_dir` and `gem environment gempath` for correct locations
+- Shows actual path to add to PATH if fpm still not found
+
+## [0.9.86] - 2025-12-05
+
+### Fixed
+- Package builder now properly finds fpm in common gem paths
+- Removed problematic --after-install flag from fpm command
+- Better error reporting when files are missing
+- Added path verification before package build
+
+## [0.9.85] - 2025-12-05
+
+### Fixed
+- Fixed Developer Tools not loading (was using wrong container method)
+
+## [0.9.84] - 2025-12-05
+
+### Added
+- **DEB/RPM Package Builder** in Developer Tools:
+  - Build .deb packages for Debian/Ubuntu/Mint/Pop!_OS
+  - Build .rpm packages for Fedora/RHEL/CentOS/Rocky
+  - Build .rpm packages for openSUSE Tumbleweed/Leap
+  - Auto-installs fpm (Ruby gem) if not present
+  - Output to ~/Tux-Assistant-Packages/ folder
+  - Auto-opens folder after successful build
+  - Proper dependency lists for each distribution family
+
+## [0.9.83] - 2025-12-05
+
+### Added
+- **Expanded content type support** for native theme installer:
+  - More icon variations: gnome-icons, xfce-icons, cinnamon-icons, mate-icons
+  - More cursor variations: x11-cursors, mouse-cursors, xcursor
+  - More wallpaper types: backgrounds, wallpapers-uhd, wallpapers-4k
+  - SDDM login themes → ~/.local/share/sddm/themes
+  - Latte Dock layouts → ~/.config/latte
+  - Rofi themes → ~/.config/rofi/themes
+  - Font variations: ttf-fonts, otf-fonts
+
+## [0.9.82] - 2025-12-05
+
+### Added
+- **Multi-DE theme support** - Native installer now handles all desktop environments:
+  - GNOME, XFCE, Cinnamon, MATE (GTK themes → ~/.themes)
+  - KDE Plasma themes → ~/.local/share/plasma/desktoptheme
+  - KDE Look-and-Feel → ~/.local/share/plasma/look-and-feel
+  - Aurorae window decorations → ~/.local/share/aurorae/themes
+  - Kvantum themes → ~/.config/Kvantum
+  - KDE color schemes → ~/.local/share/color-schemes
+  - Konsole themes, Yakuake skins
+  - Conky configs, Plank dock themes
+- **More theme sites allowed** in browser:
+  - xfce-look.org, cinnamon-look.org, mate-look.org
+  - enlightenment-themes.org, linux-apps.com
+
+## [0.9.81] - 2025-12-05
+
+### Fixed
+- Added missing `pathlib` import for native theme installer
+
+## [0.9.80] - 2025-12-05
+
+### Changed
+- **Native theme installer** - Replaced abandoned ocs-url with built-in handler
+- Downloads themes directly from gnome-look.org without third-party tools
+- Extracts to correct location based on type (~/.themes, ~/.icons, etc.)
+- Supports tar.xz, tar.gz, tar.bz2, and zip archives
+
+### Removed
+- Removed all ocs-url installation code (tool is abandoned since 2017)
+- Removed terminal popup for ocs-url installation
+
+## [0.9.79] - 2025-12-05
+
+### Added
+- **Theme Preview & Install** - Embedded browser for gnome-look.org themes
+- **ocs-url integration** - One-click theme installation via ocs:// links
+- Auto-installs ocs-url helper when needed (AUR on Arch, manual on others)
+- Themes not in repos now show "Preview & Install" instead of just external link
+- Intercepts ocs:// links in WebKit browser and handles installation
+
+## [0.9.78] - 2025-12-05
+
+### Fixed
+- **Fedora codec detection fix** - Added `ffmpeg-free` (Fedora native) to codec list
+- Codecs now properly detected on Fedora without RPM Fusion enabled
+- Native Fedora packages listed first, RPM Fusion packages as extras
+
+### Added
+- **RPM Fusion Enable button** - One-click enable RPM Fusion repos on Fedora
+- **Show locked packages** - RPM Fusion packages now shown with lock icon and "Enable Repos" button
+- Page auto-refreshes after enabling repos to show newly available packages
+
+## [0.9.77] - 2025-12-05
+
+### Added
+- **Complete README overhaul** with all 10 screenshots
+- Added screenshots folder with properly named images
+- AUR installation instructions in README
+- Feature highlights table
+
+### Changed
+- README now showcases: Main, Setup Tools, Software Center, Gaming, Desktop Enhancements, Networking, Media Server, Hardware Manager, System Maintenance, and Tux Tunes
+
+## [0.9.76] - 2025-12-05
+
+### Fixed
+- Fixed AUR publish button - `gh release view` now runs from correct directory
+
+## [0.9.75] - 2025-12-05
+
+### Added
+- **"Publish to AUR" button** - One click to push to Arch User Repository
+- Generates PKGBUILD and .SRCINFO automatically (works from any distro!)
+- Downloads tarball, calculates sha256sum, pushes to AUR
+- Tux Assistant is now available on AUR: `yay -S tux-assistant`
+
+## [0.9.74] - 2025-12-04
+
+### Fixed
+- **Speed Test now works on Fedora!** Added support for Ptyxis (Fedora 43's default terminal)
+- Terminal detection now prioritizes: ptyxis → kgx → gnome-terminal → konsole → xfce4-terminal
+- Fixed terminal launch across all modules (networking, developer tools)
+
+## [0.9.73] - 2025-12-04
+
+### Changed
+- **Simplified Developer Tools** - Reduced from 8 rows to 4 rows
+- **New "Install from ZIP" button** - One click to extract, copy, and install from Claude's ZIP
+- **New "Publish Release" button** - One click for full workflow: commit → push → build .run → create GitHub release
+- Status row now shows version, branch, and SSH status in one compact line
+- Updated help guide to match new 2-button workflow
+
+### Removed
+- Separate Pull/Push buttons (integrated into Publish)
+- Separate "Build .run Only" and "Build & Push to Main" buttons (merged into Publish)
+- Separate "Create GitHub Release" button (merged into Publish)
+- Separate Refresh Status row (now an icon button)
+
+## [0.9.72] - 2025-12-04
+
+### Changed
+- **Extensions now install AND enable immediately!** Uses DBus `InstallRemoteExtension` like Extension Manager
+- No more "log out and back in" - extensions are ready to use right away
+- Falls back to manual download method if DBus fails
+
+## [0.9.71] - 2025-12-04
+
+### Added
+- **GitHub Release button** in Developer Tools → Tux Assistant Development
+- Creates proper GitHub release with tag and uploads .run file
+- Checks for `gh` CLI and shows install instructions if missing
+- Confirmation dialog before publishing
+
+## [0.9.70] - 2025-12-04
+
+### Fixed
+- Fixed missing icons in Extensions Browser tabs (globe → web-browser, starred → emblem-default)
+
+## [0.9.69] - 2025-12-04
+
+### Added
+- **Installed / Browse tabs** like Extension Manager app
+- **Popular extensions** load by default in Browse tab (in background)
+- Search box with results that replace the list
+- Spinner while loading popular extensions
+
+### Changed
+- UI now matches Extension Manager app style
+- Popular extensions load AFTER UI is visible (100ms delay)
+- Uses GLib.timeout_add to ensure UI renders first
+
+## [0.9.68] - 2025-12-04
+
+### Changed
+- **Complete rewrite of Extensions Browser** - Now uses filesystem instead of gnome-extensions command!
+- Reads extensions directly from `~/.local/share/gnome-shell/extensions/` and `/usr/share/gnome-shell/extensions/`
+- Parses `metadata.json` files for extension info (instant, no subprocess calls)
+- Single `gsettings` call for enabled status
+- Search only queries API when user explicitly searches (no pre-loading)
+- Simpler, faster, no freezing!
+
+## [0.9.67] - 2025-12-04
+
+### Fixed
+- **Extensions browser no longer freezes!** Replaced slow per-extension info calls with fast bulk queries
+- Now uses `--user` and `--system` flags instead of calling `gnome-extensions info` for each extension
+- Loading time reduced from 10+ seconds to under 1 second
+
+## [0.9.66] - 2025-12-04
+
+### Added
+- **GNOME Extensions Browser** - Full-featured extension manager built into Tux Assistant!
+  - Browse extensions directly from extensions.gnome.org
+  - Search functionality with instant results
+  - One-click install with GNOME version compatibility checking
+  - View installed extensions (User vs System separated)
+  - Enable/disable toggles for each extension
+  - Uninstall user extensions
+  - Global "Use Extensions" toggle
+  - Extension settings access
+  - Popular extensions shown by default
+- New "Browse & Manage Extensions" option in Desktop Enhancements → GNOME Extensions
+
+### Fixed
+- **All loading is now async** - No more "Not Responding" dialogs!
+- Page loads instantly with a spinner while data loads in background
+- All subprocess calls run in background threads
+
+## [0.9.65] - 2025-12-03
+
+### Added
+- External links in embedded browser now open in default system browser!
+- Links that try to open new windows (target="_blank") open in Firefox/Chrome
+- Claude panel external links also open in default browser
+
+## [0.9.64] - 2025-12-03
+
+### Fixed
+- Removed "Smart recording limited" toast notification (since recording is disabled)
+- No more annoying popups about missing libraries
+
+## [0.9.63] - 2025-12-03
+
+### Removed
+- Removed record button from Tux Tunes UI (code preserved for future)
+- No password prompts at startup
+
+## [0.9.62] - 2025-12-03
+
+### Changed
+- Disabled Tux Tunes recording temporarily (all distros) - code preserved for future
+- Disabled auto audio dependency install (no more password prompts at startup!)
+- Record button shows "Recording coming soon" tooltip
+- To re-enable: set auto_record=True in player.py, _recording_enabled=True in window.py
+
+## [0.9.61] - 2025-12-03
+
+### Changed
+- Disabled Tux Tunes recording on Fedora (Python 3.14 incompatible with numba/librosa)
+- Record button shows "Recording unavailable on Fedora" tooltip
+- Auto-recording also disabled on Fedora
+- Recording works on Arch, Debian, Ubuntu, openSUSE
+
+## [0.9.60] - 2025-12-03
+
+### Fixed
+- Record button now actually SAVES the file! 🎉
+- Recordings saved to ~/Music/Tux Tunes/ with station name and timestamp
+- Shows toast notification with filename when saved
+- Cleans up cache file after copying
+
+## [0.9.59] - 2025-12-03
+
+### Added
+- Manual Record button in Tux Tunes! 🎙️
+- Button appears between Stop and Volume controls
+- Shows red stop icon when recording, normal record icon when not
+- Tooltip shows current state (Start/Stop Recording)
+
+### Notes
+- librosa cannot install on Python 3.14 (Fedora 43) - numba doesn't support 3.14 yet
+- Recording works without librosa - just no audio visualization
+
+## [0.9.58] - 2025-12-03
+
+### Fixed
+- librosa needs scipy! Now installs python3-scipy via dnf BEFORE pip install librosa
+- Added scipy to the checked/installed dependencies list
+- System packages (numpy, scipy) installed first, then pip packages (pydub, librosa)
+
+## [0.9.57] - 2025-12-03
+
+### Fixed
+- Fixed audio deps AGAIN - pydub is NOT in Fedora repos!
+- Now: numpy via dnf, then install pip, then pydub+librosa via pip
+- Proper order: install python3-pip BEFORE trying to use pip
+- Better error messages showing actual failure reason
+
+## [0.9.56] - 2025-12-03
+
+### Fixed
+- PROPERLY fixed audio deps - uses system package manager (dnf/apt/pacman) instead of pip!
+- Fedora: installs python3-numpy, python3-pydub via dnf
+- Debian/Ubuntu: installs python3-numpy, python3-pydub via apt
+- Arch: installs python-numpy, python-pydub via pacman
+- Only librosa uses pip (not in system repos)
+- Also installs python3-pip if needed before pip operations
+
+## [0.9.55] - 2025-12-03
+
+### Fixed
+- Fixed pip not found on Fedora - now uses `python3 -m pip` which works on ALL distros
+- No more searching for pip binary - uses sys.executable directly
+
+## [0.9.54] - 2025-12-03
+
+### Fixed
+- ACTUALLY fixed audio dependency auto-install at startup (was silently failing)
+- Non-daemon thread so pip installs complete properly
+- Multiple pip command detection (/usr/bin/pip3, pip3, pip)
+- Better error logging to console
+- Fallback without --break-system-packages for older distros
+
+## [0.9.53] - 2025-12-03
+
+### Fixed
+- Fixed Fedora multimedia codecs installation - now properly enables RPM Fusion repos first!
+- Both RPM Fusion Free and Nonfree are auto-enabled before installing codec packages
+- Updated all RPM Fusion URLs from download1.rpmfusion.org to mirrors.rpmfusion.org (more reliable)
+- Fixed duplicate desktop icons - now uses single GNOME-standard naming (com.tuxassistant.app.desktop)
+- install.sh now cleans up old naming convention on upgrade
+- Fixed audio dependencies (numpy, librosa, pydub) not installing on Fedora
+- Added --break-system-packages flag for pip on Fedora 39+
+- App now auto-checks and installs missing audio deps at startup (all distros)
+
+## [0.9.51] - 2025-12-03
+
+### Fixed
+- Fixed hardinfo2 terminal install on Fedora (added ptyxis, fixed kgx syntax)
+- Fixed Developer Tools branch warning (now expects main, not dev)
+- Updated all Dev Branch references to Main Branch for main-only workflow
+- Pull/Push buttons now work correctly with main branch
+
+## [0.9.50] - 2025-12-03
+
+### Fixed
+- Added kgx (GNOME Console) and ptyxis terminal support for Fedora
+- All terminal operations now work on Fedora Workstation!
+
+## [0.9.49] - 2025-12-03
+
+### Added
+- Developer Kit import now shows "Unlock SSH Key" button after import
+- Automatic prompt to clone projects after unlocking SSH
+- Full guided flow: Import → Unlock → Clone all projects!
+
+## [0.9.48] - 2025-12-03
+
+### Changed
+- Switched license from "All Rights Reserved" to GPL-3.0
+- Updated all copyright headers across 34+ files
+- More Linux community friendly!
+
+## [0.9.47] - 2025-12-03
+
+### Fixed
+- Floating windows now use Gtk.Window (not Adw.Window) for proper Wayland move/drag support
+
+## [0.9.46] - 2025-12-03
+
+### Fixed
+- Floating windows (Claude/Browser) are now fully movable/draggable
+
+## [0.9.45] - 2025-12-03
+
+### Added - Global Web Browser Panel!
+- 🌐 button in header bar toggles web browser panel
+- URL bar with search (DuckDuckGo) or direct URL entry
+- Navigation: back, forward, reload, home
+- Pop-out button to make browser a floating window
+- Smart panel logic: first clicked gets side panel, second opens floating
+- Both Claude and Browser can be open simultaneously!
+- Downloads work in browser too
+
+### Changed
+- Removed embedded Claude from Developer Tools (now global - less confusion!)
+- Developer Tools back to clean single-column layout
+
+## [0.9.44] - 2025-12-02
+
+### Added - Global Claude AI Toggle!
+- 🤖 button in header bar toggles Claude AI panel on ANY page
+- Panel slides in from right on all pages (not just Developer Tools)
+- Click again to hide - panel remembers state
+- Same WebKit setup with persistent cookies
+- Same download handling
+- Claude now available everywhere in the app!
+
+## [0.9.43] - 2025-12-02
+
+### Fixed - Downloads Now Work!
+- Removed file:// prefix from set_destination() - THIS WAS THE BUG!
+- Added MIME type detection for correct file extensions
+- Debug output when running from terminal (harmless, useful for troubleshooting)
+- Downloads now save to ~/Downloads with correct filenames
+
+## [0.9.42] - 2025-12-02
+
+### Fixed - Download Filename Detection
+- Added MIME type detection to get correct file extension
+- Maps common types: .zip, .txt, .html, .py, .json, .md, .pdf, .png, etc.
+- Fallback name now includes extension: claude_download_TIMESTAMP.zip
+- Allows parentheses in filenames (e.g., "Tux Assistant (v0.9.41).zip")
+- Removed debug print statements
+
+## [0.9.41] - 2025-12-02
+
+### Added - Resizable Claude Panel & Download Support
+- Changed from Gtk.Box to Gtk.Paned for split layout
+- Draggable divider between Dev Tools and Claude panel
+- Drag left to make Claude bigger, drag right to make it smaller
+- Minimum width of 350px for Claude panel
+- Left side expands with window, right side stays fixed width
+- **Download handling**: Files now download to ~/Downloads
+- Toast notifications for download started/completed/failed
+- Handles duplicate filenames with _1, _2 suffix
+
+## [0.9.40] - 2025-12-02
+
+### Changed - Claude WebView: Use GNOME Web-style Configuration
+- Use NetworkSession.new() with custom data/cache directories (WebKit 6.0)
+- Fallback to WebContext cookie manager for older WebKit2
+- Persistent cookies stored in ~/.local/share/tux-assistant/webview/
+- Cache stored in ~/.cache/tux-assistant/webview/
+- Changed user agent to match GNOME Web/Epiphany (Safari-based)
+- Enabled more web features: mediasource, encrypted_media
+- Should work like GNOME Web for Cloudflare verification
+
+## [0.9.39] - 2025-12-02
+
+### Fixed - Claude WebView Crash
+- Fixed Developer Tools page not loading due to WebKit API incompatibility
+- Added try/except fallback for WebView creation
+- Detects WebKit 6.0 (NetworkSession) vs older WebKit2 APIs
+- Falls back to basic WebView if advanced features fail
+- All settings wrapped in try/except for cross-version compatibility
+- Still attempts persistent cookies on WebKit 6.0+
+
+## [0.9.38] - 2025-12-02
+
+### Changed - Claude WebView: Persistent Storage & Better Browser Emulation
+- Added persistent cookie/data storage in ~/.local/share/tux-assistant/claude-webview
+- Added cache storage in ~/.cache/tux-assistant/claude-webview
+- Cookies persist between sessions (should help with Cloudflare verification)
+- Enabled HTML5 local storage and database
+- Enabled hardware acceleration and WebGL
+- Enabled page cache and smooth scrolling
+- Updated user agent to Chrome 131 (current version)
+- Set cookie accept policy to ALWAYS
+- Goal: Pass Cloudflare's "Verify you are human" check
+
+## [0.9.37] - 2025-12-02
+
+### Changed - Claude AI: Split Layout with Pop-out
+- Developer Tools now has split layout (like front page)
+- Left side: Git tools, prerequisites, dev kit, etc.
+- Right side: Claude AI panel (450px wide)
+- Embedded WebKitGTK webview loads claude.ai
+- Navigation toolbar: back, forward, reload, home
+- **Pop-out feature**: Click window icon to open Claude in separate window
+- **Pop-in feature**: Click restore icon to bring Claude back to panel
+- When popped out, panel shows "Claude is in a separate window" with pop-in button
+- Closing the Claude window automatically pops it back in
+- External browser button to open claude.ai in default browser
+
+## [0.9.36] - 2025-12-02
+
+### Added - Claude AI Assistant Integration
+- New "Claude AI Assistant" section in Developer Tools
+- Dedicated window with WebKitGTK webview to load claude.ai
+- Navigation toolbar: back, forward, reload, home buttons
+- Option to open Claude in external browser
+- Auto-detects WebKit availability (WebKit 6.0 or WebKit2 5.0)
+- Shows install button with distro-specific commands if WebKit not found
+- Custom user agent for better compatibility
+
+## [0.9.35] - 2025-12-02
+
+### Removed - ISO Creator Module
+- Removed ISO Creator (penguins-eggs wrapper) from the application
+- penguins-eggs installation methods are too unstable:
+  - Repository URLs frequently change/break
+  - fresh-eggs script has incomplete distro support
+  - Package names vary across distros
+- Module preserved in git history if needed later
+- Simplifies maintenance and improves stability
+
+## [0.9.33] - 2025-12-02
+
+### Fixed - Git Identity Dialog Not Opening
+- Fixed `GitIdentityDialog` not appearing when clicking Configure button
+- Changed from broken emit/response pattern to callback pattern
+- Dialog now properly shows and saves git config
+- Added `_refresh_prereq_section()` to update UI after configuration
+
+## [0.9.32] - 2025-12-02
+
+### Changed - ISO Creator: Universal fresh-eggs Installer
+- Replaced distro-specific penguins-eggs installation methods with fresh-eggs
+- fresh-eggs auto-detects distribution and uses appropriate install method
+- More maintainable - adapts to upstream repo URL changes automatically
+- Supports all distros: Arch, Manjaro, Debian, Ubuntu, Fedora, openSUSE, AlmaLinux, Rocky
+- Added git availability check before installation
+- Fixes 404 error on openSUSE due to changed repo URLs
+
+## [0.9.31] - 2025-12-02
+
+### Added - Change Hostname Feature
+- Network & Sharing page now has edit button on Hostname row
+- New `ChangeHostnameDialog` for changing system hostname
+- Uses `hostnamectl` via tux-helper for safe hostname changes
+- Validates hostname format (letters, numbers, hyphens only)
+- Added `--set-hostname` option to tux-helper
+
+## [0.9.30] - 2025-12-02
+
+### Fixed - Gtk.show_uri Focus Across All Modules
+- Changed `Gtk.show_uri(self.window, ...)` to `Gtk.show_uri(None, ...)` in all modules
+- Fixes file manager and browser windows appearing behind Tux Assistant
+- Affected: networking.py, media_server.py, nextcloud_setup.py
+
+## [0.9.29] - 2025-12-02
+
+### Fixed - Usershare Detection (Manjaro/Dolphin/KDE)
+- `get_shares()` now checks BOTH sources:
+  1. `/etc/samba/smb.conf` (admin-created shares)
+  2. `net usershare info --long` (GUI-created shares from Dolphin, Nautilus, etc.)
+- Fixes shares not appearing on distros using `kdenetwork-filesharing` or similar
+- Properly parses usershare ACL to determine writable status
+
+## [0.9.28] - 2025-12-02
+
+### Fixed - File Manager Focus
+- Changed share folder click from `subprocess.Popen(['xdg-open'...])` to `Gtk.show_uri()`
+- File manager now properly comes to front when clicking a share
+- Added `Gdk` import to networking.py
+
+## [0.9.27] - 2025-12-02
+
+### Added - Auto-Refresh UI Across All Modules
+
+Comprehensive UI feedback improvements - actions now provide instant visual feedback:
+
+**Media Server:**
+- Added refresh button to header
+- Page auto-rebuilds when install dialog closes
+- Server status updates immediately after installation
+
+**Repository Manager (Setup Tools):**
+- When repo is enabled, row transforms to show checkmark icon
+- No more stale "Enable" buttons after successful enable
+
+**Software Center:**
+- Selection clears after install completes
+- Checkboxes reset, install button disables
+- Toast confirms "Installation complete - selection cleared"
+
+**Desktop Enhancements:**
+- Theme selection clears after install
+- Checkboxes reset automatically
+- Toast confirms completion
+
+**Technical Implementation:**
+- Added `on_complete_callback` parameter to:
+  - `InstallServerDialog` / `InstallProgressDialog` (media_server.py)
+  - `AppInstallDialog` (software_center.py)
+  - `PlanExecutionDialog` (desktop_enhancements.py)
+- Callbacks fire when dialogs close, triggering UI refresh
+- 300ms delay allows services to fully initialize
+
+## [0.9.26] - 2025-12-02
+
+### Added - Auto-Refresh Share Section
+
+The Share Files section now automatically refreshes after:
+- Enabling file sharing (no need to navigate away and back)
+- Creating a new share (share appears instantly in the list)
+
+**Implementation:**
+- Store references to `self.content_box` and `self.share_section`
+- `_refresh_share_section()` - removes old section and creates new one in place
+- `_execute_plan_with_refresh()` - executes plan and triggers refresh when dialog closes
+- 500ms delay before refresh to allow services to fully start
+
+## [0.9.25] - 2025-12-02
+
+### Added - Comprehensive File Sharing Setup
+
+When file sharing service is not running or not installed, clicking "Enable File Sharing" now sets up EVERYTHING needed for successful cross-platform file sharing:
+
+**What Gets Installed & Configured:**
+1. **Samba packages** - samba, smbclient, cifs-utils
+2. **Avahi (mDNS/Bonjour)** - Makes your PC visible to macOS and other Linux machines
+3. **wsdd** - Web Services Discovery Daemon - Makes your PC visible to Windows 10/11
+4. **Firewall rules** - Opens samba and mDNS ports (firewalld or ufw)
+5. **Optimized smb.conf** - Includes:
+   - macOS compatibility (fruit VFS module)
+   - Windows compatibility
+   - Performance optimizations
+   - Disabled printing (cleaner for home users)
+
+**Services Enabled:**
+- smbd/smb (Samba file server)
+- nmbd/nmb (NetBIOS name service)
+- avahi-daemon (mDNS/Bonjour)
+- wsdd (Windows discovery)
+
+**Implementation:**
+- `SambaManager.get_discovery_packages()` - Returns avahi, nss-mdns, wsdd per distro
+- `SambaManager.create_full_sharing_plan()` - Creates comprehensive setup plan
+- `_on_enable_full_sharing()` - Handler for enable button
+
+## [0.9.24] - 2025-12-02
+
+### Added - List Current Samba Shares
+
+Enhanced the "Share Files" section to show currently shared folders:
+
+**New Features:**
+- Lists each shared folder individually under "Share a Folder"
+- Shows share name as title, path as subtitle
+- Clickable rows open the folder in file manager
+- Icons indicate share type:
+  - Public share icon for guest-accessible shares
+  - Documents icon for writable shares
+  - Folder icon for read-only shares
+- Shows "No folders shared" when none configured
+- Shows warning when Samba service not running
+
+**Implementation:**
+- `_on_open_share_folder()` - opens share path with xdg-open
+
+## [0.9.23] - 2025-12-02
+
+### Fixed - Single Package Install Command
+
+Fixed the individual package install button failing immediately:
+
+**The Problem:**
+- Used `tux-helper install` instead of `tux-helper --install`
+- tux-helper didn't recognize the command, returned error
+
+**The Fix:**
+- Changed `['pkexec', '/usr/bin/tux-helper', 'install', package]`
+- To `['pkexec', '/usr/bin/tux-helper', '--install', package]`
+
+## [0.9.22] - 2025-12-02
+
+### Added - Clickable Install Button for Individual Packages
+
+Made the "+" icon next to uninstalled packages an actual clickable button:
+
+**New Behavior:**
+- Click the "+" button to install just that one package
+- Button shows loading spinner during install
+- Changes to green checkmark (✓) on success
+- Shows "Retry" on failure
+- Package status count updates automatically after install
+- Toast notification confirms success/failure
+
+**Implementation:**
+- `_on_install_single_package()` - handles button click, runs install in background
+- `_on_single_package_installed()` - updates UI after install completes
+- Uses `tux-helper` for consistent package installation across distros
+
+## [0.9.21] - 2025-12-02
+
+### Fixed - TA Dev Push SSH Environment
+
+Fixed the purple "Push" button in TA Development section not using SSH agent:
+
+**The Problem:**
+- `_do_ta_push_dev()` ran `git push` without passing SSH environment
+- Even after unlocking SSH key, push would fail with "ssh_askpass" error
+- User had to manually run `git push` from terminal
+
+**The Fix:**
+- Added `ssh_env = self._get_ssh_env()` at start of push function
+- Passed `env=ssh_env` to all subprocess.run git operations
+- Also fixed `_do_ta_release()` to use SSH env consistently for all git commands
+
+## [0.9.20] - 2025-12-02
+
+### Fixed - Package Status UI (Follow-up)
+
+Fixed issues from v0.9.19:
+
+**Spinner Row Not Disappearing:**
+- Stored spinner_row as instance variable for explicit removal
+- Changed from iterating children (unreliable with PreferencesGroup) to direct removal
+- Spinner row now properly disappears when package check completes
+
+**Count Logic Fixed:**
+- Status now based on AVAILABLE packages, not total wishlist
+- If 13 packages available and all 13 installed = "✓ All 13 packages installed"
+- Previously showed "13/14 installed" when 1 package was unavailable
+
+**Removed Deprecated Package:**
+- Removed `neofetch` from Arch and Fedora package lists (deprecated/unmaintained)
+- `fastfetch` is already included as the replacement
+
+## [0.9.19] - 2025-12-02
+
+### Improved - Package Status UI Feedback
+
+Replaced the perpetual "Checking packages..." spinner with clear status feedback:
+
+**The Problem:**
+- Spinner row with "Checking packages..." would stay visible even after package check completed
+- Users didn't know if checking was done or how many packages were installed
+
+**The Fix:**
+- Added `check_package_installed()` function to check actual installation status
+- After checking completes, spinner is replaced with status summary row showing "X/Y installed"
+- Group title now shows "Packages (X/Y installed)" instead of "Packages to Install (N)"
+- Installed packages show green checkmark (✓)
+- Available-but-not-installed packages show plus icon (+) with "Not installed" subtitle
+- Status row shows:
+  - All installed: "✓ All N packages installed" (green)
+  - Partial: "X of Y packages installed" with "N remaining to install"
+  - None: "0 of N packages installed" with guidance
+
+## [0.9.18] - 2025-12-01
+
+### Fixed - Install.sh Symlink Corruption Bug
+
+Fixed critical bug where install.sh would corrupt tux-assistant.py:
+
+**The Problem:**
+- Old installations left a symlink at `/usr/local/bin/tux-assistant` pointing to `/opt/tux-assistant/tux-assistant.py`
+- When install.sh ran `cat > "$BIN_LINK"`, it wrote THROUGH the symlink
+- This overwrote the Python file with bash launcher content
+- Result: App wouldn't launch from icon
+
+**The Fix:**
+- Added `rm -f "$BIN_LINK"` before creating launcher
+- Added `rm -f "$TUXTUNES_BIN"` before creating Tux Tunes launcher
+- Removes any existing symlinks before writing new launcher scripts
+
+## [0.9.17] - 2025-12-01
+
+### Fixed - Share Folder Dialog Hidden Behind Main Window
+
+Fixed Quick Share dialog disappearing behind main window on GNOME:
+
+**The Problem:**
+- FileDialog used main window as parent
+- When FileDialog closed, focus returned to main window
+- Adw.Dialog (overlay) got covered by its own parent
+
+**The Fix:**
+- FileDialog now uses `None` as parent (independent window)
+- Dialog stays visible after folder selection
+
+## [0.9.16] - 2025-12-01
+
+### Fixed - hardinfo2 Install on openSUSE
+
+Fixed hardinfo2 install button crash on openSUSE:
+
+**The Problem:**
+- Code used `DistroFamily.SUSE` which doesn't exist
+- Correct enum value is `DistroFamily.OPENSUSE`
+
+**The Fix:**
+- Changed `DistroFamily.SUSE` to `DistroFamily.OPENSUSE`
+
+## [0.9.15] - 2025-12-01
+
+### Fixed - hardinfo2 Install Button Not Working
+
+Fixed hardinfo2 install button doing nothing on openSUSE/GNOME:
+
+**The Problem:**
+- Multi-line install scripts with special characters failed when passed directly to terminal
+- `kgx -e bash -c "multi\nline\nscript"` doesn't work reliably
+
+**The Fix:**
+- Now writes install script to a temp file first
+- Executes the script file instead of inline commands
+- Script self-deletes after completion
+- Works reliably across all terminal emulators
+
+## [0.9.14] - 2025-12-01
+
+### Fixed - Samba Install Detection on openSUSE
+
+Fixed Samba showing as "Not installed" even when installed on openSUSE:
+
+**The Problem:**
+- Install check looked for `smbd` binary using `shutil.which()`
+- On openSUSE, `smbd` is installed to `/usr/sbin/` which is not in normal user PATH
+- Result: Samba appeared uninstalled even though it was working
+
+**The Fix:**
+- Now also checks `/usr/sbin/smbd` directly
+- Works on all distros regardless of PATH configuration
+
+## [0.9.13] - 2025-12-01
+
+### Fixed - Terminal Emulator Support
+
+Fixed "Could not find terminal emulator" error across the entire application:
+
+**The Problem:**
+- Multiple places in the code had limited terminal lists (only 4-6 terminals)
+- openSUSE GNOME uses gnome-console (kgx) which wasn't supported
+- Many popular terminals were missing
+- Code was duplicated in 13+ places
+
+**The Fix:**
+- Created centralized terminal helper functions in `tux/core/commands.py`:
+  - `get_terminal_commands(script_path)` - Returns all terminal commands
+  - `find_terminal()` - Finds first available terminal
+  - `run_in_terminal(script_path)` - Runs script in terminal
+- Added comprehensive terminal support (20+ terminals):
+  - GNOME: gnome-console/kgx, gnome-terminal
+  - KDE: konsole
+  - XFCE: xfce4-terminal
+  - MATE: mate-terminal
+  - LXQt/LXDE: qterminal, lxterminal
+  - Popular: tilix, terminator, alacritty, kitty, foot, wezterm
+  - Lightweight: sakura, terminology, urxvt, rxvt, st
+  - Fallback: xterm
+- Updated hardinfo2 installation to use comprehensive terminal list
+- Updated repository enable (Packman, etc.) to use comprehensive list
+- Improved error message suggests installing a terminal if none found
+
+## [0.9.12] - 2025-12-01
+
+### Fixed - Tux Tunes GNOME Icon
+
+Fixed Tux Tunes icon not appearing in GNOME dock/launcher:
+
+**The Problem:**
+- Install script only installed Tux Assistant icon and desktop file
+- Tux Tunes had no system-installed icon or desktop entry
+- GNOME couldn't match the running window to its icon
+
+**The Fix:**
+- Added Tux Tunes icon installation (`tux-tunes.svg`)
+- Added Tux Tunes desktop file with `StartupWMClass=com.tuxassistant.tuxtunes`
+- Desktop file named `com.tuxassistant.tuxtunes.desktop` (GNOME best practice)
+- Cleans up old `tux-tunes.desktop` if exists
+
+**To apply:** Reinstall via "Install to System" button.
+
+## [0.9.11] - 2025-12-01
+
+### Fixed - tux-helper Packaging
+
+Fixed tux-helper not being included in .run installer:
+- Added `tux-helper` to build-run.sh package list
+- Install no longer fails with "tux-helper: No such file or directory"
+
+### Fixed - openSUSE Audio Dependencies
+
+Fixed Tux Tunes audio dependencies for openSUSE:
+- Added `ffmpeg` to zypper package list
+- Fixed pip librosa install with `--user --break-system-packages` flags
+- Now properly installs: python3-numpy, python3-pydub, ffmpeg, librosa
+
+### Fixed - Packman Repository Enable
+
+Fixed "Enable Packman" button failing silently on openSUSE:
+- Changed from background subprocess to terminal script (for password prompt)
+- Added GPG key auto-import with `--gpg-auto-import-keys refresh`
+- Now opens terminal window for proper sudo authentication
+
+## [0.9.10] - 2025-12-01
+
+### Fixed - GTK Markup Warnings
+
+Fixed GTK warnings about ampersand characters in markup:
+- Escaped `&` as `&amp;` in all titles and labels
+- Affected: "Backup & Restore", "Help & Learning", "Setup & Help", "Build & Release", etc.
+- App now runs without GTK-WARNING messages
+
+## [0.9.9] - 2025-12-01
+
+### Added - Repository Manager
+
+New "Repository Manager" section in Setup Tools showing all package sources:
+
+**Currently Enabled Repositories:**
+- Shows all repos configured on your system
+- Arch: Lists all pacman repos (core, extra, multilib, endeavouros, etc.)
+- Fedora: Lists all dnf repos
+- Debian/Ubuntu: Lists apt sources
+- openSUSE: Lists zypper repos
+- All: Shows Flatpak remotes
+
+**Available to Enable:**
+- Flathub (all distros)
+- Arch: Multilib, AUR Helper (yay)
+- Fedora: RPM Fusion Free, RPM Fusion Nonfree
+- openSUSE: Packman
+
+Each item shows status (✓ Enabled or Enable button) at a glance.
+
+## [0.9.8] - 2025-12-01
+
+### Fixed - GNOME Icon Display
+
+Fixed the icon not appearing in GNOME dock/launcher:
+
+**The Problem:**
+- Install script was creating a desktop file without `StartupWMClass`
+- GNOME couldn't match the running window to its icon
+- Result: Generic gear icon instead of Tux penguin
+
+**The Fix:**
+- Added `StartupWMClass=com.tuxassistant.app` to installed desktop file
+- Renamed desktop file to `com.tuxassistant.app.desktop` (GNOME best practice)
+- Cleans up old `tux-assistant.desktop` if exists
+
+**To apply:** Reinstall via "Install to System" button.
+
 ## [0.9.7] - 2025-11-30
 
 ### Added - Git Workflow Help Guide
@@ -2998,4 +4748,4 @@ See git history for details.
 
 - **Author**: Christopher Dorrell
 - **Email**: dorrellkc@gmail.com
-- **GitHub**: github.com/dorrelkc
+- **GitHub**: github.com/dorrellkc

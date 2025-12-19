@@ -6,7 +6,7 @@ application for Linux distributions.
 
 Supports: Arch, Fedora, Debian/Ubuntu, openSUSE and derivatives.
 
-Copyright (c) 2025 Christopher Dorrell. All Rights Reserved.
+Copyright (c) 2025 Christopher Dorrell. Licensed under GPL-3.0.
 """
 
 import os
@@ -19,9 +19,15 @@ try:
 except Exception:
     __version__ = "0.0.0"
 
-# Parse version info
+# Parse version info (strip any letter suffixes like 'a', 'b', 'rc1')
+import re
+def _parse_version_part(part):
+    """Extract numeric portion from version part (e.g., '167a' -> 167)."""
+    match = re.match(r'^(\d+)', part)
+    return int(match.group(1)) if match else 0
+
 _version_parts = __version__.split('.')
-__version_info__ = tuple(int(x) for x in _version_parts[:3]) if len(_version_parts) >= 3 else (0, 0, 0)
+__version_info__ = tuple(_parse_version_part(x) for x in _version_parts[:3]) if len(_version_parts) >= 3 else (0, 0, 0)
 
 __author__ = "Christopher Dorrell"
 __email__ = "dorrellkc@gmail.com"

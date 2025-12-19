@@ -5,14 +5,127 @@ This module provides a registry system that automatically discovers
 and loads modules from the modules directory. Modules can be added
 or removed by simply adding/removing their folders.
 
-Copyright (c) 2025 Christopher Dorrell. All Rights Reserved.
+Copyright (c) 2025 Christopher Dorrell. Licensed under GPL-3.0.
 """
 
+import gi
+gi.require_version('Gtk', '4.0')
+
+from gi.repository import Gtk, Gio
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional, Callable, Type
 import importlib
 import os
+
+
+# =============================================================================
+# Icon Utilities - Cross-DE, Cross-Distro Icon Loading
+# =============================================================================
+
+def _get_bundled_icons_dir() -> Optional[str]:
+    """Get the path to bundled icons directory."""
+    # Try multiple locations
+    candidates = [
+        # Running from source
+        os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'assets', 'icons'),
+        # Installed to /opt
+        '/opt/tux-assistant/assets/icons',
+        # Installed to /usr/share
+        '/usr/share/tux-assistant/assets/icons',
+        # Local install
+        os.path.expanduser('~/.local/share/tux-assistant/assets/icons'),
+    ]
+    
+    for path in candidates:
+        if os.path.isdir(path):
+            return path
+    return None
+
+
+def get_icon_path(icon_name: str) -> Optional[str]:
+    """
+    Get the full path to a bundled icon file.
+    
+    Args:
+        icon_name: Icon name (with or without tux- prefix, with or without .svg)
+    
+    Returns:
+        Full path to the icon file, or None if not found
+    """
+    icons_dir = _get_bundled_icons_dir()
+    if not icons_dir:
+        return None
+    
+    # Normalize the icon name
+    name = icon_name
+    if not name.endswith('.svg'):
+        name = name + '.svg'
+    
+    # Try with tux- prefix
+    if not name.startswith('tux-'):
+        tux_path = os.path.join(icons_dir, 'tux-' + name)
+        if os.path.exists(tux_path):
+            return tux_path
+    
+    # Try as-is
+    direct_path = os.path.join(icons_dir, name)
+    if os.path.exists(direct_path):
+        return direct_path
+    
+    return None
+
+
+def create_icon(icon_name: str, size: int = 16, fallback: str = "application-x-executable-symbolic") -> Gtk.Image:
+    """
+    Create a Gtk.Image using our tux-icons theme.
+    
+    Uses GTK's icon theme lookup which properly handles symbolic icon
+    coloring for light/dark mode. Our tux-icons theme is registered
+    at app startup and takes priority.
+    
+    Args:
+        icon_name: The icon name to load
+        size: Icon size in pixels (default 16)
+        fallback: Fallback icon name if primary not found
+    
+    Returns:
+        Gtk.Image widget with the icon
+    """
+    # Normalize to use tux- prefix for our bundled icons
+    if not icon_name.startswith('tux-'):
+        icon_name = f'tux-{icon_name}'
+    
+    # Use GTK icon theme (handles symbolic coloring for light/dark mode)
+    image = Gtk.Image.new_from_icon_name(icon_name)
+    image.set_pixel_size(size)
+    return image
+
+
+def create_icon_simple(icon_name: str, size: int = 16) -> Gtk.Image:
+    """
+    Create a Gtk.Image with robust fallback handling.
+    
+    For use in list rows and other places where Gtk.Image is added directly.
+    Uses our tux-icons theme first (for proper light/dark mode coloring),
+    falls back to direct file loading for development/source installs.
+    
+    Args:
+        icon_name: The icon name (with or without tux- prefix)
+        size: Icon size in pixels (default 16)
+    
+    Returns:
+        Gtk.Image widget with the icon
+    """
+    # Normalize icon name to use tux- prefix
+    if not icon_name.startswith('tux-'):
+        icon_name = f'tux-{icon_name}'
+    
+    # Method 1: Use GTK icon theme (handles symbolic coloring for light/dark mode)
+    # Our tux-icons theme is registered at app startup
+    image = Gtk.Image.new_from_icon_name(icon_name)
+    image.set_pixel_size(size)
+    return image
 
 
 class ModuleCategory(Enum):

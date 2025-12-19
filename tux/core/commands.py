@@ -3,7 +3,7 @@ Tux Assistant - System Commands
 
 Execute system commands with proper privilege handling.
 
-Copyright (c) 2025 Christopher Dorrell. All Rights Reserved.
+Copyright (c) 2025 Christopher Dorrell. Licensed under GPL-3.0.
 """
 
 import os
@@ -326,3 +326,79 @@ def sudo_chown(path: str, owner: str, recursive: bool = False) -> CommandResult:
         cmd.append('-R')
     cmd.extend([owner, path])
     return run_sudo(cmd)
+
+
+def get_terminal_commands(script_path: str) -> list:
+    """
+    Get list of terminal emulator commands to try.
+    
+    Returns a list of (name, command_list) tuples for all supported terminals.
+    The script_path will be executed in the terminal.
+    """
+    return [
+        # Fedora 43+ default
+        ('ptyxis', ['ptyxis', '-e', 'bash', script_path]),
+        # KDE
+        ('konsole', ['konsole', '-e', 'bash', script_path]),
+        # GNOME (new)
+        ('kgx', ['kgx', '-e', 'bash', script_path]),
+        ('gnome-console', ['gnome-console', '-e', 'bash', script_path]),
+        # GNOME (classic)
+        ('gnome-terminal', ['gnome-terminal', '--', 'bash', script_path]),
+        # XFCE
+        ('xfce4-terminal', ['xfce4-terminal', '-e', f'bash {script_path}']),
+        # MATE
+        ('mate-terminal', ['mate-terminal', '-e', f'bash {script_path}']),
+        # LXQt/LXDE
+        ('qterminal', ['qterminal', '-e', 'bash', script_path]),
+        ('lxterminal', ['lxterminal', '-e', f'bash {script_path}']),
+        # Popular third-party
+        ('tilix', ['tilix', '-e', f'bash {script_path}']),
+        ('terminator', ['terminator', '-e', f'bash {script_path}']),
+        ('alacritty', ['alacritty', '-e', 'bash', script_path]),
+        ('kitty', ['kitty', 'bash', script_path]),
+        ('foot', ['foot', 'bash', script_path]),
+        ('wezterm', ['wezterm', 'start', '--', 'bash', script_path]),
+        # Lightweight
+        ('sakura', ['sakura', '-e', f'bash {script_path}']),
+        ('terminology', ['terminology', '-e', f'bash {script_path}']),
+        ('urxvt', ['urxvt', '-e', 'bash', script_path]),
+        ('rxvt', ['rxvt', '-e', 'bash', script_path]),
+        ('st', ['st', '-e', 'bash', script_path]),
+        # Fallback
+        ('xterm', ['xterm', '-e', f'bash {script_path}']),
+    ]
+
+
+def find_terminal() -> Optional[str]:
+    """Find the first available terminal emulator."""
+    terminals = [
+        'ptyxis', 'konsole', 'kgx', 'gnome-console', 'gnome-terminal',
+        'xfce4-terminal', 'mate-terminal', 'qterminal', 'lxterminal',
+        'tilix', 'terminator', 'alacritty', 'kitty', 'foot', 'wezterm',
+        'sakura', 'terminology', 'urxvt', 'rxvt', 'st', 'xterm'
+    ]
+    for term in terminals:
+        if command_exists(term):
+            return term
+    return None
+
+
+def run_in_terminal(script_path: str) -> bool:
+    """
+    Run a script in the first available terminal emulator.
+    
+    Args:
+        script_path: Path to the script to execute
+        
+    Returns:
+        True if terminal was launched, False if no terminal found
+    """
+    for term_name, term_cmd in get_terminal_commands(script_path):
+        if command_exists(term_name):
+            try:
+                subprocess.Popen(term_cmd)
+                return True
+            except Exception:
+                continue
+    return False
