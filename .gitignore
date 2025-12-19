@@ -1,2 +1,5 @@
 dist/
 releases/*.run
+__pycache__/
+*.pyc
+*.pyo
