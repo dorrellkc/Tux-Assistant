@@ -2341,7 +2341,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         nav_toolbar.append(open_firefox_btn)
         
         # New tab button
-        new_tab_btn = Gtk.Button.new_from_icon_name("tab-new-symbolic")
+        new_tab_btn = Gtk.Button.new_from_icon_name("tux-tab-new-symbolic")
         new_tab_btn.set_tooltip_text("New tab (Ctrl+T)")
         new_tab_btn.connect("clicked", lambda b: self._browser_new_tab())
         nav_toolbar.append(new_tab_btn)
@@ -5682,7 +5682,7 @@ user_pref("browser.shell.checkDefaultBrowser", false);
         header.pack_start(self.bm_tag_dropdown)
         
         # Tag management button in header
-        tags_btn = Gtk.Button.new_from_icon_name("tag-symbolic")
+        tags_btn = Gtk.Button.new_from_icon_name("tux-tag-symbolic")
         tags_btn.set_tooltip_text("Manage tags")
         tags_btn.connect("clicked", self._show_tag_manager)
         header.pack_end(tags_btn)

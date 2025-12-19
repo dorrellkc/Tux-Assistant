@@ -485,7 +485,7 @@ class SystemMaintenancePage(Adw.NavigationPage):
         self.journal_row = Adw.ActionRow()
         self.journal_row.set_title("System Logs")
         self.journal_row.set_subtitle("Old journal logs (keeps last 7 days)")
-        self.journal_row.add_prefix(Gtk.Image.new_from_icon_name("text-x-generic-symbolic"))
+        self.journal_row.add_prefix(Gtk.Image.new_from_icon_name("tux-text-x-generic-symbolic"))
         
         self.journal_size = Gtk.Label(label="Calculating...")
         self.journal_size.add_css_class("dim-label")

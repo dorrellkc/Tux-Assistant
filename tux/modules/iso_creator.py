@@ -325,7 +325,7 @@ class ISOCreatorPage(Adw.NavigationPage):
         learn_box.set_margin_end(20)
         learn_box.set_size_request(280, -1)
         
-        learn_icon = Gtk.Image.new_from_icon_name("help-browser-symbolic")
+        learn_icon = Gtk.Image.new_from_icon_name("tux-help-browser-symbolic")
         learn_icon.set_pixel_size(48)
         learn_box.append(learn_icon)
         
@@ -375,7 +375,7 @@ class ISOCreatorPage(Adw.NavigationPage):
         quick_box.set_margin_end(20)
         quick_box.set_size_request(280, -1)
         
-        quick_icon = Gtk.Image.new_from_icon_name("media-playback-start-symbolic")
+        quick_icon = Gtk.Image.new_from_icon_name("tux-media-playback-start-symbolic")
         quick_icon.set_pixel_size(48)
         quick_box.append(quick_icon)
         
@@ -457,7 +457,7 @@ class ISOCreatorPage(Adw.NavigationPage):
         header_box.set_halign(Gtk.Align.CENTER)
         header_box.set_margin_bottom(16)
         
-        header_icon = Gtk.Image.new_from_icon_name("help-browser-symbolic")
+        header_icon = Gtk.Image.new_from_icon_name("tux-help-browser-symbolic")
         header_icon.set_pixel_size(64)
         header_box.append(header_icon)
         
@@ -956,13 +956,13 @@ class ISOCreatorPage(Adw.NavigationPage):
         row = Adw.ActionRow()
         row.set_title("Distribution")
         row.set_subtitle(f"{self.distro.name}")
-        row.add_prefix(Gtk.Image.new_from_icon_name("computer-symbolic"))
+        row.add_prefix(Gtk.Image.new_from_icon_name("tux-computer-symbolic"))
         group.add(row)
         
         # penguins-eggs version
         self.eggs_version_row = Adw.ActionRow()
         self.eggs_version_row.set_title("penguins-eggs")
-        self.eggs_version_row.add_prefix(Gtk.Image.new_from_icon_name("application-x-executable-symbolic"))
+        self.eggs_version_row.add_prefix(Gtk.Image.new_from_icon_name("tux-application-x-executable-symbolic"))
         self._update_eggs_version_row()
         group.add(self.eggs_version_row)
         
@@ -975,11 +975,11 @@ class ISOCreatorPage(Adw.NavigationPage):
             row = Adw.ActionRow()
             row.set_title("Disk Space")
             row.set_subtitle(f"{free_gb} GB free of {total_gb} GB")
-            row.add_prefix(Gtk.Image.new_from_icon_name("drive-harddisk-symbolic"))
+            row.add_prefix(Gtk.Image.new_from_icon_name("tux-drive-harddisk-symbolic"))
             
             # Warning if low space
             if free_gb < 20:
-                warning = Gtk.Image.new_from_icon_name("dialog-warning-symbolic")
+                warning = Gtk.Image.new_from_icon_name("tux-dialog-warning-symbolic")
                 warning.add_css_class("warning")
                 row.add_suffix(warning)
             
@@ -992,7 +992,7 @@ class ISOCreatorPage(Adw.NavigationPage):
         row = Adw.ActionRow()
         row.set_title("Output Location")
         row.set_subtitle(f"{home}/eggs")
-        row.add_prefix(Gtk.Image.new_from_icon_name("folder-symbolic"))
+        row.add_prefix(Gtk.Image.new_from_icon_name("tux-folder-symbolic"))
         group.add(row)
     
     def _update_eggs_version_row(self):
@@ -1053,7 +1053,7 @@ class ISOCreatorPage(Adw.NavigationPage):
             "Clean: Perfect for sharing. Clone: Personal backup. "
             "Encrypted: Secure backup with LUKS encryption."
         )
-        info_row.add_prefix(Gtk.Image.new_from_icon_name("dialog-information-symbolic"))
+        info_row.add_prefix(Gtk.Image.new_from_icon_name("tux-dialog-information-symbolic"))
         group.add(info_row)
     
     def _build_compression_section(self, content: Gtk.Box):

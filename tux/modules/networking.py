@@ -2251,7 +2251,7 @@ class NetworkingPage(Adw.NavigationPage):
         hosts_row = Adw.ActionRow()
         hosts_row.set_title("Edit Hosts File")
         hosts_row.set_subtitle("Manage local hostname mappings")
-        hosts_row.add_prefix(Gtk.Image.new_from_icon_name("text-x-generic-symbolic"))
+        hosts_row.add_prefix(Gtk.Image.new_from_icon_name("tux-text-x-generic-symbolic"))
         hosts_row.set_activatable(True)
         hosts_row.connect("activated", self._on_edit_hosts)
         hosts_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
