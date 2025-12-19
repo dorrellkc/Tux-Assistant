@@ -58,6 +58,12 @@ from .hardware import (
     check_hardinfo2_available
 )
 
+from .logger import (
+    setup_logging,
+    get_logger,
+    is_debug_enabled
+)
+
 __all__ = [
     # Distro
     'DistroFamily', 'DistroInfo', 'get_distro', 'get_family',
@@ -73,5 +79,7 @@ __all__ = [
     'Package', 'InstallResult', 'PackageManager', 'get_package_manager',
     # Hardware
     'HardwareInfo', 'get_hardware_info', 'get_hardinfo2_package_name',
-    'is_aur_package', 'launch_hardinfo2', 'check_hardinfo2_available'
+    'is_aur_package', 'launch_hardinfo2', 'check_hardinfo2_available',
+    # Logging
+    'setup_logging', 'get_logger', 'is_debug_enabled'
 ]
