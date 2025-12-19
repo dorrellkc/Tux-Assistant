@@ -4117,66 +4117,143 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
             de_row.add_suffix(badge)
         
         group.add(de_row)
-        
-        # Current theme
-        current_gtk = self.theme_manager.get_current_gtk_theme()
+
+        # Current theme - show appropriate info based on desktop
         current_icon = self.theme_manager.get_current_icon_theme()
-        
+
         theme_row = Adw.ActionRow()
         theme_row.set_title("Current Theme")
-        theme_row.set_subtitle(f"GTK: {current_gtk or 'Unknown'} • Icons: {current_icon or 'Unknown'}")
+
+        if self.desktop.desktop_env == DesktopEnv.KDE:
+            current_plasma = self.theme_manager.get_current_plasma_theme()
+            theme_row.set_subtitle(f"Plasma: {current_plasma or 'Unknown'} • Icons: {current_icon or 'Unknown'}")
+        else:
+            current_gtk = self.theme_manager.get_current_gtk_theme()
+            theme_row.set_subtitle(f"GTK: {current_gtk or 'Unknown'} • Icons: {current_icon or 'Unknown'}")
+
         theme_row.add_prefix(Gtk.Image.new_from_icon_name("tux-applications-graphics-symbolic"))
         group.add(theme_row)
-        
+
         return group
     
     def _create_appearance_section(self) -> Gtk.Widget:
-        """Create appearance section."""
+        """Create appearance section with desktop-appropriate theming options."""
         group = Adw.PreferencesGroup()
         group.set_title("Appearance")
-        group.set_description("Themes, icons, and cursors")
-        
-        # GTK Themes
-        gtk_row = Adw.ActionRow()
-        gtk_row.set_title("GTK Themes")
-        gtk_row.set_subtitle(f"{len(GTK_THEMES)} themes available")
-        gtk_row.set_activatable(True)
-        gtk_row.add_prefix(Gtk.Image.new_from_icon_name("tux-preferences-desktop-theme-symbolic"))
-        gtk_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
-        gtk_row.connect("activated", self.on_gtk_themes)
-        group.add(gtk_row)
-        
-        # Icon Themes
-        icon_row = Adw.ActionRow()
-        icon_row.set_title("Icon Themes")
-        icon_row.set_subtitle(f"{len(ICON_THEMES)} icon packs available")
-        icon_row.set_activatable(True)
-        icon_row.add_prefix(Gtk.Image.new_from_icon_name("tux-folder-symbolic"))
-        icon_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
-        icon_row.connect("activated", self.on_icon_themes)
-        group.add(icon_row)
-        
-        # Cursor Themes
-        cursor_row = Adw.ActionRow()
-        cursor_row.set_title("Cursor Themes")
-        cursor_row.set_subtitle(f"{len(CURSOR_THEMES)} cursor themes available")
-        cursor_row.set_activatable(True)
-        cursor_row.add_prefix(Gtk.Image.new_from_icon_name("tux-input-mouse-symbolic"))
-        cursor_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
-        cursor_row.connect("activated", self.on_cursor_themes)
-        group.add(cursor_row)
-        
-        # Theme Presets
-        presets_row = Adw.ActionRow()
-        presets_row.set_title("Theme Presets")
-        presets_row.set_subtitle(f"{len(THEME_PRESETS)} complete looks (macOS, Nordic, Dracula...)")
-        presets_row.set_activatable(True)
-        presets_row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-default-symbolic"))
-        presets_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
-        presets_row.connect("activated", self.on_theme_presets)
-        group.add(presets_row)
-        
+
+        # KDE Plasma uses different theming system than GTK
+        if self.desktop.desktop_env == DesktopEnv.KDE:
+            group.set_description("Plasma themes, icons, and cursors")
+
+            # Global Themes (Look and Feel)
+            global_row = Adw.ActionRow()
+            global_row.set_title("Global Themes")
+            global_row.set_subtitle(f"{len(KDE_GLOBAL_THEMES)} Plasma themes available")
+            global_row.set_activatable(True)
+            global_row.add_prefix(Gtk.Image.new_from_icon_name("tux-preferences-desktop-theme-symbolic"))
+            global_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
+            global_row.connect("activated", self.on_kde_global_themes)
+            group.add(global_row)
+
+            # Kvantum Themes (Qt Application Styling)
+            kvantum_row = Adw.ActionRow()
+            kvantum_row.set_title("Application Style (Kvantum)")
+            kvantum_row.set_subtitle(f"{len(KVANTUM_THEMES)} Qt themes available")
+            kvantum_row.set_activatable(True)
+            kvantum_row.add_prefix(Gtk.Image.new_from_icon_name("tux-applications-graphics-symbolic"))
+            kvantum_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
+            kvantum_row.connect("activated", self.on_kvantum_themes)
+            group.add(kvantum_row)
+
+            # Color Schemes - launch KDE System Settings
+            color_row = Adw.ActionRow()
+            color_row.set_title("Color Schemes")
+            color_row.set_subtitle("Open KDE System Settings for color customization")
+            color_row.set_activatable(True)
+            color_row.add_prefix(Gtk.Image.new_from_icon_name("tux-preferences-color-symbolic"))
+            color_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
+            color_row.connect("activated", self._on_kde_color_schemes)
+            group.add(color_row)
+
+            # Icon Themes (uses plasma-apply-icon-theme)
+            icon_row = Adw.ActionRow()
+            icon_row.set_title("Icon Themes")
+            icon_row.set_subtitle(f"{len(ICON_THEMES)} icon packs available")
+            icon_row.set_activatable(True)
+            icon_row.add_prefix(Gtk.Image.new_from_icon_name("tux-folder-symbolic"))
+            icon_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
+            icon_row.connect("activated", self.on_icon_themes)
+            group.add(icon_row)
+
+            # Cursor Themes (uses plasma-apply-cursortheme)
+            cursor_row = Adw.ActionRow()
+            cursor_row.set_title("Cursor Themes")
+            cursor_row.set_subtitle(f"{len(CURSOR_THEMES)} cursor themes available")
+            cursor_row.set_activatable(True)
+            cursor_row.add_prefix(Gtk.Image.new_from_icon_name("tux-input-mouse-symbolic"))
+            cursor_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
+            cursor_row.connect("activated", self.on_cursor_themes)
+            group.add(cursor_row)
+
+        else:
+            # GTK-based desktops (GNOME, XFCE, Cinnamon, MATE, etc.)
+            group.set_description("Themes, icons, and cursors")
+
+            # GTK Themes
+            gtk_row = Adw.ActionRow()
+            gtk_row.set_title("GTK Themes")
+            gtk_row.set_subtitle(f"{len(GTK_THEMES)} themes available")
+            gtk_row.set_activatable(True)
+            gtk_row.add_prefix(Gtk.Image.new_from_icon_name("tux-preferences-desktop-theme-symbolic"))
+            gtk_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
+            gtk_row.connect("activated", self.on_gtk_themes)
+            group.add(gtk_row)
+
+            # Icon Themes
+            icon_row = Adw.ActionRow()
+            icon_row.set_title("Icon Themes")
+            icon_row.set_subtitle(f"{len(ICON_THEMES)} icon packs available")
+            icon_row.set_activatable(True)
+            icon_row.add_prefix(Gtk.Image.new_from_icon_name("tux-folder-symbolic"))
+            icon_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
+            icon_row.connect("activated", self.on_icon_themes)
+            group.add(icon_row)
+
+            # Cursor Themes
+            cursor_row = Adw.ActionRow()
+            cursor_row.set_title("Cursor Themes")
+            cursor_row.set_subtitle(f"{len(CURSOR_THEMES)} cursor themes available")
+            cursor_row.set_activatable(True)
+            cursor_row.add_prefix(Gtk.Image.new_from_icon_name("tux-input-mouse-symbolic"))
+            cursor_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
+            cursor_row.connect("activated", self.on_cursor_themes)
+            group.add(cursor_row)
+
+            # Theme Presets
+            presets_row = Adw.ActionRow()
+            presets_row.set_title("Theme Presets")
+            presets_row.set_subtitle(f"{len(THEME_PRESETS)} complete looks (macOS, Nordic, Dracula...)")
+            presets_row.set_activatable(True)
+            presets_row.add_prefix(Gtk.Image.new_from_icon_name("tux-emblem-default-symbolic"))
+            presets_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
+            presets_row.connect("activated", self.on_theme_presets)
+            group.add(presets_row)
+
         return group
+
+    def _on_kde_color_schemes(self, row):
+        """Open KDE System Settings to the Colors page."""
+        import subprocess
+        try:
+            # Try to open System Settings directly to Colors module
+            subprocess.Popen(['systemsettings', 'kcm_colors'], start_new_session=True)
+        except FileNotFoundError:
+            try:
+                # Fallback: try systemsettings5
+                subprocess.Popen(['systemsettings5', 'kcm_colors'], start_new_session=True)
+            except FileNotFoundError:
+                # Last resort: just open System Settings
+                subprocess.Popen(['systemsettings'], start_new_session=True)
     
     def _create_gnome_extensions_section(self) -> Gtk.Widget:
         """Create GNOME extensions section."""
@@ -4330,43 +4407,19 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
         widgets_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         widgets_row.connect("activated", self.on_kde_widgets)
         widgets_group.add(widgets_row)
-        box.append(widgets_group)
-        
-        # Global Themes section
-        themes_group = Adw.PreferencesGroup()
-        themes_group.set_title("KDE Themes")
-        themes_group.set_description("Global themes and Kvantum styles")
-        
-        global_row = Adw.ActionRow()
-        global_row.set_title("Global Themes")
-        global_row.set_subtitle(f"{len(KDE_GLOBAL_THEMES)} themes available")
-        global_row.set_activatable(True)
-        global_row.add_prefix(Gtk.Image.new_from_icon_name("tux-preferences-desktop-theme-symbolic"))
-        global_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
-        global_row.connect("activated", self.on_kde_global_themes)
-        themes_group.add(global_row)
-        
-        kvantum_row = Adw.ActionRow()
-        kvantum_row.set_title("Kvantum Themes")
-        kvantum_row.set_subtitle(f"{len(KVANTUM_THEMES)} Qt themes available")
-        kvantum_row.set_activatable(True)
-        kvantum_row.add_prefix(Gtk.Image.new_from_icon_name("tux-applications-graphics-symbolic"))
-        kvantum_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
-        kvantum_row.connect("activated", self.on_kvantum_themes)
-        themes_group.add(kvantum_row)
-        
-        # Install Kvantum Manager
+
+        # Install Kvantum Manager (tool for applying Qt themes)
         kvantum_install = Adw.ActionRow()
         kvantum_install.set_title("Install Kvantum Manager")
-        kvantum_install.set_subtitle("Required to apply Kvantum themes")
+        kvantum_install.set_subtitle("Required to apply Kvantum themes from Appearance section")
         kvantum_install.set_activatable(True)
         kvantum_install.add_prefix(Gtk.Image.new_from_icon_name("tux-system-software-install-symbolic"))
         kvantum_install.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
         kvantum_install.connect("activated", self.on_install_kvantum)
-        themes_group.add(kvantum_install)
-        
-        box.append(themes_group)
-        
+        widgets_group.add(kvantum_install)
+
+        box.append(widgets_group)
+
         # KWin Scripts section
         kwin_group = Adw.PreferencesGroup()
         kwin_group.set_title("KWin Scripts")
