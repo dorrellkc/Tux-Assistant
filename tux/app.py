@@ -37,8 +37,12 @@ except (ValueError, ImportError):
         pass  # WebKit not available
 
 from . import __version__, __app_name__, __app_id__
-from .core import get_distro, get_desktop
+from .core import get_distro, get_desktop, setup_logging, get_logger
 from .modules import ModuleRegistry, ModuleCategory, create_icon_simple
+
+# Initialize logging
+setup_logging()
+log = get_logger('tux.app')
 
 # Weather widget (feature flag - set to False to disable)
 ENABLE_WEATHER_WIDGET = True
@@ -136,7 +140,7 @@ class TuxAssistantApp(Adw.Application):
                         
         except Exception as e:
             # Non-fatal - log but continue
-            print(f"Warning: Could not register icon theme: {e}")
+            log.warning(f"Could not register icon theme: {e}")
     
     def _register_bundled_icons_fallback(self):
         """Fallback for development/source installs where theme isn't pre-built.
@@ -239,7 +243,7 @@ Context=Emblems
                 
         except Exception as e:
             # Non-fatal
-            print(f"Warning: Could not create runtime icon theme: {e}")
+            log.warning(f"Could not create runtime icon theme: {e}")
     
     def load_css(self):
         """Load custom CSS for improved readability from external file."""
@@ -293,7 +297,7 @@ Context=Emblems
                             self.window._show_browser_docked()
                         self.window._browser_new_tab(url)
                 except Exception as e:
-                    print(f"Error opening URL {url}: {e}")
+                    log.error(f"Error opening URL {url}: {e}")
             self._pending_urls.clear()
         return False  # Don't repeat
     
@@ -610,7 +614,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         self.sponsorblock_enabled = browser_settings.get('sponsorblock_enabled', True)
         self.sponsorblock_categories = browser_settings.get('sponsorblock_categories', 
             'sponsor,selfpromo,interaction,intro,outro')  # Default categories to skip
-        print(f"[SponsorBlock] Initialized: enabled={self.sponsorblock_enabled}, categories={self.sponsorblock_categories}")
+        log.debug(f"SponsorBlock initialized: enabled={self.sponsorblock_enabled}, categories={self.sponsorblock_categories}")
         
         # Read Aloud (TTS) settings
         self.tts_voice = browser_settings.get('tts_voice', 'en-US-ChristopherNeural')
@@ -618,7 +622,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
         self.tts_process = None  # Track running TTS process
         self.tts_playing = False  # Track if TTS is actively playing/generating
         self.tts_audio_file = None  # Track temp audio file
-        print(f"[TTS] Initialized: voice={self.tts_voice}, rate={self.tts_rate}")
+        log.debug(f"TTS initialized: voice={self.tts_voice}, rate={self.tts_rate}")
         
         # Initialize content filter store for ad blocking
         self.content_filter_store = None
@@ -677,7 +681,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
                     
         except Exception as e:
             # Non-fatal - window will show without custom icon
-            print(f"Warning: Could not set window icon: {e}")
+            log.warning(f"Could not set window icon: {e}")
     
     def _on_window_key_pressed(self, controller, keyval, keycode, state):
         """Handle window-level keyboard shortcuts."""
@@ -805,7 +809,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             with open(self.BOOKMARKS_FILE, 'w') as f:
                 json.dump(data, f, indent=2)
         except Exception as e:
-            print(f"Failed to save bookmarks: {e}")
+            log.error(f"Failed to save bookmarks: {e}")
     
     # ==================== History Database Methods ====================
     
@@ -843,7 +847,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             threading.Thread(target=self._check_history_maintenance, daemon=True).start()
             
         except Exception as e:
-            print(f"Failed to initialize history database: {e}")
+            log.error(f"Failed to initialize history database: {e}")
     
     def _record_history(self, url, title=None):
         """Record a page visit to history with frecency update."""
@@ -887,7 +891,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             conn.close()
             
         except Exception as e:
-            print(f"Failed to record history: {e}")
+            log.error(f"Failed to record history: {e}")
     
     def _calculate_frecency(self, visit_count, last_visit, first_visit):
         """
@@ -990,7 +994,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             return results
             
         except Exception as e:
-            print(f"Failed to get history: {e}")
+            log.error(f"Failed to get history: {e}")
             return []
     
     def _get_history_suggestions(self, query, limit=8):
@@ -1018,7 +1022,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             return results
             
         except Exception as e:
-            print(f"Failed to get history suggestions: {e}")
+            log.error(f"Failed to get history suggestions: {e}")
             return []
     
     def _get_history_count(self):
@@ -1043,7 +1047,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             conn.close()
             return True
         except Exception as e:
-            print(f"Failed to delete history entry: {e}")
+            log.error(f"Failed to delete history entry: {e}")
             return False
     
     def _delete_history_entries(self, urls):
@@ -1056,7 +1060,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             conn.close()
             return True
         except Exception as e:
-            print(f"Failed to delete history entries: {e}")
+            log.error(f"Failed to delete history entries: {e}")
             return False
     
     def _clear_history(self, time_range='all'):
@@ -1090,7 +1094,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             
             return True
         except Exception as e:
-            print(f"Failed to clear history: {e}")
+            log.error(f"Failed to clear history: {e}")
             return False
     
     def _check_history_maintenance(self):
@@ -1111,7 +1115,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
                 self._cleanup_old_history()
                 
         except Exception as e:
-            print(f"History maintenance check failed: {e}")
+            log.error(f"History maintenance check failed: {e}")
     
     def _cleanup_old_history(self):
         """Delete oldest entries to stay within limits."""
@@ -1140,7 +1144,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             self._vacuum_history_db()
             
         except Exception as e:
-            print(f"History cleanup failed: {e}")
+            log.error(f"History cleanup failed: {e}")
     
     def _vacuum_history_db(self):
         """Reclaim space in history database (run in background thread)."""
@@ -1149,7 +1153,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
             conn.execute('VACUUM')
             conn.close()
         except Exception as e:
-            print(f"History VACUUM failed: {e}")
+            log.error(f"History VACUUM failed: {e}")
     
     # ==================== End History Methods ====================
     
@@ -1314,7 +1318,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
                 self.weather_widget = WeatherWidget(self)
                 header.pack_end(self.weather_widget)
             except Exception as e:
-                print(f"Weather widget failed to load: {e}")
+                log.warning(f"Weather widget failed to load: {e}")
         
         # Claude AI toggle button (only if WebKit available)
         if WEBKIT_AVAILABLE:
@@ -1489,7 +1493,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
                 except Exception:
                     pass
         except Exception as e:
-            print(f"WebKit setup error: {e}")
+            log.error(f"WebKit setup error: {e}")
             self.claude_webview = WebKit.WebView()
         
         self.claude_webview.set_vexpand(True)
@@ -1600,7 +1604,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
                     decision.ignore()
                     return True
                 except Exception as e:
-                    print(f"Failed to open external link: {e}")
+                    log.error(f"Failed to open external link: {e}")
                     decision.use()
                     return False
         
@@ -2389,7 +2393,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
                 
                 self.browser_network_session.connect('download-started', self._on_browser_download_started)
         except Exception as e:
-            print(f"Browser network session error: {e}")
+            log.error(f"Browser network session error: {e}")
         
         # Tab bar container
         tab_bar_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
@@ -2646,7 +2650,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
                 print_operation = WebKit.PrintOperation.new(webview)
                 print_operation.run_dialog(self)
             except Exception as e:
-                print(f"Print error: {e}")
+                log.error(f"Print error: {e}")
                 self.show_toast("Print not available")
     
     def _hide_find_bar(self):
@@ -2753,7 +2757,7 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
                 except Exception:
                     pass
         except Exception as e:
-            print(f"WebView creation error: {e}")
+            log.error(f"WebView creation error: {e}")
             webview = WebKit.WebView()
         
         webview.set_vexpand(True)
@@ -2824,9 +2828,9 @@ class TuxAssistantWindow(Adw.ApplicationWindow):
                 settings = webview.get_settings()
                 if hasattr(settings, 'set_enable_write_console_messages_to_stdout'):
                     settings.set_enable_write_console_messages_to_stdout(True)
-                    print("[Browser] Console output enabled")
+                    log.debug("Browser console output enabled")
         except Exception as e:
-            print(f"[Browser] Console capture setup failed: {e}")
+            log.debug(f"Browser console capture setup failed: {e}")
         
         # Close bookmarks popover when clicking on webview
         click_controller = Gtk.GestureClick()
@@ -3156,7 +3160,7 @@ user_pref("browser.shell.checkDefaultBrowser", false);
             subprocess.Popen(cmd, start_new_session=True)
             print(f"[Tux Browser] Launched Firefox with profile: {profile_dir}")
         except Exception as e:
-            print(f"[Tux Browser] Error launching Firefox: {e}")
+            log.error(f"Error launching Firefox: {e}")
             dialog = Adw.MessageDialog(
                 transient_for=self,
                 heading="Launch Failed",
@@ -5489,7 +5493,7 @@ user_pref("browser.shell.checkDefaultBrowser", false);
                 self.show_toast("All bookmarks already exist")
                 
         except Exception as e:
-            print(f"Import error: {e}")
+            log.error(f"Import error: {e}")
             self.show_toast("Failed to import bookmarks")
     
     def _on_bookmarks_export(self, button):
@@ -5552,7 +5556,7 @@ user_pref("browser.shell.checkDefaultBrowser", false);
             self.show_toast(f"Exported {len(self.bookmarks)} bookmarks")
             
         except Exception as e:
-            print(f"Export error: {e}")
+            log.error(f"Export error: {e}")
             self.show_toast("Failed to export bookmarks")
     
     def _on_bookmarks_clear_all(self, button):
@@ -6580,7 +6584,7 @@ user_pref("browser.shell.checkDefaultBrowser", false);
         if selected in self.tts_voice_map:
             self.tts_voice = self.tts_voice_map[selected]
             self._save_browser_settings(tts_voice=self.tts_voice)
-            print(f"[TTS] Voice changed to: {self.tts_voice}")
+            log.debug(f"TTS voice changed to: {self.tts_voice}")
     
     def _on_tts_speed_changed(self, dropdown, pspec):
         """Handle TTS speed change."""
@@ -6588,7 +6592,7 @@ user_pref("browser.shell.checkDefaultBrowser", false);
         if selected in self.tts_speed_map:
             self.tts_rate = self.tts_speed_map[selected]
             self._save_browser_settings(tts_rate=self.tts_rate)
-            print(f"[TTS] Speed changed to: {self.tts_rate}")
+            log.debug(f"TTS speed changed to: {self.tts_rate}")
     
     def _on_tts_test_clicked(self, button):
         """Test the TTS voice."""
@@ -7024,7 +7028,7 @@ user_pref("browser.shell.checkDefaultBrowser", false);
                     pass
                     
         except Exception as e:
-            print(f"[TTS] Context menu error: {e}")
+            log.error(f"TTS context menu error: {e}")
         
         return False  # Don't block the menu
     
@@ -7051,7 +7055,7 @@ user_pref("browser.shell.checkDefaultBrowser", false);
                 else:
                     self._show_toast("No text selected")
             except Exception as e:
-                print(f"[TTS] Error: {e}")
+                log.error(f"TTS error: {e}")
                 self._show_toast("Could not get selected text")
         
         try:
@@ -7060,7 +7064,7 @@ user_pref("browser.shell.checkDefaultBrowser", false);
             elif hasattr(webview, 'run_javascript'):
                 webview.run_javascript(js_code, None, on_js_result, None)
         except Exception as e:
-            print(f"[TTS] JavaScript execution failed: {e}")
+            log.error(f"TTS JavaScript execution failed: {e}")
 
     def _on_read_article_clicked(self, button):
         """Handle read article button click."""
@@ -7150,7 +7154,7 @@ user_pref("browser.shell.checkDefaultBrowser", false);
                 else:
                     self._show_toast("Could not find article content")
             except Exception as e:
-                print(f"[TTS] Article extraction error: {e}")
+                log.error(f"TTS article extraction error: {e}")
                 self._show_toast("Could not extract article")
         
         try:
@@ -7159,7 +7163,7 @@ user_pref("browser.shell.checkDefaultBrowser", false);
             elif hasattr(webview, 'run_javascript'):
                 webview.run_javascript(js_code, None, on_js_result, None)
         except Exception as e:
-            print(f"[TTS] JavaScript execution failed: {e}")
+            log.error(f"TTS JavaScript execution failed: {e}")
 
     def _on_clear_history_clicked(self, button):
         """Clear browsing history."""
@@ -7703,7 +7707,7 @@ user_pref("browser.shell.checkDefaultBrowser", false);
             )
             content_manager.add_style_sheet(user_style)
         except Exception as e:
-            print(f"Failed to apply ad-blocking CSS: {e}")
+            log.error(f"Failed to apply ad-blocking CSS: {e}")
     
     def _on_browser_load_changed(self, webview, event):
         """Update URL bar when page loads and record history."""
@@ -7731,7 +7735,7 @@ user_pref("browser.shell.checkDefaultBrowser", false);
             
             # Inject SponsorBlock for ALL YouTube pages (handles SPA navigation internally)
             if self.sponsorblock_enabled and uri and 'youtube.com' in uri:
-                print(f"[SponsorBlock] YouTube page detected, injecting monitor script")
+                log.debug("SponsorBlock: YouTube page detected, injecting monitor script")
                 self._inject_sponsorblock_monitor(webview)
     
     def _inject_ad_hiding_js(self, webview):
@@ -7907,7 +7911,7 @@ user_pref("browser.shell.checkDefaultBrowser", false);
             self.pages_protected += 1
             self._update_blocked_count()
         except Exception as e:
-            print(f"JS injection failed: {e}")
+            log.error(f"JS injection failed: {e}")
     
     def _inject_sponsorblock_monitor(self, webview):
         """Inject self-contained SponsorBlock monitor for YouTube."""
@@ -8242,9 +8246,9 @@ user_pref("browser.shell.checkDefaultBrowser", false);
                 webview.evaluate_javascript(js_code, -1, None, None, None, None, None)
             elif hasattr(webview, 'run_javascript'):
                 webview.run_javascript(js_code, None, None, None)
-            print("[SponsorBlock] Monitor script injected")
+            log.debug("SponsorBlock: Monitor script injected")
         except Exception as e:
-            print(f"[SponsorBlock] Injection failed: {e}")
+            log.error(f"SponsorBlock injection failed: {e}")
     
     def _on_browser_create_window(self, webview, navigation_action):
         """Handle links that try to open new windows - open in default browser."""
@@ -8256,7 +8260,7 @@ user_pref("browser.shell.checkDefaultBrowser", false);
                 import subprocess
                 subprocess.Popen(['xdg-open', uri])
             except Exception as e:
-                print(f"Failed to open link: {e}")
+                log.error(f"Failed to open link: {e}")
         
         return None  # Don't create new window in webview
     
