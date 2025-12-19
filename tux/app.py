@@ -47,208 +47,8 @@ ENABLE_WEATHER_WIDGET = True
 APP_ID = __app_id__
 APP_VERSION = __version__
 
-# CSS for larger, more readable UI
-APP_CSS = """
-/* Base font size increase - affects everything */
-window {
-    font-size: 11pt;
-}
-
-/* Larger titles in preference groups */
-.title {
-    font-size: 12pt;
-    font-weight: bold;
-}
-
-/* Row titles slightly larger */
-row > box > box > label.title {
-    font-size: 11pt;
-}
-
-/* Row subtitles readable */
-row > box > box > label.subtitle {
-    font-size: 10pt;
-}
-
-/* Regular text buttons more readable - but not checkboxes */
-button.text-button,
-button.suggested-action,
-button.destructive-action,
-button.flat {
-    font-size: 11pt;
-    min-height: 36px;
-}
-
-/* Large pill buttons (like Create ISO) */
-button.pill {
-    min-height: 42px;
-    padding: 10px 24px;
-    font-size: 12pt;
-}
-
-/* Action rows taller for easier clicking */
-row.activatable {
-    min-height: 60px;
-}
-
-/* Preference group titles */
-preferencesgroup > label {
-    font-size: 13pt;
-    font-weight: bold;
-}
-
-/* Status page titles */
-statuspage > box > label.title {
-    font-size: 18pt;
-}
-
-/* Status page descriptions */
-statuspage > box > label.description {
-    font-size: 11pt;
-}
-
-/* Entry rows */
-entry, .entry {
-    font-size: 11pt;
-    min-height: 36px;
-}
-
-/* Combo rows */
-comborow > box {
-    min-height: 40px;
-}
-
-/* Switch rows */
-switchrow {
-    min-height: 56px;
-}
-
-/* Card content padding */
-.card {
-    padding: 4px;
-}
-
-/* Terminal/output text */
-textview {
-    font-size: 10pt;
-}
-
-/* Navigation/header bar */
-headerbar {
-    min-height: 48px;
-}
-
-headerbar > windowtitle > .title {
-    font-size: 13pt;
-    font-weight: bold;
-}
-
-/* Labels in content areas */
-label {
-    font-size: 11pt;
-}
-
-/* Dim labels slightly smaller but still readable */
-label.dim-label {
-    font-size: 10pt;
-}
-
-/* Link buttons */
-linkbutton > label {
-    font-size: 11pt;
-}
-
-/* Message dialogs */
-messagedialog .heading {
-    font-size: 14pt;
-}
-
-messagedialog .body {
-    font-size: 11pt;
-}
-
-/* TuxFetch sidebar styles */
-.tux-sidebar {
-    background-color: @window_bg_color;
-    border-left: 1px solid alpha(@borders, 0.5);
-}
-
-.tux-sidebar-scrollable {
-    background-color: darker(@window_bg_color);
-}
-
-.tux-fetch-sidebar {
-    background-color: transparent;
-}
-
-.tux-fetch-sidebar label {
-    font-size: 10pt;
-}
-
-.tux-fetch-sidebar .dim-label {
-    opacity: 0.7;
-}
-
-.sidebar-separator {
-    margin-top: 8px;
-    margin-bottom: 0px;
-}
-
-.tux-fetch-bar {
-    min-height: 4px;
-    border-radius: 2px;
-}
-
-.tux-fetch-bar trough {
-    min-height: 4px;
-    background-color: alpha(@borders, 0.3);
-}
-
-.tux-fetch-bar progress {
-    min-height: 4px;
-    background-color: @accent_bg_color;
-}
-
-/* Tux Tunes sidebar button */
-.tux-tunes-sidebar-btn {
-    padding: 12px 16px;
-    border-radius: 12px;
-    background: linear-gradient(135deg, alpha(@accent_bg_color, 0.2), alpha(@accent_bg_color, 0.1));
-    border: 1px solid alpha(@accent_bg_color, 0.3);
-}
-
-.tux-tunes-sidebar-btn:hover {
-    background: linear-gradient(135deg, alpha(@accent_bg_color, 0.3), alpha(@accent_bg_color, 0.2));
-}
-
-.tux-tunes-icon {
-    font-size: 24pt;
-}
-
-.tux-tunes-title {
-    font-size: 11pt;
-    font-weight: bold;
-}
-
-.tux-tunes-subtitle {
-    font-size: 9pt;
-}
-
-/* Global Claude AI panel */
-.claude-global-panel {
-    background-color: @card_bg_color;
-    border-left: 1px solid alpha(@borders, 0.5);
-}
-
-.claude-toggle-btn {
-    min-width: 36px;
-    min-height: 36px;
-}
-
-.claude-toggle-btn.active {
-    background-color: alpha(@accent_bg_color, 0.3);
-}
-"""
+# CSS file path (loaded from external file for easier maintenance)
+CSS_FILE = os.path.join(os.path.dirname(__file__), 'styles.css')
 
 
 class TuxAssistantApp(Adw.Application):
@@ -442,10 +242,18 @@ Context=Emblems
             print(f"Warning: Could not create runtime icon theme: {e}")
     
     def load_css(self):
-        """Load custom CSS for improved readability."""
+        """Load custom CSS for improved readability from external file."""
         css_provider = Gtk.CssProvider()
-        css_provider.load_from_data(APP_CSS.encode())
-        
+
+        # Load from external CSS file
+        if os.path.exists(CSS_FILE):
+            css_provider.load_from_path(CSS_FILE)
+        else:
+            # Fallback: try installed location
+            installed_css = '/opt/tux-assistant/tux/styles.css'
+            if os.path.exists(installed_css):
+                css_provider.load_from_path(installed_css)
+
         Gtk.StyleContext.add_provider_for_display(
             Gdk.Display.get_default(),
             css_provider,
