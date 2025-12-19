@@ -4170,7 +4170,7 @@ class DesktopEnhancementsPage(Adw.NavigationPage):
             color_row.set_title("Color Schemes")
             color_row.set_subtitle("Open KDE System Settings for color customization")
             color_row.set_activatable(True)
-            color_row.add_prefix(Gtk.Image.new_from_icon_name("tux-preferences-color-symbolic"))
+            color_row.add_prefix(Gtk.Image.new_from_icon_name("tux-preferences-other-symbolic"))
             color_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
             color_row.connect("activated", self._on_kde_color_schemes)
             group.add(color_row)
