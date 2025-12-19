@@ -2,6 +2,151 @@
 
 All notable changes to Tux Assistant will be documented in this file.
 
+## [0.9.7] - 2025-11-30
+
+### Added - Git Workflow Help Guide
+
+Added "Setup & Help" button to Developer Tools that opens a comprehensive guide:
+
+- **Quick Start** - 6-step GUI workflow for updates
+- **Troubleshooting** - Common errors and fixes (SSH issues, commit errors)
+- **Manual Commands** - Full terminal fallback command
+
+No more guessing how to use the Git features!
+
+## [0.9.6] - 2025-11-30
+
+### Changed - Module Organization
+
+Moved Gaming and Desktop Enhancements to Setup and Configuration category for better flow:
+
+**Setup and Configuration now contains:**
+1. Setup Tools
+2. Software Center
+3. Gaming
+4. Desktop Enhancements
+
+## [0.9.5] - 2025-11-30
+
+### Fixed - SSH Agent Persistence
+
+Fixed the SSH unlock button so it actually works for subsequent git operations:
+
+**The Problem:**
+- SSH agent was started in a terminal, but when that terminal closed, 
+  the SSH_AUTH_SOCK environment variable was lost
+- Tux Assistant's git operations never saw the unlocked key
+
+**The Fix:**
+- SSH unlock now saves agent info to `~/.ssh/agent-info`
+- All git operations (push, pull, Build & Push to Main) now load this file
+- Terminal-based git commands also source the agent info
+- SSH status check now properly detects unlocked keys
+
+**How it works now:**
+1. Click "Unlock SSH Key" → enter passphrase → terminal closes
+2. Agent info is saved to a file that persists
+3. Push/Pull buttons read this file and use the running agent
+4. Works until you log out or reboot
+
+## [0.9.4] - 2025-11-30
+
+### Changed - Category Order
+
+Reordered the main menu categories for better user flow:
+
+1. Setup and Configuration
+2. Media and Entertainment
+3. Network and Sharing
+4. System and Maintenance
+5. Server and Cloud
+6. Developer Tools
+
+## [0.9.3] - 2025-11-30
+
+### Fixed - Ubuntu/GNOME Compatibility
+
+Bug fixes discovered during Ubuntu 24.04 testing on Lenovo T450s:
+
+**Install to System fixes:**
+- tux-helper now properly installed to /usr/bin/ (fixes Samba install, codecs, etc.)
+- App icon now displays correctly in GNOME app launcher
+- Icon installed to standard hicolor theme location
+- Desktop database updated after install
+
+**Browse Network fix:**
+- GNOME/Nautilus now opens network browser correctly
+- Uses `network:///` for GNOME, `smb://` for KDE/others
+- Previously did nothing on Ubuntu due to `smb://` not working in Nautilus
+
+**Tux Tunes dependency fix:**
+- Added GStreamer pbutils packages for Ubuntu (gir1.2-gst-plugins-base-1.0)
+- Tux Tunes no longer crashes on first launch
+
+**Smart Recording dependencies:**
+- Added pip, numpy, pydub to all distro package lists
+- Attempts to install librosa via pip after package install
+- Reduces "Smart recording limited" warnings
+
+**Packages added to dependency installer:**
+- apt: gir1.2-gst-plugins-base-1.0, gstreamer1.0-plugins-good, python3-pip, python3-numpy, python3-pydub
+- pacman: gst-plugins-base, gst-plugins-good, python-pip, python-numpy, python-pydub  
+- dnf: gstreamer1-plugins-base, gstreamer1-plugins-good, python3-pip, python3-numpy, python3-pydub
+- zypper: gstreamer-plugins-base, gstreamer-plugins-good, python3-pip, python3-numpy, python3-pydub
+
+## [0.9.2] - 2025-11-30
+
+### Added - SSH Key Unlock Button
+
+The Tux Assistant Development panel now includes an "Unlock SSH Key" button:
+
+**How it works:**
+1. Click "Unlock SSH Key" 
+2. A terminal opens asking for your SSH passphrase
+3. Enter passphrase once
+4. SSH key stays unlocked for your session
+5. Push/Pull buttons now work without prompting!
+
+**Features:**
+- Shows current SSH status (Locked/Unlocked)
+- Auto-detects your SSH key (ed25519, RSA, or ECDSA)
+- Works with gnome-terminal, konsole, xfce4-terminal, and others
+- Status auto-refreshes after unlocking
+- Refresh button also updates SSH status
+
+**Why this helps:**
+- Git push/pull from GUI apps can't show the passphrase prompt
+- Unlocking once at start of session makes all git operations smooth
+- No more stuck terminals waiting for invisible passphrase input!
+
+## [0.9.1] - 2025-11-30
+
+### Added - Tux Assistant Development Panel
+
+New section in Developer Tools specifically for Tux Assistant development:
+
+**Features:**
+- Shows current branch (dev/main) with status indicator
+- Detects uncommitted changes
+- **Pull Dev** - Switches to dev branch and pulls latest
+- **Push Dev** - Prompts for commit message, commits, and pushes to dev
+- **Build .run Only** - Runs build-run.sh to create distributable
+- **Build & Push to Main** - Full release workflow:
+  1. Builds .run file
+  2. Switches to main branch  
+  3. Copies .run to releases/
+  4. Commits and pushes to main
+  5. Switches back to dev
+
+**Auto-detection:**
+- Only appears if Tux Assistant repo found at:
+  - ~/Development/Tux-Assistant
+  - ~/Development/tux-assistant
+  - ~/Projects/Tux-Assistant
+  - Or similar locations
+
+This makes the git workflow much easier - no more remembering terminal commands!
+
 ## [0.9.0] - 2025-11-30 - First Public Release 🎉
 
 ### Overview
