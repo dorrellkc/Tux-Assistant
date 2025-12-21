@@ -972,9 +972,9 @@ package() {{
     cp -r assets "$pkgdir/opt/tux-assistant/"
     cp -r data "$pkgdir/opt/tux-assistant/"
     cp -r scripts "$pkgdir/opt/tux-assistant/"
-    install -Dm755 tux-assistant.py "$pkgdir/opt/tux-assistant/"
-    install -Dm755 tux-helper "$pkgdir/opt/tux-assistant/"
-    install -Dm644 VERSION "$pkgdir/opt/tux-assistant/"
+    install -Dm755 tux-assistant.py "$pkgdir/opt/tux-assistant/tux-assistant.py"
+    install -Dm755 tux-helper "$pkgdir/opt/tux-assistant/tux-helper"
+    install -Dm644 VERSION "$pkgdir/opt/tux-assistant/VERSION"
     
     # Install Tux Assistant launcher script
     install -dm755 "$pkgdir/usr/bin"
