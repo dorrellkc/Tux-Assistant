@@ -2,6 +2,13 @@
 
 All notable changes to Tux Assistant will be documented in this file.
 
+## [1.0.7] - 2025-12-21
+
+### Fixed - Build System
+- **Fixed .run installer build** - scripts/build-run.sh was empty, now creates proper self-extracting installer
+- **Added GitHub Actions workflow** - Automatically builds .deb, 2 RPMs (Fedora/openSUSE), and .run on release
+- **Fixed package building** - All package formats now build correctly from GitHub releases
+
 ## [1.0.6] - 2025-12-21
 
 ### Fixed - Network Sharing & File Manager Integration
