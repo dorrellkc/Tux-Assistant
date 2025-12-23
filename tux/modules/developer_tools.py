@@ -1199,12 +1199,11 @@ post_remove() {
         """Generate post-install script for DEB/RPM packages."""
         return '''#!/bin/bash
 # Post-install script for Tux Assistant
-# The tux-icons theme is pre-built in the package - just update caches
+# Icons are installed to hicolor - just update caches
 
-# Update icon caches
+# Update icon cache
 if [ -x /usr/bin/gtk-update-icon-cache ]; then
     gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor 2>/dev/null || true
-    gtk-update-icon-cache -q -t -f /opt/tux-assistant/icons/tux-icons 2>/dev/null || true
 fi
 
 # Update desktop database
@@ -2079,14 +2078,18 @@ exit 0
                 f.write(self._generate_post_install_script())
             os.chmod(post_install, 0o755)
             
-            # Copy icons
+            # Copy icons - install with BOTH naming conventions for cross-DE compatibility
             icon_svg = os.path.join(src_dir, "assets", "icon.svg")
             tunes_svg = os.path.join(src_dir, "assets", "tux-tunes.svg")
             for size in ["16x16", "24x24", "32x32", "48x48", "64x64", "128x128", "256x256", "scalable"]:
                 icon_dir = os.path.join(icon_base, size, "apps")
                 os.makedirs(icon_dir, exist_ok=True)
+                # Standard names
                 shutil.copy2(icon_svg, os.path.join(icon_dir, "tux-assistant.svg"))
                 shutil.copy2(tunes_svg, os.path.join(icon_dir, "tux-tunes.svg"))
+                # Reverse-DNS names (used by .desktop files, needed for KDE)
+                shutil.copy2(icon_svg, os.path.join(icon_dir, "com.tuxassistant.app.svg"))
+                shutil.copy2(tunes_svg, os.path.join(icon_dir, "com.tuxassistant.tuxtunes.svg"))
             
             # ═══ INSTALL SYMBOLIC ICONS TO HICOLOR ═══
             # This is the key - hicolor is inherited by ALL themes
@@ -2103,63 +2106,6 @@ exit 0
                         icon_path = os.path.join(icons_src, icon_file)
                         shutil.copy2(icon_path, os.path.join(hicolor_actions, icon_file))
                         shutil.copy2(icon_path, os.path.join(hicolor_status, icon_file))
-            
-            # ═══ ALSO CREATE SELF-CONTAINED TUX-ICONS THEME (backup) ═══
-            # For development/source installs where hicolor may not be writable
-            theme_dir = os.path.join(opt_dir, "icons", "tux-icons")
-            theme_scalable = os.path.join(theme_dir, "scalable")
-            
-            # Create theme directory structure
-            for subdir in ["apps", "actions", "status"]:
-                os.makedirs(os.path.join(theme_scalable, subdir), exist_ok=True)
-            
-            # Create index.theme file
-            index_theme_content = """[Icon Theme]
-Name=Tux Icons
-Comment=Self-contained icon theme for Tux Assistant
-Inherits=hicolor,Adwaita,breeze,gnome
-Directories=scalable/apps,scalable/actions,scalable/status
-
-[scalable/apps]
-Size=64
-MinSize=16
-MaxSize=512
-Type=Scalable
-Context=Applications
-
-[scalable/actions]
-Size=64
-MinSize=16
-MaxSize=512
-Type=Scalable
-Context=Actions
-
-[scalable/status]
-Size=64
-MinSize=16
-MaxSize=512
-Type=Scalable
-Context=Status
-"""
-            with open(os.path.join(theme_dir, "index.theme"), "w") as f:
-                f.write(index_theme_content)
-            
-            # Copy app icons to theme
-            shutil.copy2(icon_svg, os.path.join(theme_scalable, "apps", "tux-assistant.svg"))
-            shutil.copy2(icon_svg, os.path.join(theme_scalable, "apps", "com.tuxassistant.app.svg"))
-            shutil.copy2(tunes_svg, os.path.join(theme_scalable, "apps", "tux-tunes.svg"))
-            shutil.copy2(tunes_svg, os.path.join(theme_scalable, "apps", "com.tuxassistant.tuxtunes.svg"))
-            
-            # Copy all tux-*.svg symbolic icons to actions and status
-            icons_src = os.path.join(src_dir, "assets", "icons")
-            if os.path.isdir(icons_src):
-                for icon_file in os.listdir(icons_src):
-                    if icon_file.startswith("tux-") and icon_file.endswith(".svg"):
-                        icon_path = os.path.join(icons_src, icon_file)
-                        # Copy to all contexts for maximum compatibility
-                        shutil.copy2(icon_path, os.path.join(theme_scalable, "actions", icon_file))
-                        shutil.copy2(icon_path, os.path.join(theme_scalable, "status", icon_file))
-                        shutil.copy2(icon_path, os.path.join(theme_scalable, "apps", icon_file))
             
             # Build with fpm
             output_file = os.path.join(output_dir, pkg["filename"])

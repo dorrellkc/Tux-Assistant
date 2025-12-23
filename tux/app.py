@@ -90,160 +90,26 @@ class TuxAssistantApp(Adw.Application):
         # GLib.idle_add(self._check_audio_dependencies)
     
     def _register_bundled_icons(self):
-        """Register our self-contained icon theme with GTK.
+        """Icons are installed to hicolor - no custom registration needed.
         
-        BULLETPROOF ICON STRATEGY:
-        1. Prepend our self-contained theme directory to GTK's search path FIRST
-        2. This ensures our icons are found before any system theme
-        3. Works on GNOME, KDE, XFCE, Cinnamon, MATE - any DE
-        4. Works on Wayland and X11
-        5. Doesn't rely on system hicolor or any other theme
+        Our tux-* icons are installed to /usr/share/icons/hicolor/scalable/actions/
+        which is part of the standard icon theme hierarchy. GTK finds them automatically.
+        
+        Previous versions tried to register a custom theme which actually BROKE
+        icon discovery. Keeping this method as a no-op for compatibility.
         """
-        # Possible locations for our self-contained icon theme
-        theme_locations = [
-            # Installed to /opt (standard install)
-            '/opt/tux-assistant/icons',
-            # Running from source (development)
-            os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'icons'),
-            # Flatpak or alternative install locations
-            '/usr/share/tux-assistant/icons',
-            os.path.expanduser('~/.local/share/tux-assistant/icons'),
-        ]
-        
-        # Find where our theme actually is
-        theme_base = None
-        for location in theme_locations:
-            theme_dir = os.path.join(location, 'tux-icons')
-            if os.path.isdir(theme_dir) and os.path.isfile(os.path.join(theme_dir, 'index.theme')):
-                theme_base = location
-                break
-        
-        if not theme_base:
-            # Theme not found - fall back to old behavior for dev/source installs
-            self._register_bundled_icons_fallback()
-            return
-        
-        try:
-            # Get the icon theme for the current display
-            display = Gdk.Display.get_default()
-            if display:
-                icon_theme = Gtk.IconTheme.get_for_display(display)
-                
-                # PREPEND our theme directory - this makes it highest priority
-                # GTK will search here FIRST before any system themes
-                icon_theme.add_search_path(theme_base)
-                
-                # Also add standard paths as fallback (in case any icon is missing)
-                for fallback_path in ['/usr/share/icons', os.path.expanduser('~/.local/share/icons')]:
-                    if os.path.isdir(fallback_path):
-                        icon_theme.add_search_path(fallback_path)
-                        
-        except Exception as e:
-            # Non-fatal - log but continue
-            log.warning(f"Could not register icon theme: {e}")
+        pass  # Icons work from hicolor - don't mess with theme paths
     
     def _register_bundled_icons_fallback(self):
-        """Fallback for development/source installs where theme isn't pre-built.
+        """Fallback for development - no longer needed.
         
-        Creates a minimal runtime theme from the assets/icons directory.
+        For development/source installs, run 'sudo ./install.sh' which
+        installs icons to /usr/share/icons/hicolor/ where GTK finds them.
+        
+        Previous versions created runtime themes and manipulated search paths
+        which actually broke icon discovery on some systems.
         """
-        # Find the bundled icons directory
-        icon_dirs = [
-            '/opt/tux-assistant/assets/icons',
-            os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'assets', 'icons'),
-            '/usr/share/tux-assistant/assets/icons',
-            os.path.expanduser('~/.local/share/tux-assistant/assets/icons'),
-        ]
-        
-        bundled_dir = None
-        for icon_dir in icon_dirs:
-            if os.path.isdir(icon_dir):
-                bundled_dir = icon_dir
-                break
-        
-        if not bundled_dir:
-            return
-        
-        # Create a runtime icon theme directory structure
-        runtime_theme_dir = os.path.expanduser('~/.local/share/icons/tux-runtime')
-        
-        try:
-            # Create all necessary subdirectories
-            for subdir in ['scalable/actions', 'scalable/status', 'scalable/apps', 'scalable/emblems']:
-                os.makedirs(os.path.join(runtime_theme_dir, subdir), exist_ok=True)
-            
-            # Create index.theme file
-            index_path = os.path.join(runtime_theme_dir, 'index.theme')
-            with open(index_path, 'w') as f:
-                f.write("""[Icon Theme]
-Name=Tux Runtime
-Comment=Runtime icons for Tux Assistant
-Inherits=hicolor,Adwaita,breeze
-Directories=scalable/actions,scalable/status,scalable/apps,scalable/emblems
-
-[scalable/actions]
-Size=64
-MinSize=16
-MaxSize=512
-Type=Scalable
-Context=Actions
-
-[scalable/status]
-Size=64
-MinSize=16
-MaxSize=512
-Type=Scalable
-Context=Status
-
-[scalable/apps]
-Size=64
-MinSize=16
-MaxSize=512
-Type=Scalable
-Context=Applications
-
-[scalable/emblems]
-Size=64
-MinSize=16
-MaxSize=512
-Type=Scalable
-Context=Emblems
-""")
-            
-            # Copy icons to all relevant contexts
-            import shutil
-            for icon_file in os.listdir(bundled_dir):
-                if icon_file.endswith('.svg'):
-                    src = os.path.join(bundled_dir, icon_file)
-                    for subdir in ['scalable/actions', 'scalable/status', 'scalable/apps', 'scalable/emblems']:
-                        dst = os.path.join(runtime_theme_dir, subdir, icon_file)
-                        if not os.path.exists(dst):
-                            shutil.copy2(src, dst)
-            
-            # Also copy main app icons with both names
-            assets_dir = os.path.dirname(bundled_dir)
-            main_icons = [
-                ('icon.svg', ['tux-assistant.svg', 'com.tuxassistant.app.svg']),
-                ('tux-tunes.svg', ['tux-tunes.svg', 'com.tuxassistant.tuxtunes.svg']),
-                ('tux-browser.svg', ['tux-browser.svg', 'com.tuxassistant.tuxbrowser.svg']),
-            ]
-            for src_name, dst_names in main_icons:
-                src = os.path.join(assets_dir, src_name)
-                if os.path.isfile(src):
-                    for dst_name in dst_names:
-                        dst = os.path.join(runtime_theme_dir, 'scalable/apps', dst_name)
-                        if not os.path.exists(dst):
-                            shutil.copy2(src, dst)
-            
-            # Add to icon theme search path
-            display = Gdk.Display.get_default()
-            if display:
-                icon_theme = Gtk.IconTheme.get_for_display(display)
-                icon_theme.add_search_path(os.path.expanduser('~/.local/share/icons'))
-                
-        except Exception as e:
-            # Non-fatal
-            log.warning(f"Could not create runtime icon theme: {e}")
+        pass  # Run sudo ./install.sh for development
     
     def load_css(self):
         """Load custom CSS for improved readability from external file."""
