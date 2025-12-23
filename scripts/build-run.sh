@@ -53,8 +53,9 @@ chmod +x "$BUILD_DIR/tux-assistant.py"
 chmod +x "$BUILD_DIR/tux-helper"
 chmod +x "$BUILD_DIR/scripts/"* 2>/dev/null || true
 
-# Create the .run file
-OUTPUT="tux-assistant-v${VERSION}.run"
+# Create dist directory and the .run file
+mkdir -p dist
+OUTPUT="dist/Tux-Assistant-v${VERSION}.run"
 echo "Creating $OUTPUT..."
 
 makeself --notemp \
