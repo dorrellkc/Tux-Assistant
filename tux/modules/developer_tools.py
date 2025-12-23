@@ -2088,9 +2088,24 @@ exit 0
                 shutil.copy2(icon_svg, os.path.join(icon_dir, "tux-assistant.svg"))
                 shutil.copy2(tunes_svg, os.path.join(icon_dir, "tux-tunes.svg"))
             
-            # ═══ CREATE SELF-CONTAINED TUX-ICONS THEME ═══
-            # This is the key fix - packages ship with a complete icon theme
-            # so GTK can properly color symbolic icons for light/dark mode
+            # ═══ INSTALL SYMBOLIC ICONS TO HICOLOR ═══
+            # This is the key - hicolor is inherited by ALL themes
+            # User keeps their theme, GTK falls back to hicolor for tux-* icons
+            hicolor_actions = os.path.join(icon_base, "scalable", "actions")
+            hicolor_status = os.path.join(icon_base, "scalable", "status")
+            os.makedirs(hicolor_actions, exist_ok=True)
+            os.makedirs(hicolor_status, exist_ok=True)
+            
+            icons_src = os.path.join(src_dir, "assets", "icons")
+            if os.path.isdir(icons_src):
+                for icon_file in os.listdir(icons_src):
+                    if icon_file.startswith("tux-") and icon_file.endswith(".svg"):
+                        icon_path = os.path.join(icons_src, icon_file)
+                        shutil.copy2(icon_path, os.path.join(hicolor_actions, icon_file))
+                        shutil.copy2(icon_path, os.path.join(hicolor_status, icon_file))
+            
+            # ═══ ALSO CREATE SELF-CONTAINED TUX-ICONS THEME (backup) ═══
+            # For development/source installs where hicolor may not be writable
             theme_dir = os.path.join(opt_dir, "icons", "tux-icons")
             theme_scalable = os.path.join(theme_dir, "scalable")
             
