@@ -1200,9 +1200,67 @@ post_remove() {
         return '''#!/bin/bash
 # Post-install script for Tux Assistant
 
-# Update icon cache
+# Create tux-icons theme for proper symbolic icon coloring (light/dark mode)
+THEME_DIR="/opt/tux-assistant/icons/tux-icons"
+THEME_SCALABLE="$THEME_DIR/scalable"
+
+# Create theme directory structure
+mkdir -p "$THEME_SCALABLE/apps"
+mkdir -p "$THEME_SCALABLE/actions"
+mkdir -p "$THEME_SCALABLE/status"
+
+# Create index.theme
+cat > "$THEME_DIR/index.theme" << 'THEME_EOF'
+[Icon Theme]
+Name=Tux Icons
+Comment=Self-contained icon theme for Tux Assistant
+Inherits=hicolor,Adwaita,breeze,gnome
+Directories=scalable/apps,scalable/actions,scalable/status
+
+[scalable/apps]
+Size=64
+MinSize=16
+MaxSize=512
+Type=Scalable
+Context=Applications
+
+[scalable/actions]
+Size=64
+MinSize=16
+MaxSize=512
+Type=Scalable
+Context=Actions
+
+[scalable/status]
+Size=64
+MinSize=16
+MaxSize=512
+Type=Scalable
+Context=Status
+THEME_EOF
+
+# Copy all tux-* icons to the theme
+ICONS_SRC="/opt/tux-assistant/assets/icons"
+if [ -d "$ICONS_SRC" ]; then
+    for icon in "$ICONS_SRC"/tux-*.svg; do
+        if [ -f "$icon" ]; then
+            basename=$(basename "$icon")
+            # Copy to actions (most are action icons)
+            cp "$icon" "$THEME_SCALABLE/actions/" 2>/dev/null || true
+            # Also copy to status for status icons
+            cp "$icon" "$THEME_SCALABLE/status/" 2>/dev/null || true
+        fi
+    done
+fi
+
+# Copy app icons
+cp /opt/tux-assistant/assets/icon.svg "$THEME_SCALABLE/apps/tux-assistant.svg" 2>/dev/null || true
+cp /opt/tux-assistant/assets/tux-tunes.svg "$THEME_SCALABLE/apps/tux-tunes.svg" 2>/dev/null || true
+
+# Update icon caches
 if [ -x /usr/bin/gtk-update-icon-cache ]; then
     gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor 2>/dev/null || true
+    gtk-update-icon-cache -q -t -f "$THEME_DIR" 2>/dev/null || true
 fi
 
 # Update desktop database
@@ -1383,7 +1441,7 @@ exit 0
                 "name": "openSUSE",
                 "ext": "rpm",
                 "filename": f"tux-assistant-{version}-1.suse.x86_64.rpm",
-                "deps": "python3, python3-gobject, gtk4, typelib-1_0-Gtk-4_0, libadwaita, typelib-1_0-Adw-1, typelib-1_0-WebKit2-4_1, gstreamer, gstreamer-plugins-base, gstreamer-plugins-good"
+                "deps": "python3, python3-gobject, gtk4, typelib-1_0-Gtk-4_0, libadwaita, typelib-1_0-Adw-1, typelib-1_0-WebKit2-4_1, typelib-1_0-Gst-1_0, typelib-1_0-GstPbutils-1_0, gstreamer, gstreamer-plugins-base, gstreamer-plugins-good"
             }
         }
         
@@ -1916,7 +1974,7 @@ exit 0
                         "name": "openSUSE",
                         "ext": "rpm",
                         "filename": f"tux-assistant-{version}-1.suse.x86_64.rpm",
-                        "deps": "python3, python3-gobject, gtk4, typelib-1_0-Gtk-4_0, libadwaita, typelib-1_0-Adw-1, typelib-1_0-WebKit2-4_1, gstreamer, gstreamer-plugins-base, gstreamer-plugins-good",
+                        "deps": "python3, python3-gobject, gtk4, typelib-1_0-Gtk-4_0, libadwaita, typelib-1_0-Adw-1, typelib-1_0-WebKit2-4_1, typelib-1_0-Gst-1_0, typelib-1_0-GstPbutils-1_0, gstreamer, gstreamer-plugins-base, gstreamer-plugins-good",
                         "iteration": "1.suse"
                     }
                 ]
@@ -2250,7 +2308,7 @@ exit 0
                          "iteration": "1.fc"},
                         {"type": "suse", "name": "openSUSE RPM", "ext": "rpm",
                          "filename": f"tux-assistant-{version}-1.suse.x86_64.rpm",
-                         "deps": "python3, python3-gobject, gtk4, typelib-1_0-Gtk-4_0, libadwaita, typelib-1_0-Adw-1, typelib-1_0-WebKit2-4_1, gstreamer, gstreamer-plugins-base, gstreamer-plugins-good",
+                         "deps": "python3, python3-gobject, gtk4, typelib-1_0-Gtk-4_0, libadwaita, typelib-1_0-Adw-1, typelib-1_0-WebKit2-4_1, typelib-1_0-Gst-1_0, typelib-1_0-GstPbutils-1_0, gstreamer, gstreamer-plugins-base, gstreamer-plugins-good",
                          "iteration": "1.suse"}
                     ]
                     
