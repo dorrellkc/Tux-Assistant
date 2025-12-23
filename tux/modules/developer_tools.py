@@ -1371,19 +1371,19 @@ exit 0
                 "name": "Debian/Ubuntu",
                 "ext": "deb",
                 "filename": f"tux-assistant_{version}_amd64.deb",
-                "deps": "python3, python3-gi, gir1.2-gtk-4.0, libadwaita-1-0, gir1.2-adw-1, gstreamer1.0-tools, gir1.2-gst-plugins-base-1.0, gstreamer1.0-plugins-good"
+                "deps": "python3, python3-gi, gir1.2-gtk-4.0, libadwaita-1-0, gir1.2-adw-1, gir1.2-webkit2-4.1, gstreamer1.0-tools, gir1.2-gst-plugins-base-1.0, gstreamer1.0-plugins-good"
             },
             "fedora": {
                 "name": "Fedora",
                 "ext": "rpm",
                 "filename": f"tux-assistant-{version}-1.fc.x86_64.rpm",
-                "deps": "python3, python3-gobject, gtk4, libadwaita, gstreamer1, gstreamer1-plugins-base, gstreamer1-plugins-good"
+                "deps": "python3, python3-gobject, gtk4, libadwaita, webkit2gtk4.1, gstreamer1, gstreamer1-plugins-base, gstreamer1-plugins-good"
             },
             "suse": {
                 "name": "openSUSE",
                 "ext": "rpm",
                 "filename": f"tux-assistant-{version}-1.suse.x86_64.rpm",
-                "deps": "python3, python3-gobject, gtk4, typelib-1_0-Gtk-4_0, libadwaita, typelib-1_0-Adw-1, gstreamer, gstreamer-plugins-base, gstreamer-plugins-good"
+                "deps": "python3, python3-gobject, gtk4, typelib-1_0-Gtk-4_0, libadwaita, typelib-1_0-Adw-1, typelib-1_0-WebKit2-4_1, gstreamer, gstreamer-plugins-base, gstreamer-plugins-good"
             }
         }
         
@@ -1900,7 +1900,7 @@ exit 0
                         "name": "Debian/Ubuntu",
                         "ext": "deb",
                         "filename": f"tux-assistant_{version}_amd64.deb",
-                        "deps": "python3, python3-gi, gir1.2-gtk-4.0, libadwaita-1-0, gir1.2-adw-1, gstreamer1.0-tools, gir1.2-gst-plugins-base-1.0, gstreamer1.0-plugins-good",
+                        "deps": "python3, python3-gi, gir1.2-gtk-4.0, libadwaita-1-0, gir1.2-adw-1, gir1.2-webkit2-4.1, gstreamer1.0-tools, gir1.2-gst-plugins-base-1.0, gstreamer1.0-plugins-good",
                         "iteration": None
                     },
                     {
@@ -1908,7 +1908,7 @@ exit 0
                         "name": "Fedora",
                         "ext": "rpm",
                         "filename": f"tux-assistant-{version}-1.fc.x86_64.rpm",
-                        "deps": "python3, python3-gobject, gtk4, libadwaita, gstreamer1, gstreamer1-plugins-base, gstreamer1-plugins-good",
+                        "deps": "python3, python3-gobject, gtk4, libadwaita, webkit2gtk4.1, gstreamer1, gstreamer1-plugins-base, gstreamer1-plugins-good",
                         "iteration": "1.fc"
                     },
                     {
@@ -1916,7 +1916,7 @@ exit 0
                         "name": "openSUSE",
                         "ext": "rpm",
                         "filename": f"tux-assistant-{version}-1.suse.x86_64.rpm",
-                        "deps": "python3, python3-gobject, gtk4, typelib-1_0-Gtk-4_0, libadwaita, typelib-1_0-Adw-1, gstreamer, gstreamer-plugins-base, gstreamer-plugins-good",
+                        "deps": "python3, python3-gobject, gtk4, typelib-1_0-Gtk-4_0, libadwaita, typelib-1_0-Adw-1, typelib-1_0-WebKit2-4_1, gstreamer, gstreamer-plugins-base, gstreamer-plugins-good",
                         "iteration": "1.suse"
                     }
                 ]
@@ -2242,15 +2242,15 @@ exit 0
                     pkg_configs = [
                         {"type": "deb", "name": "DEB", "ext": "deb",
                          "filename": f"tux-assistant_{version}_amd64.deb",
-                         "deps": "python3, python3-gi, gir1.2-gtk-4.0, libadwaita-1-0, gir1.2-adw-1, gstreamer1.0-tools, gir1.2-gst-plugins-base-1.0, gstreamer1.0-plugins-good",
+                         "deps": "python3, python3-gi, gir1.2-gtk-4.0, libadwaita-1-0, gir1.2-adw-1, gir1.2-webkit2-4.1, gstreamer1.0-tools, gir1.2-gst-plugins-base-1.0, gstreamer1.0-plugins-good",
                          "iteration": None},
                         {"type": "fedora", "name": "Fedora RPM", "ext": "rpm",
                          "filename": f"tux-assistant-{version}-1.fc.x86_64.rpm",
-                         "deps": "python3, python3-gobject, gtk4, libadwaita, gstreamer1, gstreamer1-plugins-base, gstreamer1-plugins-good",
+                         "deps": "python3, python3-gobject, gtk4, libadwaita, webkit2gtk4.1, gstreamer1, gstreamer1-plugins-base, gstreamer1-plugins-good",
                          "iteration": "1.fc"},
                         {"type": "suse", "name": "openSUSE RPM", "ext": "rpm",
                          "filename": f"tux-assistant-{version}-1.suse.x86_64.rpm",
-                         "deps": "python3, python3-gobject, gtk4, typelib-1_0-Gtk-4_0, libadwaita, typelib-1_0-Adw-1, gstreamer, gstreamer-plugins-base, gstreamer-plugins-good",
+                         "deps": "python3, python3-gobject, gtk4, typelib-1_0-Gtk-4_0, libadwaita, typelib-1_0-Adw-1, typelib-1_0-WebKit2-4_1, gstreamer, gstreamer-plugins-base, gstreamer-plugins-good",
                          "iteration": "1.suse"}
                     ]
                     
