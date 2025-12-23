@@ -417,12 +417,12 @@ class SambaManager:
     def get_samba_packages(self) -> list[str]:
         """Get required Samba packages for this distro."""
         packages = {
-            DistroFamily.ARCH: ["samba", "smbclient", "cifs-utils"],
-            DistroFamily.DEBIAN: ["samba", "smbclient", "cifs-utils"],
-            DistroFamily.FEDORA: ["samba", "samba-client", "cifs-utils"],
-            DistroFamily.OPENSUSE: ["samba", "samba-client", "cifs-utils"],
+            DistroFamily.ARCH: ["samba", "smbclient", "cifs-utils", "gvfs-smb"],
+            DistroFamily.DEBIAN: ["samba", "smbclient", "cifs-utils", "gvfs-backends"],
+            DistroFamily.FEDORA: ["samba", "samba-client", "cifs-utils", "gvfs-smb"],
+            DistroFamily.OPENSUSE: ["samba", "samba-client", "cifs-utils", "gvfs-backend-samba"],
         }
-        return packages.get(self.distro.family, ["samba", "smbclient"])
+        return packages.get(self.distro.family, ["samba", "smbclient", "gvfs-smb"])
     
     def get_discovery_packages(self) -> list[str]:
         """Get network discovery packages (avahi/mDNS and wsdd for Windows)."""
@@ -587,6 +587,43 @@ class SambaManager:
                 },
                 {
                     "type": "command",
+                    "name": "Create usershares directory",
+                    "command": "mkdir -p /var/lib/samba/usershares"
+                },
+                {
+                    "type": "command",
+                    "name": "Create sambashare group",
+                    "command": "groupadd -r sambashare 2>/dev/null || true"
+                },
+                {
+                    "type": "command",
+                    "name": "Set usershares ownership",
+                    "command": "chown root:sambashare /var/lib/samba/usershares"
+                },
+                {
+                    "type": "command",
+                    "name": "Set usershares permissions",
+                    "command": "chmod 1770 /var/lib/samba/usershares"
+                },
+                {
+                    "type": "command",
+                    "name": "Add current user to sambashare group",
+                    "command": f"usermod -a -G sambashare {os.environ.get('USER', 'user')}"
+                },
+                {
+                    "type": "command",
+                    "name": "Enable usershares in smb.conf",
+                    "command": """grep -q 'usershare path' /etc/samba/smb.conf 2>/dev/null || cat >> /etc/samba/smb.conf << 'EOF'
+
+# Enable usershares for file manager integration
+usershare path = /var/lib/samba/usershares
+usershare max shares = 100
+usershare allow guests = yes
+usershare owner only = yes
+EOF"""
+                },
+                {
+                    "type": "command",
                     "name": "Enable Samba service",
                     "command": f"systemctl enable --now {service}"
                 },
@@ -594,6 +631,11 @@ class SambaManager:
                     "type": "command",
                     "name": "Enable NetBIOS service", 
                     "command": "systemctl enable --now nmb || systemctl enable --now nmbd || true"
+                },
+                {
+                    "type": "command",
+                    "name": "Enable Avahi for network discovery",
+                    "command": "systemctl enable --now avahi-daemon 2>/dev/null || true"
                 }
             ]
         }
@@ -629,6 +671,12 @@ class SambaManager:
    # Security settings
    security = user
    map to guest = Bad User
+   
+   # Enable usershares for file manager integration (Nemo, Nautilus, Dolphin, etc.)
+   usershare path = /var/lib/samba/usershares
+   usershare max shares = 100
+   usershare allow guests = yes
+   usershare owner only = yes
    
    # Performance
    socket options = TCP_NODELAY IPTOS_LOWDELAY
@@ -682,6 +730,32 @@ class SambaManager:
                     "type": "command",
                     "name": "Create optimized smb.conf",
                     "command": f"echo '{escaped_conf}' > /etc/samba/smb.conf"
+                },
+                # Set up usershare infrastructure for file manager integration
+                {
+                    "type": "command",
+                    "name": "Create usershares directory",
+                    "command": "mkdir -p /var/lib/samba/usershares"
+                },
+                {
+                    "type": "command",
+                    "name": "Create sambashare group",
+                    "command": "groupadd -r sambashare 2>/dev/null || true"
+                },
+                {
+                    "type": "command",
+                    "name": "Set usershares ownership",
+                    "command": "chown root:sambashare /var/lib/samba/usershares"
+                },
+                {
+                    "type": "command",
+                    "name": "Set usershares permissions",
+                    "command": "chmod 1770 /var/lib/samba/usershares"
+                },
+                {
+                    "type": "command",
+                    "name": "Add current user to sambashare group",
+                    "command": f"usermod -a -G sambashare {os.environ.get('USER', 'user')}"
                 },
                 # Enable Avahi for mDNS
                 {

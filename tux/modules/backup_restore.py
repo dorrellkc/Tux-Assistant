@@ -291,7 +291,7 @@ DEFAULT_BACKUP_FOLDERS = [
 
 @register_module(
     id="backup_restore",
-    name="Backup & Restore",
+    name="Backup &amp; Restore",
     description="File backup and system snapshots",
     icon="tux-drive-harddisk-symbolic",
     category=ModuleCategory.SYSTEM,

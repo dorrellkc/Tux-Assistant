@@ -9079,6 +9079,13 @@ echo "Installation complete!"
             dialog.add_response("ok", "OK")
             dialog.present()
     
+    def _get_icon_with_fallback(self, primary_icon: str, fallback_icon: str) -> Gtk.Image:
+        """Try primary icon, fallback to standard if not found"""
+        theme = Gtk.IconTheme.get_for_display(Gdk.Display.get_default())
+        if theme.has_icon(primary_icon):
+            return Gtk.Image.new_from_icon_name(primary_icon)
+        return Gtk.Image.new_from_icon_name(fallback_icon)
+    
     def create_system_info_banner(self) -> Gtk.Widget:
         """Create a banner showing system information."""
         from .core import get_hardware_info, check_hardinfo2_available
@@ -9090,21 +9097,21 @@ echo "Installation complete!"
         distro_row = Adw.ActionRow()
         distro_row.set_title("Distribution")
         distro_row.set_subtitle(f"{self.distro.name} ({self.distro.family.value})")
-        distro_row.add_prefix(Gtk.Image.new_from_icon_name("tux-computer-symbolic"))
+        distro_row.add_prefix(self._get_icon_with_fallback("tux-computer-symbolic", "computer-symbolic"))
         banner.add(distro_row)
         
         # Desktop row
         desktop_row = Adw.ActionRow()
         desktop_row.set_title("Desktop Environment")
         desktop_row.set_subtitle(f"{self.desktop.display_name} ({self.desktop.session_type})")
-        desktop_row.add_prefix(Gtk.Image.new_from_icon_name("tux-video-display-symbolic"))
+        desktop_row.add_prefix(self._get_icon_with_fallback("tux-video-display-symbolic", "video-display-symbolic"))
         banner.add(desktop_row)
         
         # Package manager row
         pkg_row = Adw.ActionRow()
         pkg_row.set_title("Package Manager")
         pkg_row.set_subtitle(self.distro.package_manager)
-        pkg_row.add_prefix(Gtk.Image.new_from_icon_name("tux-package-x-generic-symbolic"))
+        pkg_row.add_prefix(self._get_icon_with_fallback("tux-package-x-generic-symbolic", "package-x-generic-symbolic"))
         banner.add(pkg_row)
         
         # Hardware info row
@@ -9125,13 +9132,13 @@ echo "Installation complete!"
         
         hw_subtitle = " • ".join(hw_parts) if hw_parts else "Click for details"
         hw_row.set_subtitle(hw_subtitle)
-        hw_row.add_prefix(Gtk.Image.new_from_icon_name("tux-computer-symbolic"))
+        hw_row.add_prefix(self._get_icon_with_fallback("tux-computer-symbolic", "computer-symbolic"))
         
         # Add button based on hardinfo2 availability
         if hardware.hardinfo2_available:
             # Launch hardinfo2 button
             launch_btn = Gtk.Button()
-            launch_btn.set_icon_name("tux-go-next-symbolic")
+            launch_btn.set_icon_name("go-next-symbolic")  # Use standard icon directly
             launch_btn.set_valign(Gtk.Align.CENTER)
             launch_btn.add_css_class("flat")
             launch_btn.set_tooltip_text("Open hardinfo2 for detailed hardware info")
@@ -9156,8 +9163,8 @@ echo "Installation complete!"
         fetch_row = Adw.ActionRow()
         fetch_row.set_title("System Fetch")
         fetch_row.set_subtitle("Show detailed system info in terminal (fastfetch)")
-        fetch_row.add_prefix(Gtk.Image.new_from_icon_name("tux-utilities-terminal-symbolic"))
-        fetch_row.add_suffix(Gtk.Image.new_from_icon_name("tux-go-next-symbolic"))
+        fetch_row.add_prefix(self._get_icon_with_fallback("tux-utilities-terminal-symbolic", "utilities-terminal-symbolic"))
+        fetch_row.add_suffix(self._get_icon_with_fallback("tux-go-next-symbolic", "go-next-symbolic"))
         fetch_row.set_activatable(True)
         fetch_row.connect("activated", self._on_fastfetch_clicked)
         banner.add(fetch_row)

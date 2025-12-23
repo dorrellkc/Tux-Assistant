@@ -2,6 +2,26 @@
 
 All notable changes to Tux Assistant will be documented in this file.
 
+## [1.0.6] - 2025-12-21
+
+### Fixed - Network Sharing & File Manager Integration
+- **Fixed network browsing in all file managers** - Nemo, Nautilus, Dolphin, Thunar, Caja now properly browse SMB shares
+- **Added gvfs-smb packages** - Required for file manager network integration:
+  - Arch/CachyOS/Manjaro: `gvfs-smb`
+  - Debian/Ubuntu: `gvfs-backends`
+  - Fedora: `gvfs-smb`
+  - openSUSE: `gvfs-backend-samba`
+- **Fixed usershare infrastructure** - Resolves "net usershare: usershares are currently disabled" error
+  - Creates `/var/lib/samba/usershares/` directory
+  - Creates `sambashare` group
+  - Adds user to sambashare group
+  - Sets proper permissions (1770)
+  - Adds usershare configuration to smb.conf
+- **Enabled avahi-daemon in basic Samba install** - Network discovery works immediately
+- **Updated smb.conf template** - Includes usershare settings by default
+
+**Impact:** Network sharing now "just works" across all desktop environments. Click Network in your file manager → see shares. Shares created in Tux Assistant appear everywhere.
+
 ## [0.9.279] - 2025-12-18
 
 ### Added - Automatic p7zip Installation
