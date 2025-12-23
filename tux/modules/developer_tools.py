@@ -1199,68 +1199,12 @@ post_remove() {
         """Generate post-install script for DEB/RPM packages."""
         return '''#!/bin/bash
 # Post-install script for Tux Assistant
-
-# Create tux-icons theme for proper symbolic icon coloring (light/dark mode)
-THEME_DIR="/opt/tux-assistant/icons/tux-icons"
-THEME_SCALABLE="$THEME_DIR/scalable"
-
-# Create theme directory structure
-mkdir -p "$THEME_SCALABLE/apps"
-mkdir -p "$THEME_SCALABLE/actions"
-mkdir -p "$THEME_SCALABLE/status"
-
-# Create index.theme
-cat > "$THEME_DIR/index.theme" << 'THEME_EOF'
-[Icon Theme]
-Name=Tux Icons
-Comment=Self-contained icon theme for Tux Assistant
-Inherits=hicolor,Adwaita,breeze,gnome
-Directories=scalable/apps,scalable/actions,scalable/status
-
-[scalable/apps]
-Size=64
-MinSize=16
-MaxSize=512
-Type=Scalable
-Context=Applications
-
-[scalable/actions]
-Size=64
-MinSize=16
-MaxSize=512
-Type=Scalable
-Context=Actions
-
-[scalable/status]
-Size=64
-MinSize=16
-MaxSize=512
-Type=Scalable
-Context=Status
-THEME_EOF
-
-# Copy all tux-* icons to the theme
-ICONS_SRC="/opt/tux-assistant/assets/icons"
-if [ -d "$ICONS_SRC" ]; then
-    for icon in "$ICONS_SRC"/tux-*.svg; do
-        if [ -f "$icon" ]; then
-            basename=$(basename "$icon")
-            # Copy to actions (most are action icons)
-            cp "$icon" "$THEME_SCALABLE/actions/" 2>/dev/null || true
-            # Also copy to status for status icons
-            cp "$icon" "$THEME_SCALABLE/status/" 2>/dev/null || true
-        fi
-    done
-fi
-
-# Copy app icons
-cp /opt/tux-assistant/assets/icon.svg "$THEME_SCALABLE/apps/tux-assistant.svg" 2>/dev/null || true
-cp /opt/tux-assistant/assets/tux-tunes.svg "$THEME_SCALABLE/apps/tux-tunes.svg" 2>/dev/null || true
+# The tux-icons theme is pre-built in the package - just update caches
 
 # Update icon caches
 if [ -x /usr/bin/gtk-update-icon-cache ]; then
     gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor 2>/dev/null || true
-    gtk-update-icon-cache -q -t -f "$THEME_DIR" 2>/dev/null || true
+    gtk-update-icon-cache -q -t -f /opt/tux-assistant/icons/tux-icons 2>/dev/null || true
 fi
 
 # Update desktop database
@@ -2143,6 +2087,64 @@ exit 0
                 os.makedirs(icon_dir, exist_ok=True)
                 shutil.copy2(icon_svg, os.path.join(icon_dir, "tux-assistant.svg"))
                 shutil.copy2(tunes_svg, os.path.join(icon_dir, "tux-tunes.svg"))
+            
+            # ═══ CREATE SELF-CONTAINED TUX-ICONS THEME ═══
+            # This is the key fix - packages ship with a complete icon theme
+            # so GTK can properly color symbolic icons for light/dark mode
+            theme_dir = os.path.join(opt_dir, "icons", "tux-icons")
+            theme_scalable = os.path.join(theme_dir, "scalable")
+            
+            # Create theme directory structure
+            for subdir in ["apps", "actions", "status"]:
+                os.makedirs(os.path.join(theme_scalable, subdir), exist_ok=True)
+            
+            # Create index.theme file
+            index_theme_content = """[Icon Theme]
+Name=Tux Icons
+Comment=Self-contained icon theme for Tux Assistant
+Inherits=hicolor,Adwaita,breeze,gnome
+Directories=scalable/apps,scalable/actions,scalable/status
+
+[scalable/apps]
+Size=64
+MinSize=16
+MaxSize=512
+Type=Scalable
+Context=Applications
+
+[scalable/actions]
+Size=64
+MinSize=16
+MaxSize=512
+Type=Scalable
+Context=Actions
+
+[scalable/status]
+Size=64
+MinSize=16
+MaxSize=512
+Type=Scalable
+Context=Status
+"""
+            with open(os.path.join(theme_dir, "index.theme"), "w") as f:
+                f.write(index_theme_content)
+            
+            # Copy app icons to theme
+            shutil.copy2(icon_svg, os.path.join(theme_scalable, "apps", "tux-assistant.svg"))
+            shutil.copy2(icon_svg, os.path.join(theme_scalable, "apps", "com.tuxassistant.app.svg"))
+            shutil.copy2(tunes_svg, os.path.join(theme_scalable, "apps", "tux-tunes.svg"))
+            shutil.copy2(tunes_svg, os.path.join(theme_scalable, "apps", "com.tuxassistant.tuxtunes.svg"))
+            
+            # Copy all tux-*.svg symbolic icons to actions and status
+            icons_src = os.path.join(src_dir, "assets", "icons")
+            if os.path.isdir(icons_src):
+                for icon_file in os.listdir(icons_src):
+                    if icon_file.startswith("tux-") and icon_file.endswith(".svg"):
+                        icon_path = os.path.join(icons_src, icon_file)
+                        # Copy to all contexts for maximum compatibility
+                        shutil.copy2(icon_path, os.path.join(theme_scalable, "actions", icon_file))
+                        shutil.copy2(icon_path, os.path.join(theme_scalable, "status", icon_file))
+                        shutil.copy2(icon_path, os.path.join(theme_scalable, "apps", icon_file))
             
             # Build with fpm
             output_file = os.path.join(output_dir, pkg["filename"])
