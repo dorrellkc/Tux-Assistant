@@ -265,17 +265,18 @@ MULTIMEDIA_CODECS = SetupTask(
             "libdvdcss"
         ],
         DistroFamily.OPENSUSE: [
-            # Full codec support - requires Packman repos
-            "ffmpeg", "gstreamer-plugins-base", "gstreamer-plugins-good",
-            "gstreamer-plugins-bad", "gstreamer-plugins-ugly",
-            "gstreamer-plugins-libav",
-            "libdvdcss2"
+            # opi handles Packman setup and codec installation
+            "opi"
         ],
     },
     commands={
         DistroFamily.DEBIAN: [
             # Configure libdvd-pkg to download and compile libdvdcss
             ["sudo", "dpkg-reconfigure", "-f", "noninteractive", "libdvd-pkg"]
+        ],
+        DistroFamily.OPENSUSE: [
+            # opi -n codecs: non-interactive Packman setup + all codecs
+            ["opi", "-n", "codecs"]
         ]
     }
 )

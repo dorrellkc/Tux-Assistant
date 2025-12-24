@@ -30,11 +30,16 @@ try:
     WEBKIT_AVAILABLE = True
 except (ValueError, ImportError):
     try:
-        gi.require_version('WebKit2', '5.0')
+        gi.require_version('WebKit2', '4.1')
         from gi.repository import WebKit2 as WebKit
         WEBKIT_AVAILABLE = True
     except (ValueError, ImportError):
-        pass  # WebKit not available
+        try:
+            gi.require_version('WebKit2', '4.0')
+            from gi.repository import WebKit2 as WebKit
+            WEBKIT_AVAILABLE = True
+        except (ValueError, ImportError):
+            pass  # WebKit not available
 
 from . import __version__, __app_name__, __app_id__
 from .core import get_distro, get_desktop, setup_logging, get_logger

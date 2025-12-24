@@ -31,11 +31,16 @@ try:
     HAS_WEBKIT = True
 except Exception:
     try:
-        gi.require_version('WebKit2', '5.0')
+        gi.require_version('WebKit2', '4.1')
         from gi.repository import WebKit2 as WebKit
         HAS_WEBKIT = True
     except Exception:
-        HAS_WEBKIT = False
+        try:
+            gi.require_version('WebKit2', '4.0')
+            from gi.repository import WebKit2 as WebKit
+            HAS_WEBKIT = True
+        except Exception:
+            HAS_WEBKIT = False
 
 from ..core import get_distro, get_desktop, DesktopEnv, DistroFamily
 from .registry import register_module, ModuleCategory
