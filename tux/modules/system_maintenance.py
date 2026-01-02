@@ -539,13 +539,27 @@ class SystemMaintenancePage(Adw.NavigationPage):
         # Update status row
         self.update_row = Adw.ActionRow()
         self.update_row.set_title("Available Updates")
-        self.update_row.set_subtitle("Checking...")
+        self.update_row.set_subtitle("Click 'Check' to look for updates")
         self.update_row.add_prefix(Gtk.Image.new_from_icon_name("tux-software-update-available-symbolic"))
         
-        self.update_count = Gtk.Label(label="...")
+        # Spinner for checking state (hidden by default)
+        self.update_spinner = Gtk.Spinner()
+        self.update_spinner.set_visible(False)
+        self.update_row.add_suffix(self.update_spinner)
+        
+        # Status label (checkmark or count)
+        self.update_count = Gtk.Label(label="")
         self.update_count.add_css_class("dim-label")
         self.update_row.add_suffix(self.update_count)
         
+        # Check for Updates button
+        self.check_btn = Gtk.Button(label="Check")
+        self.check_btn.set_valign(Gtk.Align.CENTER)
+        self.check_btn.set_tooltip_text("Check for available updates")
+        self.check_btn.connect("clicked", self._on_check_updates)
+        self.update_row.add_suffix(self.check_btn)
+        
+        # Update button (disabled until updates found)
         self.update_btn = Gtk.Button(label="Update")
         self.update_btn.set_valign(Gtk.Align.CENTER)
         self.update_btn.add_css_class("suggested-action")
@@ -625,18 +639,38 @@ class SystemMaintenancePage(Adw.NavigationPage):
         total = sum(sizes.values())
         self.clean_all_btn.set_label(f"Clean All ({get_human_size(total)})")
     
-    def _refresh_updates(self):
+    def _refresh_updates(self, show_checking_state: bool = True):
         """Check for updates in background."""
+        if show_checking_state:
+            # Show checking state
+            self.update_row.set_subtitle("Checking for updates...")
+            self.update_count.set_label("")
+            self.update_count.set_visible(False)
+            self.update_spinner.set_visible(True)
+            self.update_spinner.start()
+            self.check_btn.set_sensitive(False)
+            self.update_btn.set_sensitive(False)
+        
         def check():
             info = check_updates_available(self.distro.family)
             GLib.idle_add(self._update_updates_status, info)
         
         threading.Thread(target=check, daemon=True).start()
     
+    def _on_check_updates(self, button):
+        """Handle Check for Updates button click."""
+        self._refresh_updates(show_checking_state=True)
+    
     def _update_updates_status(self, info: Tuple[bool, int, str]):
         """Update the updates section."""
         has_updates, count, details = info
         self.updates_info = info
+        
+        # Stop spinner and restore UI
+        self.update_spinner.stop()
+        self.update_spinner.set_visible(False)
+        self.update_count.set_visible(True)
+        self.check_btn.set_sensitive(True)
         
         if has_updates:
             self.update_row.set_subtitle(f"{count} update{'s' if count != 1 else ''} available")
@@ -901,13 +935,21 @@ read'''
     
     def _on_run_updates(self, button):
         """Run system updates."""
-        commands = {
-            DistroFamily.ARCH: "sudo pacman -Syu",
-            DistroFamily.DEBIAN: "sudo apt update && sudo apt upgrade",
-            DistroFamily.FEDORA: "sudo dnf upgrade",
-            DistroFamily.OPENSUSE: "sudo zypper update",
-        }
-        cmd = commands.get(self.distro.family, "echo 'Unknown distribution'")
+        # Determine the correct update command
+        if self.distro.family == DistroFamily.ARCH:
+            cmd = "sudo pacman -Syu"
+        elif self.distro.family == DistroFamily.DEBIAN:
+            cmd = "sudo apt update && sudo apt upgrade"
+        elif self.distro.family == DistroFamily.FEDORA:
+            cmd = "sudo dnf upgrade"
+        elif self.distro.family == DistroFamily.OPENSUSE:
+            # Tumbleweed is rolling release - needs dup, not update
+            if 'tumbleweed' in self.distro.id.lower():
+                cmd = "sudo zypper dup"
+            else:
+                cmd = "sudo zypper update"
+        else:
+            cmd = "echo 'Unknown distribution'"
         
         script = f'''echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  System Update"

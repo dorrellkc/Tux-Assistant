@@ -2,6 +2,18 @@
 
 All notable changes to Tux Assistant will be documented in this file.
 
+## [1.0.21] - 2026-01-02
+
+### Added - System Updates UX Improvements
+- **Check for Updates button** - Explicit button in System Maintenance to check for available updates
+- **Spinner feedback** - Shows "Checking for updates..." with spinner while checking
+- **Better initial state** - Starts with "Click 'Check' to look for updates" instead of auto-checking
+
+### Fixed - openSUSE Tumbleweed Updates
+- **Use `zypper dup` for Tumbleweed** - Rolling release needs distribution upgrade, not regular update
+- **Leap still uses `zypper update`** - Non-rolling releases work as before
+- Fixes issue where `zypper update` left packages behind on Tumbleweed
+
 ## [1.0.7] - 2025-12-21
 
 ### Fixed - Build System
